@@ -512,6 +512,21 @@ async function leerDoc(){
 }
 function escribirDoc(doc){ return escribirCrudo(DOC_KEY, JSON.stringify(doc), true); }
 
+/* Reconoce los datos de ejemplo que traían las versiones anteriores.
+   Solo se descartan si el equipo NO está conectado al centro escolar. */
+function esDemoAntiguo(doc){
+  if(!doc || !Array.isArray(doc.docentes)) return false;
+  const idsDemo = ['t_direccion','t_coord','t_secre','t_jose','t_elena','t_walter','t_karla','t_mario'];
+  const nombresDemo = ['lic. ana martínez','lic. carlos rivas','sra. marta lópez','prof. josé hernández'];
+  const coincideId = doc.docentes.filter(d=>idsDemo.indexOf(d.id) >= 0).length;
+  const coincideNombre = doc.docentes.filter(d=>
+    nombresDemo.indexOf(String(d.nombre||'').trim().toLowerCase()) >= 0).length;
+  if(coincideId < 3 && coincideNombre < 3) return false;
+  // si además el colegio nunca se personalizó, es la base de ejemplo
+  const nombreColegio = (doc.ajustes && doc.ajustes.nombreColegio) || 'Centro Escolar';
+  return nombreColegio === 'Centro Escolar';
+}
+
 async function loadAll(){
   await detectarMotor();
   let doc = await leerDoc();
@@ -530,6 +545,11 @@ async function loadAll(){
       seedData();
     }
     try{ await escribirDoc(docActual()); }catch(e){ console.error('siembra', e); }
+  }else if(esDemoAntiguo(doc) && motor !== 'nube' && motor !== 'compartido'){
+    // Este navegador guardó los datos de ejemplo de una versión anterior:
+    // se descartan para no mostrar docentes ni alumnos inventados.
+    seedData();
+    try{ await escribirDoc(docActual()); }catch(e){}
   }else{
     adoptarDoc(doc);
   }
