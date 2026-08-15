@@ -333,8 +333,20 @@ function conLimite(promesa, ms){
    2. local       -> solo este navegador (el archivo se abrió por fuera)
    3. memoria     -> nada se conserva al cerrar; se avisa en pantalla
    --------------------------------------------------------------- */
+/* =====================================================================
+   ENLACE DE SINCRONIZACIÓN DEL CENTRO ESCOLAR
+   Pega aquí, entre las comillas, el enlace que termina en /exec.
+   Al hacerlo, cualquiera que abra esta página verá los datos del centro
+   escolar sin tener que configurar nada.
+   ===================================================================== */
+const ENLACE_FIJO = '';
+
 function getSyncUrl(){
-  try{ return window.localStorage.getItem('sync_url') || ''; }catch(e){ return ''; }
+  try{
+    const guardado = window.localStorage.getItem('sync_url');
+    if(guardado) return guardado;              // lo que el usuario haya puesto manda
+  }catch(e){}
+  return ENLACE_FIJO;                          // si no, el del centro escolar
 }
 function setSyncUrl(u){
   try{ if(u) window.localStorage.setItem('sync_url', u); else window.localStorage.removeItem('sync_url'); }catch(e){}
@@ -998,6 +1010,7 @@ function responder(texto) {
     .setMimeType(ContentService.MimeType.JSON);
 }`;
   const admin = canManageAcademicData(currentUser);
+  const integrado = !!ENLACE_FIJO && !((()=>{ try{ return window.localStorage.getItem('sync_url'); }catch(e){ return ''; } })());
   return `
   <div class="page-head">
     <p class="page-eyebrow">Ajustes</p>
@@ -1009,6 +1022,7 @@ function responder(texto) {
 
   <div class="card">
     <p class="card-title">Estado actual <span class="pill ${pill}">${esc(etiqueta)}</span></p>
+    ${integrado?`<div class="note" style="margin-bottom:12px;">Este sistema ya trae integrado el enlace del centro escolar: no hace falta configurar nada en cada equipo.</div>`:''}
     <p style="font-size:13.5px; color:var(--muted); margin:0 0 14px;">${esc(detalle)}</p>
     <div class="field">
       <label>Enlace de sincronización (termina en /exec)</label>
@@ -1066,7 +1080,8 @@ function combinarDocs(local, nube){
     estados: Object.assign({}, nube.estados||{}),
     observaciones: Object.assign({}, nube.observaciones||{}),
     rubros: Object.assign({}, nube.rubros||{}),
-    ajustes: local.ajustes || nube.ajustes
+    ajustes: (local.ajustes && local.ajustes.nombreColegio &&
+              local.ajustes.nombreColegio !== 'Centro Escolar') ? local.ajustes : (nube.ajustes || local.ajustes)
   };
   const cuenta = {estudiantes:0, docentes:0, asignaturas:0, notas:0, choques:0};
   const mapaIds = {};   // id local -> id definitivo en el Drive
@@ -1083,6 +1098,7 @@ function combinarDocs(local, nube){
     else { res.estudiantes.push(e); mapaIds[e.id] = e.id; cuenta.estudiantes++; }
   });
   (local.docentes||[]).forEach(d=>{
+    if(d.id === 'u_inicial') return;        // usuario de ejemplo: no se sube nunca
     const ya = res.docentes.find(x=>x.id===d.id || x.nombre.trim().toLowerCase()===d.nombre.trim().toLowerCase());
     if(!ya){ res.docentes.push(d); cuenta.docentes++; }
     else if(d.asignaciones){       // se suman asignaciones que el Drive no tenga
@@ -1132,6 +1148,19 @@ async function guardarSyncUrl(){
     const mio = JSON.parse(JSON.stringify(docActual()));
     motor = 'nube';
     if(doc){
+      // Un equipo recién abierto (sin datos propios) solo adopta lo del centro escolar,
+      // sin subir el usuario de ejemplo ni pisar el nombre del colegio.
+      const sinDatosPropios = (mio.estudiantes||[]).length === 0 &&
+        (mio.docentes||[]).length <= 1 &&
+        Object.keys(mio.calificaciones||{}).length === 0;
+      if(sinDatosPropios){
+        adoptarDoc(doc);
+        setSyncStatus('ok');
+        iniciarSync();
+        showToast('Conectado con los datos del centro escolar.');
+        render();
+        return;
+      }
       // Este equipo actualiza el Drive: se sube lo suyo y se conserva lo que ya había allá.
       const {doc:combinado, cuenta} = combinarDocs(mio, doc);
       adoptarDoc(combinado);
@@ -1157,63 +1186,31 @@ async function guardarSyncUrl(){
 function quitarSyncUrl(){
   if(!confirm('¿Desconectar este equipo? Los datos dejarán de compartirse.')) return;
   setSyncUrl('');
+  if(ENLACE_FIJO){ showToast('Este sistema trae el enlace del centro escolar integrado: volverá a conectarse solo.'); }
   motor = null;
   detectarMotor().then(()=>{ setSyncStatus('ok'); render(); });
 }
 
+/* Datos iniciales de un equipo que todavía no está conectado al Drive.
+   A propósito se deja un solo usuario y nada más: así, quien abra la página
+   pública sin el enlace del centro escolar no ve ninguna información real. */
 function seedData(){
-  DB.config = { grados:['7° Grado A','8° Grado A','9° Grado A','1° Bachillerato A'], periodos:4 };
-  DB.asignaturas = [
-    {id:'asig_mat', nombre:'Matemática'},
-    {id:'asig_len', nombre:'Lenguaje y Literatura'},
-    {id:'asig_cn', nombre:'Ciencias Naturales'},
-    {id:'asig_soc', nombre:'Estudios Sociales'},
-    {id:'asig_ing', nombre:'Inglés'},
-  ];
+  DB.config = { grados:[], periodos:4 };
+  DB.asignaturas = [];
   DB.docentes = [
-    {id:'t_direccion', nombre:'Lic. Ana Martínez', tipo:'admin', dominio:'direccion', asignaciones:[], orientacion:null},
-    {id:'t_coord', nombre:'Lic. Carlos Rivas', tipo:'admin', dominio:'coordinacion', asignaciones:[], orientacion:null},
-    {id:'t_secre', nombre:'Sra. Marta López', tipo:'admin', dominio:'secretaria', asignaciones:[], orientacion:null},
-    {id:'t_jose', nombre:'Prof. José Hernández', tipo:'docente', dominio:null,
-      asignaciones:[{grado:'7° Grado A', asignaturaId:'asig_mat'},{grado:'8° Grado A', asignaturaId:'asig_mat'}], orientaciones:['7° Grado A']},
-    {id:'t_elena', nombre:'Profa. Elena Cruz', tipo:'docente', dominio:null,
-      asignaciones:[{grado:'7° Grado A', asignaturaId:'asig_len'},{grado:'9° Grado A', asignaturaId:'asig_len'}], orientacion:null},
-    {id:'t_walter', nombre:'Prof. Walter Guevara', tipo:'docente', dominio:null,
-      asignaciones:[{grado:'7° Grado A', asignaturaId:'asig_cn'},{grado:'8° Grado A', asignaturaId:'asig_cn'},{grado:'9° Grado A', asignaturaId:'asig_cn'}], orientacion:'8° Grado A'},
-    {id:'t_karla', nombre:'Profa. Karla Ponce', tipo:'docente', dominio:null,
-      asignaciones:[{grado:'7° Grado A', asignaturaId:'asig_soc'},{grado:'8° Grado A', asignaturaId:'asig_soc'},{grado:'1° Bachillerato A', asignaturaId:'asig_soc'}], orientacion:null},
-    {id:'t_mario', nombre:'Prof. Mario Escobar', tipo:'docente', dominio:null,
-      asignaciones:[{grado:'8° Grado A', asignaturaId:'asig_ing'},{grado:'9° Grado A', asignaturaId:'asig_ing'},{grado:'1° Bachillerato A', asignaturaId:'asig_ing'}], orientacion:'9° Grado A'},
+    {id:'u_inicial', nombre:'Docente', tipo:'docente', dominio:null,
+     asignaciones:[], orientacion:null, orientaciones:[]}
   ];
-  DB.estudiantes = [
-    ['Andrea Beatriz','Alas Portillo','7° Grado A'],
-    ['Diego Alejandro','Cortez Ramírez','7° Grado A'],
-    ['Fátima Nohemy','Reyes Molina','7° Grado A'],
-    ['Josué Ernesto','Pineda Cruz','7° Grado A'],
-    ['Kevin Alexander','Zúniga Mejía','8° Grado A'],
-    ['Melissa Guadalupe','Flores Aguilar','8° Grado A'],
-    ['Nelson Ismael','Torres Vásquez','8° Grado A'],
-    ['Carla Estefanía','Rivas Campos','9° Grado A'],
-    ['Douglas Antonio','Menjívar Sosa','9° Grado A'],
-    ['Ingrid Yamileth','Argueta Bonilla','9° Grado A'],
-    ['Roberto Carlos','Sánchez Deras','1° Bachillerato A'],
-    ['Sofía Alejandra','Chávez Interiano','1° Bachillerato A'],
-  ].map(x=>({id:uid('est'), nombres:x[0], apellidos:x[1], nombre:x[0]+' '+x[1], grado:x[2]}));
+  DB.estudiantes = [];
   DB.calificaciones = {};
   DB.actividades = {};
   DB.tareas = {};
   DB.estados = {};
   DB.observaciones = {};
   DB.rubros = {};
-  DB.ajustes = {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:'',
-    fraseSaludo:'recuerda que lo haces increíble', mensajeBienvenida:''};
   DB.curriculo = {};
-  DB.config.grados.forEach(g=>{
-    DB.curriculo[g] = DB.docentes.reduce((acc,d)=>{
-      d.asignaciones.forEach(a=>{ if(a.grado===g && acc.indexOf(a.asignaturaId)<0) acc.push(a.asignaturaId); });
-      return acc;
-    }, []);
-  });
+  DB.ajustes = {nombreColegio:'Centro Escolar', logo:'', anio:String(new Date().getFullYear()),
+    fraseSaludo:'recuerda que lo haces increíble', mensajeBienvenida:'', siglas:''};
 }
 
 /* ============================= PERMISOS ============================= */
@@ -1882,6 +1879,7 @@ function renderPanel(){
   DB.estudiantes.forEach(e=>{ const avg = studentFinalAverage(e.id, e.grado); if(avg!==null){ sumAvg+=avg; countAvg++; } });
   const promedioGeneral = countAvg? (sumAvg/countAvg).toFixed(1) : '—';
 
+  const sinConectar = (motor !== 'nube' && motor !== 'compartido') && DB.docentes.length <= 1;
   const misGradosList = misGrados(currentUser);
 
   return `
@@ -1890,6 +1888,10 @@ function renderPanel(){
     <h1 class="page-title">Panel principal</h1>
     <p class="page-desc">Resumen general del centro escolar y accesos según tu perfil (${esc(domainLabel(currentUser))}).</p>
   </div>
+  ${sinConectar?`<div class="aviso-motor" style="margin-bottom:18px;">
+    <strong>Este equipo todavía no está conectado al centro escolar.</strong>
+    Entra a <b>Sincronización</b> y pega el enlace que te dio Dirección para ver los datos reales.
+  </div>`:''}
   <div class="grid grid-4" style="margin-bottom:18px;">
     <div class="stat"><p class="stat-label">Estudiantes</p><p class="stat-value">${totalEst}</p></div>
     <div class="stat"><p class="stat-label">Docentes</p><p class="stat-value">${totalDoc}</p></div>
