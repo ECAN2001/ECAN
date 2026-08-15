@@ -1,0 +1,3679 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema Escolar — Cuaderno de Calificaciones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EDEEE6;
+    --ink:#1C2B2A;
+    --panel:#FFFFFF;
+    --panel-2:#F7F7F1;
+    --line:#D9DACD;
+    --line-strong:#BFC1B0;
+    --primary:#2F6F5E;
+    --primary-dark:#1F4E41;
+    --primary-light:#DCEAE4;
+    --gold:#B98A2E;
+    --gold-light:#F3E6C9;
+    --red:#A63D2E;
+    --red-light:#F4DCD6;
+    --blue:#2E5C7A;
+    --blue-light:#DCE7EE;
+    --muted:#6E6E62;
+    --margin-red:#C0574A;
+    --radius:10px;
+    --shadow:0 1px 2px rgba(28,43,42,.06), 0 4px 14px rgba(28,43,42,.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  h1,h2,h3,.display{ font-family:'Fraunces',serif; font-weight:600; letter-spacing:-.01em; }
+  button, input, select{ font-family:'Inter',sans-serif; }
+  .mono{ font-family:'JetBrains Mono',monospace; }
+  #app{ min-height:100vh; }
+
+  /* ---------- LOGIN ---------- */
+  .login-wrap{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .login-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:40px 36px; width:100%; max-width:460px; box-shadow:var(--shadow);
+    position:relative; overflow:hidden;
+  }
+  .login-card::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:6px; background:var(--margin-red);
+  }
+  .login-eyebrow{ font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); font-weight:700; margin:0 0 6px; }
+  .login-title{ font-size:28px; margin:0 0 4px; }
+  .login-sub{ color:var(--muted); font-size:14px; margin:0 0 28px; }
+  .user-list{ display:flex; flex-direction:column; gap:8px; max-height:360px; overflow-y:auto; padding-right:4px;}
+  .user-pick{
+    display:flex; align-items:center; gap:12px; padding:11px 14px; border:1px solid var(--line);
+    border-radius:10px; background:var(--panel-2); cursor:pointer; text-align:left; width:100%;
+    transition:border-color .15s, background .15s;
+  }
+  .user-pick:hover{ border-color:var(--primary); background:var(--primary-light); }
+  .user-avatar{
+    width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:13px; color:#fff; flex-shrink:0;
+  }
+  .user-meta{ min-width:0; }
+  .user-name{ font-weight:600; font-size:14px; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .user-role{ font-size:12px; color:var(--muted); margin:0; }
+  .badge{ font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:20px; letter-spacing:.03em; text-transform:uppercase; margin-left:auto; flex-shrink:0;}
+  .badge-direccion{ background:var(--gold-light); color:#7A5A1C; }
+  .badge-coordinacion{ background:var(--blue-light); color:var(--blue); }
+  .badge-secretaria{ background:var(--primary-light); color:var(--primary-dark); }
+  .badge-docente{ background:var(--panel); color:var(--muted); border:1px solid var(--line);}
+
+  /* ---------- LAYOUT ---------- */
+  .layout{ display:flex; min-height:100vh; }
+  .sidebar{
+    width:230px; background:var(--panel); border-right:1px solid var(--line); flex-shrink:0;
+    display:flex; flex-direction:column; padding:22px 0;
+  }
+  .brand{ padding:0 20px 20px; border-bottom:1px solid var(--line); margin-bottom:14px;}
+  .brand-title{ font-size:19px; margin:0; line-height:1.15;}
+  .brand-sub{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-top:4px;}
+  .nav-item{
+    display:flex; align-items:center; gap:10px; padding:10px 20px; font-size:14px; font-weight:500;
+    color:var(--ink); cursor:pointer; border-left:3px solid transparent; opacity:.75;
+  }
+  .nav-item:hover{ background:var(--panel-2); opacity:1; }
+  .nav-item.active{ border-left-color:var(--primary); background:var(--primary-light); opacity:1; color:var(--primary-dark); font-weight:600;}
+  .nav-dot{ width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.5; flex-shrink:0;}
+  .sidebar-footer{ margin-top:auto; padding:14px 20px 0; border-top:1px solid var(--line); }
+  .who{ display:flex; align-items:center; gap:10px; margin-bottom:10px;}
+  .who .user-name{ font-size:13px; }
+  .who .user-role{ font-size:11px; }
+  .num-est{ color:var(--muted); font-size:12px; text-align:center; }
+  .pill-rojo{ background:var(--red-light); color:var(--red); }
+  .pill-naranja{ background:#FBE3CE; color:#8A4A16; }
+  .alerta-amarilla{ border-left:4px solid #E0B93C; }
+  .alerta-naranja{ border-left:4px solid #D9822B; }
+  .alerta-roja{ border-left:4px solid var(--red); }
+  .acts-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(168px,1fr)); gap:10px; }
+  .act-chip{ background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:8px 10px; }
+  .act-chip-top{ display:flex; align-items:center; gap:2px; }
+  .act-nombre{ border:none; background:transparent; padding:2px; font-size:12.5px; font-weight:600; width:100%; color:var(--ink); }
+  .act-nombre:focus{ outline:1px solid var(--primary); border-radius:4px; }
+  .act-fecha-lbl{ font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:6px 0 3px; display:block; }
+  .act-fecha{ width:100%; padding:4px 6px; font-size:12px; border:1px solid var(--line-strong); border-radius:6px; background:#fff; }
+  .matriz-detalle th{ text-align:center; }
+  .matriz-detalle .col-materia{ background:var(--primary-light); color:var(--primary-dark);
+    border-left:2px solid var(--line-strong); text-align:center; }
+  .matriz-detalle td.col-final, .matriz-detalle th.col-final{ background:var(--panel-2); font-weight:700; }
+  .avg-cell.col-global{ background:var(--gold-light); font-weight:700; }
+  .num-est{ color:var(--muted); }
+  .marca-parcial{ display:block; font-size:9.5px; font-weight:600; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.03em; margin-top:2px; font-family:'Inter',sans-serif; }
+  .nota-chica{ font-size:11.5px; color:var(--muted); margin:10px 0 0; }
+  .celda-nota{ display:flex; align-items:center; gap:3px; }
+  .obs-btn{ border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:5px;
+    width:20px; height:24px; font-size:11px; cursor:pointer; line-height:1; flex-shrink:0; }
+  .obs-btn:hover{ border-color:var(--primary); color:var(--primary); }
+  .obs-btn.con-obs{ background:var(--gold-light); border-color:#E3C98A; color:#7A5A1C; }
+  .estado-sel{ width:100%; margin-top:4px; padding:3px 4px; font-size:11px; border-radius:5px;
+    border:1px solid var(--line-strong); background:#fff; }
+  .estado-sel.estado-entregada{ background:var(--primary-light); color:var(--primary-dark); }
+  .estado-sel.estado-tardia{ background:var(--gold-light); color:#7A5A1C; }
+  .estado-sel.estado-no{ background:var(--red-light); color:var(--red); }
+  .clave-actual{ display:flex; align-items:center; gap:4px; font-family:'JetBrains Mono',monospace;
+    font-size:12.5px; color:var(--primary-dark); margin-bottom:5px; }
+  .check-chip{ display:inline-flex; align-items:center; gap:6px; background:var(--panel-2);
+    border:1px solid var(--line); border-radius:8px; padding:6px 11px; font-size:12.5px;
+    font-weight:500; color:var(--ink); cursor:pointer; }
+  .check-chip input{ width:auto; margin:0; cursor:pointer; }
+  .login-logo{ width:60px; height:60px; object-fit:contain; margin-bottom:12px; border-radius:8px; }
+  .brand-logo{ width:38px; height:38px; object-fit:contain; margin-bottom:8px; display:block; border-radius:6px; }
+  .candado{ font-size:11px; margin-left:auto; opacity:.6; }
+  .candado + .badge{ margin-left:6px; }
+  textarea{ font-size:13.5px; line-height:1.5; }
+  .aviso-motor{
+    background:var(--gold-light); border:1px solid #E3C98A; border-radius:var(--radius);
+    padding:11px 15px; font-size:13px; color:#6B4E10; margin-bottom:18px; line-height:1.55;
+  }
+  .aviso-motor.aviso-grave{ background:var(--red-light); border-color:#E0B3A9; color:#7A2A1C; }
+  .btn-respaldo{ display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+  .sync-row{
+    display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--muted);
+    margin-bottom:9px; cursor:pointer; user-select:none;
+  }
+  .sync-row:hover{ color:var(--ink); }
+  .sync-dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .logout-btn{
+    width:100%; padding:8px; border:1px solid var(--line); background:var(--panel-2); border-radius:8px;
+    font-size:12.5px; cursor:pointer; color:var(--muted); font-weight:600;
+  }
+  .logout-btn:hover{ border-color:var(--red); color:var(--red); }
+
+  .main{ flex:1; min-width:0; padding:32px 40px; max-width:1200px; }
+  .page-head{ margin-bottom:26px; }
+  .page-eyebrow{ font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); font-weight:700; margin:0 0 6px;}
+  .page-title{ font-size:21px; margin:0; }
+  .saludo-grande{ font-family:'Fraunces',serif; font-size:26px; font-weight:600;
+    letter-spacing:-.01em; color:var(--gold); text-transform:none; margin:0 0 4px; }
+  .page-desc{ color:var(--muted); font-size:14px; margin:6px 0 0; max-width:640px; }
+
+  /* ---------- GENERIC ---------- */
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px 22px; margin-bottom:18px;}
+  .card-title{ font-size:15px; margin:0 0 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .grid{ display:grid; gap:14px; }
+  .grid-2{ grid-template-columns:1fr 1fr; }
+  .grid-3{ grid-template-columns:repeat(3,1fr); }
+  .grid-4{ grid-template-columns:repeat(4,1fr); }
+  @media(max-width:900px){ .grid-2,.grid-3,.grid-4{ grid-template-columns:1fr; } .main{padding:20px;} .sidebar{width:190px;} }
+
+  .stat{ background:var(--panel-2); border-radius:var(--radius); padding:16px 18px; }
+  .stat-label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin:0 0 6px;}
+  .stat-value{ font-size:26px; font-weight:700; margin:0; font-family:'Fraunces',serif; }
+
+  label{ display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:5px; }
+  input[type=text], input[type=number], select, textarea{
+    width:100%; padding:9px 11px; border:1px solid var(--line-strong); border-radius:8px; font-size:13.5px;
+    background:#fff; color:var(--ink);
+  }
+  input:focus, select:focus, textarea:focus{ outline:2px solid var(--primary); outline-offset:1px; border-color:var(--primary); }
+  .field{ margin-bottom:12px; }
+  .btn{
+    padding:9px 16px; border-radius:8px; border:1px solid var(--line-strong); background:#fff; font-size:13.5px;
+    font-weight:600; cursor:pointer; color:var(--ink); display:inline-flex; align-items:center; gap:6px;
+  }
+  .btn:hover{ border-color:var(--primary); }
+  .btn-primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
+  .btn-primary:hover{ background:var(--primary-dark); border-color:var(--primary-dark); }
+  .btn-danger{ color:var(--red); border-color:var(--red-light); background:var(--red-light); }
+  .btn-danger:hover{ background:var(--red); color:#fff; }
+  .btn-sm{ padding:5px 10px; font-size:12px; }
+  .btn-row{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:8px 10px; border-bottom:2px solid var(--line-strong); white-space:nowrap;}
+  td{ padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  tr:hover td{ background:var(--panel-2); }
+  .table-wrap{ overflow-x:auto; }
+  .empty{ text-align:center; color:var(--muted); padding:30px 10px; font-size:13.5px; }
+  .pill{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; display:inline-block; }
+  .pill-primary{ background:var(--primary-light); color:var(--primary-dark); }
+  .pill-gold{ background:var(--gold-light); color:#7A5A1C; }
+  .pill-blue{ background:var(--blue-light); color:var(--blue); }
+  .pill-muted{ background:var(--panel-2); color:var(--muted); border:1px solid var(--line);}
+  .tag-row{ display:flex; flex-wrap:wrap; gap:6px; }
+  .icon-btn{ background:none; border:none; cursor:pointer; color:var(--muted); padding:4px 6px; border-radius:6px; font-size:13px;}
+  .icon-btn:hover{ background:var(--panel-2); color:var(--ink); }
+
+  /* period tabs - ledger tab look */
+  .period-tabs{ display:flex; gap:0; margin-bottom:0; }
+  .period-tab{
+    padding:9px 20px; font-size:13px; font-weight:700; cursor:pointer; color:var(--muted);
+    background:var(--panel-2); border:1px solid var(--line); border-bottom:none;
+    border-radius:10px 10px 0 0; margin-right:4px; position:relative; top:1px;
+  }
+  .period-tab.active{ background:var(--panel); color:var(--primary-dark); border-color:var(--line-strong); }
+
+  /* notebook-style score matrix */
+  .ledger{ border:1px solid var(--line-strong); border-radius:0 var(--radius) var(--radius) var(--radius); background:var(--panel); overflow:hidden; }
+  .ledger-table{ width:100%; border-collapse:collapse; }
+  .ledger-table th{ background:var(--panel-2); border-bottom:2px solid var(--line-strong); }
+  .ledger-table td, .ledger-table th{ position:relative; }
+  .ledger-table td:first-child, .ledger-table th:first-child{
+    border-right:2px solid var(--margin-red);
+  }
+  .score-input{
+    width:64px; padding:5px 6px; text-align:center; border:1px solid var(--line-strong); border-radius:6px;
+    font-family:'JetBrains Mono',monospace; font-size:13px;
+  }
+  .score-input.deficiente{ color:var(--red); border-color:#e0b3a9; background:var(--red-light);}
+  .avg-cell{ font-family:'JetBrains Mono',monospace; font-weight:700; }
+  .avg-good{ color:var(--primary-dark); }
+  .avg-bad{ color:var(--red); }
+  .avg-pending{ color:var(--muted); font-weight:400; font-style:italic; }
+
+  .modal-bg{ position:fixed; inset:0; background:rgba(28,43,42,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 20px; overflow-y:auto; z-index:50;}
+  .modal{ background:#fff; border-radius:14px; padding:26px 26px 22px; width:100%; max-width:520px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+  .modal-title{ font-size:18px; margin:0 0 16px; }
+  .modal-close{ float:right; background:none; border:none; font-size:20px; cursor:pointer; color:var(--muted); line-height:1;}
+  .assign-row{ display:flex; gap:8px; align-items:end; margin-bottom:8px; }
+  .assign-list-item{ display:flex; align-items:center; justify-content:space-between; padding:7px 10px; background:var(--panel-2); border-radius:7px; margin-bottom:6px; font-size:13px;}
+  .toast{ position:fixed; bottom:22px; right:22px; background:var(--ink); color:#fff; padding:11px 18px; border-radius:9px; font-size:13.5px; box-shadow:var(--shadow); z-index:100; opacity:0; transform:translateY(8px); transition:.25s; pointer-events:none;}
+  .toast.show{ opacity:1; transform:translateY(0); }
+  .note{ font-size:12px; color:var(--muted); background:var(--panel-2); border-left:3px solid var(--gold); padding:8px 12px; border-radius:6px; margin-bottom:14px;}
+  .loading{ padding:60px; text-align:center; color:var(--muted); }
+  select.grado-select{ max-width:260px; }
+  .filters{ display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-bottom:16px;}
+  .filters .field{ margin-bottom:0; min-width:170px; }
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">Cargando sistema…</div></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ============================= ESTADO ============================= */
+let DB = { estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{} };
+/* Ponderación fija de cada período de evaluación */
+const RUBROS_DEF = [
+  {key:'integradora1', nombre:'Integradora 1', peso:0.15, tarea:true},
+  {key:'integradora2', nombre:'Integradora 2', peso:0.15, tarea:true},
+  {key:'examen', nombre:'Examen', peso:0.40, conRecuperacion:true},
+  {key:'cuaderno', nombre:'Cuaderno', peso:0.10},
+];
+const PESO_ACTIVIDADES_DEF = 0.20;
+/* La lista de rubros vive en la configuración: Dirección puede agregar y quitar.
+   "Actividades" es aparte porque su nota es el promedio de las casillas. */
+function rubrosActivos(){
+  if(DB.config && Array.isArray(DB.config.rubros) && DB.config.rubros.length) return DB.config.rubros;
+  const viejos = (DB.config && DB.config.pesos) || null;   // configuración anterior
+  return RUBROS_DEF.map(r=>Object.assign({}, r, {
+    peso: (viejos && typeof viejos[r.key] === 'number') ? viejos[r.key] : r.peso
+  }));
+}
+function esRubroTarea(key){
+  const r = rubrosActivos().find(x=>x.key===key);
+  return !!(r && r.tarea);
+}
+function rubrosTarea(){ return rubrosActivos().filter(r=>r.tarea); }
+/* Los pesos por defecto se pueden cambiar desde Personalizar (Dirección) */
+function pesoDe(key){
+  if(key === 'actividades'){
+    const p = (DB.config && DB.config.pesos) ? DB.config.pesos.actividades : undefined;
+    return (typeof p === 'number' && !isNaN(p)) ? p : PESO_ACTIVIDADES_DEF;
+  }
+  const r = rubrosActivos().find(x=>x.key===key);
+  return r ? r.peso : 0;
+}
+function sumaPesos(){
+  return pesoDe('actividades') + rubrosActivos().reduce((s,r)=>s+r.peso, 0);
+}
+let currentUser = null;
+let currentView = 'panel';
+let viewState = {}; // scratch state per view (selected grado, periodo, etc.)
+let editingId = null;
+
+function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
+
+/* ============================= STORAGE ============================= */
+
+/* ---------------------------------------------------------------
+   Todos los datos viven en UNA sola clave. Antes se usaban 6 claves y
+   la app hacía 6 lecturas cada pocos segundos: eso superaba el límite
+   de peticiones y provocaba el error "No se pudo guardar".
+   --------------------------------------------------------------- */
+const DOC_KEY = 'escuela_doc';
+const CLAVES_ANTIGUAS = ['estudiantes','asignaturas','docentes','calificaciones','config','actividades'];
+const TIEMPO_LIMITE = 8000;   // ninguna operación puede quedarse colgada
+
+let pendientes = [];      // cambios hechos y aún no confirmados
+let guardando = false;
+let flushTimer = null;
+let intentosFallidos = 0;
+let motor = null;         // 'compartido' | 'local' | 'memoria'
+let memoria = {};
+
+/* Toda operación se corta a los 8 s. Sin esto, una petición que nunca
+   responde dejaba el indicador en "Guardando…" para siempre. */
+function conLimite(promesa, ms){
+  return Promise.race([
+    promesa,
+    new Promise((_,rechazar)=>setTimeout(()=>rechazar(new Error('tiempo agotado')), ms||TIEMPO_LIMITE))
+  ]);
+}
+
+/* ---------------------------------------------------------------
+   Se detecta dónde se pueden guardar los datos:
+   1. compartido  -> almacenamiento común: todos los dispositivos ven lo mismo
+   2. local       -> solo este navegador (el archivo se abrió por fuera)
+   3. memoria     -> nada se conserva al cerrar; se avisa en pantalla
+   --------------------------------------------------------------- */
+function getSyncUrl(){
+  try{ return window.localStorage.getItem('sync_url') || ''; }catch(e){ return ''; }
+}
+function setSyncUrl(u){
+  try{ if(u) window.localStorage.setItem('sync_url', u); else window.localStorage.removeItem('sync_url'); }catch(e){}
+}
+/* Lee el documento común alojado en el Google Drive del centro escolar */
+/* Versión de esta copia del sistema. El Apps Script del centro escolar
+   puede exigir una versión mínima y así dejar fuera las copias viejas. */
+const VERSION_APP = 5;
+let versionRechazada = false;
+
+async function nubeLeer(){
+  const url = getSyncUrl();
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&t=' + Date.now(),
+    {method:'GET', redirect:'follow'}), 12000);
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const txt = await r.text();
+  if(!txt || txt.trim()==='' || txt.trim()==='null') return null;
+  const doc = JSON.parse(txt);
+  if(doc && doc.versionObsoleta){          // el centro escolar desactivó esta copia
+    versionRechazada = true;
+    throw new Error('version');
+  }
+  versionRechazada = false;
+  return (doc && doc.vacio) ? null : doc;
+}
+async function nubeEscribir(valor){
+  const url = getSyncUrl();
+  // text/plain evita la petición previa de CORS, que Apps Script no responde
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP, {method:'POST', redirect:'follow',
+    headers:{'Content-Type':'text/plain;charset=utf-8'}, body: valor}), 15000);
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const resp = await r.text();
+  if(resp && resp.indexOf('versionObsoleta') >= 0){
+    versionRechazada = true;
+    throw new Error('version');
+  }
+  return true;
+}
+function renderVersionObsoleta(){
+  return `
+  <div class="login-wrap">
+    <div class="login-card" style="text-align:center;">
+      <p class="login-eyebrow" style="color:var(--red);">Versión desactualizada</p>
+      <h1 class="login-title">Esta copia ya no está autorizada</h1>
+      <p class="login-sub" style="margin-bottom:20px;">
+        El centro escolar publicó una versión más reciente del sistema y desactivó las anteriores.
+        Solicita a Dirección el archivo o el enlace actualizado para seguir trabajando.
+      </p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0;">Tus datos están a salvo en el Drive del centro escolar.</p>
+    </div>
+  </div>`;
+}
+
+async function detectarMotor(){
+  if(getSyncUrl()){
+    try{
+      await nubeLeer();               // basta con que responda
+      motor = 'nube';
+      return;
+    }catch(e){ console.warn('sincronización en la nube no disponible', e); }
+  }
+  if(typeof window !== 'undefined' && window.storage && typeof window.storage.get === 'function'){
+    // se intenta más de una vez: un fallo momentáneo no debe dejar sin sincronización toda la sesión
+    for(let i=0; i<2; i++){
+      try{
+        await conLimite(window.storage.set('__prueba', '1', true), 5000);
+        motor = 'compartido';
+        return;
+      }catch(e){ console.warn('almacenamiento compartido no disponible', e); }
+      await new Promise(r=>setTimeout(r, 600));
+    }
+  }
+  try{
+    window.localStorage.setItem('__prueba','1');
+    window.localStorage.removeItem('__prueba');
+    motor = 'local';
+    return;
+  }catch(e){ console.warn('almacenamiento local no disponible', e); }
+  motor = 'memoria';
+}
+/* Si se degradó por un problema pasajero, se vuelve a intentar el modo compartido */
+async function intentarPromocion(){
+  if(motor === 'compartido' || motor === 'nube') return false;
+  if(getSyncUrl()){
+    try{ await nubeLeer(); motor='nube'; iniciarSync(); setSyncStatus('ok'); if(currentUser) render(); return true; }catch(e){}
+  }
+  if(!(typeof window !== 'undefined' && window.storage && typeof window.storage.get === 'function')) return false;
+  try{
+    await conLimite(window.storage.set('__prueba', '1', true), 5000);
+    motor = 'compartido';
+    iniciarSync();
+    setSyncStatus('ok');
+    if(currentUser) render();
+    return true;
+  }catch(e){ return false; }
+}
+
+async function leerCrudo(clave, compartido){
+  if(motor === 'nube' && clave === DOC_KEY){
+    const doc = await nubeLeer();
+    return doc ? JSON.stringify(doc) : null;
+  }
+  if(motor === 'nube'){  // sesión y ajustes siguen siendo de cada equipo
+    try{ return window.localStorage.getItem(clave); }catch(e){ return null; }
+  }
+  if(motor === 'compartido'){
+    const r = await conLimite(window.storage.get(clave, compartido!==false));
+    return r ? r.value : null;
+  }
+  if(motor === 'local'){ return window.localStorage.getItem(clave); }
+  return memoria[clave] || null;
+}
+async function escribirCrudo(clave, valor, compartido){
+  if(motor === 'nube' && clave === DOC_KEY){
+    await nubeEscribir(valor);
+    try{ window.localStorage.setItem(DOC_KEY, valor); }catch(e){}  // copia local por si se cae la red
+    return true;
+  }
+  if(motor === 'nube'){
+    try{ window.localStorage.setItem(clave, valor); }catch(e){}
+    return true;
+  }
+  if(motor === 'compartido'){
+    const r = await conLimite(window.storage.set(clave, valor, compartido!==false));
+    if(!r) throw new Error('respuesta vacía');
+    return true;
+  }
+  if(motor === 'local'){ window.localStorage.setItem(clave, valor); return true; }
+  memoria[clave] = valor; return true;
+}
+
+function docActual(){
+  return {
+    estudiantes: DB.estudiantes, asignaturas: DB.asignaturas, docentes: DB.docentes,
+    calificaciones: DB.calificaciones, config: DB.config, actividades: DB.actividades,
+    curriculo: DB.curriculo, tareas: DB.tareas, estados: DB.estados,
+    observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros
+  };
+}
+function adoptarDoc(doc){
+  DB.estudiantes = (doc.estudiantes || []).map(normalizarEstudiante);
+  DB.asignaturas = doc.asignaturas || [];
+  DB.docentes = doc.docentes || [];
+  DB.calificaciones = doc.calificaciones || {};
+  DB.config = doc.config || {grados:[], periodos:4};
+  DB.actividades = doc.actividades || {};
+  DB.curriculo = doc.curriculo || {};
+  DB.tareas = doc.tareas || {};
+  DB.estados = doc.estados || {};
+  DB.observaciones = doc.observaciones || {};
+  DB.rubros = doc.rubros || {};
+  DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
+  if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
+  if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
+  if(DB.ajustes.siglas === undefined) DB.ajustes.siglas = 'ECAN';
+}
+async function leerDoc(){
+  try{
+    const v = await leerCrudo(DOC_KEY, true);
+    if(!v) return null;
+    return JSON.parse(v);
+  }catch(e){ return null; }
+}
+function escribirDoc(doc){ return escribirCrudo(DOC_KEY, JSON.stringify(doc), true); }
+
+async function loadAll(){
+  await detectarMotor();
+  let doc = await leerDoc();
+  if(!doc){
+    const viejos = {};
+    let encontrado = false;
+    for(const k of CLAVES_ANTIGUAS){
+      try{
+        const v = await leerCrudo(k, true);
+        if(v){ viejos[k] = JSON.parse(v); encontrado = true; }
+      }catch(e){}
+    }
+    if(encontrado && viejos.estudiantes && viejos.docentes && viejos.config){
+      adoptarDoc(viejos);
+    }else{
+      seedData();
+    }
+    try{ await escribirDoc(docActual()); }catch(e){ console.error('siembra', e); }
+  }else{
+    adoptarDoc(doc);
+  }
+  if(!DB.calificaciones) DB.calificaciones = {};
+  if(!DB.actividades) DB.actividades = {};
+  if(!DB.tareas) DB.tareas = {};
+  if(!DB.estados) DB.estados = {};
+  if(!DB.observaciones) DB.observaciones = {};
+  if(!DB.rubros) DB.rubros = {};
+  if(!DB.curriculo) DB.curriculo = {};
+  if(!DB.ajustes) DB.ajustes = {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
+}
+
+/* Aplica el cambio en pantalla al instante y lo encola para guardarlo. */
+function commit(mutador){
+  mutador(docActual());
+  pendientes.push(mutador);
+  setSyncStatus('pendiente');
+  programarGuardado(250);
+}
+function programarGuardado(ms){
+  if(flushTimer) clearTimeout(flushTimer);
+  flushTimer = setTimeout(flush, ms);
+}
+async function flush(){
+  if(guardando || pendientes.length===0) return;
+  guardando = true;
+  const lote = pendientes.slice();
+  let exito = false;
+  try{
+    const remoto = await leerDoc();
+    const base = remoto || docActual();
+    lote.forEach(m=>{ try{ m(base); }catch(e){ console.error('reaplicar', e); } });
+    await escribirDoc(base);
+    adoptarDoc(base);
+    pendientes = pendientes.slice(lote.length);
+    intentosFallidos = 0;
+    exito = true;
+  }catch(e){
+    console.error('guardar', e);
+    intentosFallidos++;
+  }finally{
+    // pase lo que pase, nunca queda bloqueado
+    guardando = false;
+  }
+  if(exito){
+    if(pendientes.length>0){ programarGuardado(300); }
+    else{ setSyncStatus('ok'); if(currentUser) render(); }
+  }else{
+    setSyncStatus('error');
+    if(intentosFallidos % 3 === 0) intentarPromocion();
+    const espera = Math.min(800 * Math.pow(2, intentosFallidos-1), 20000);
+    if(intentosFallidos === 3){
+      showToast('No se está pudiendo guardar. Usa "Descargar respaldo" para no perder nada.');
+    }
+    programarGuardado(espera);
+  }
+}
+/* Reintento manual desde el indicador */
+async function reintentarGuardado(){
+  intentosFallidos = 0;
+  await intentarPromocion();
+  if(pendientes.length>0){ programarGuardado(0); showToast('Reintentando…'); }
+  else pullCambios(false);
+}
+
+/* ============================= RESPALDO ============================= */
+/* ===================== GENERADOR DE ARCHIVOS .XLSX =====================
+   Escribe un libro de Excel real (ZIP + XML), sin librerías externas.
+   ===================================================================== */
+const TABLA_CRC = (()=>{
+  const t = new Uint32Array(256);
+  for(let n=0; n<256; n++){
+    let c = n;
+    for(let k=0; k<8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes){
+  let c = 0xFFFFFFFF;
+  for(let i=0; i<bytes.length; i++) c = TABLA_CRC[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function textoABytes(txt){
+  if(typeof TextEncoder !== 'undefined') return new TextEncoder().encode(txt);
+  const arr = [];
+  for(let i=0;i<txt.length;i++){
+    let c = txt.charCodeAt(i);
+    if(c < 0x80) arr.push(c);
+    else if(c < 0x800){ arr.push(0xC0|(c>>6), 0x80|(c&63)); }
+    else { arr.push(0xE0|(c>>12), 0x80|((c>>6)&63), 0x80|(c&63)); }
+  }
+  return new Uint8Array(arr);
+}
+/* ZIP sin compresión (método "store"): suficiente y muy simple */
+function crearZip(archivos){
+  const partes = [], central = [];
+  let offset = 0;
+  const d = new Date();
+  const fechaDos = {
+    hora: [ (((d.getHours()<<11) | (d.getMinutes()<<5) | (d.getSeconds()>>1)) & 0xFF),
+            ((((d.getHours()<<11) | (d.getMinutes()<<5) | (d.getSeconds()>>1)) >> 8) & 0xFF) ],
+    fecha:[ ((((d.getFullYear()-1980)<<9) | ((d.getMonth()+1)<<5) | d.getDate()) & 0xFF),
+            (((((d.getFullYear()-1980)<<9) | ((d.getMonth()+1)<<5) | d.getDate()) >> 8) & 0xFF) ]
+  };
+  const u16 = v => [v & 0xFF, (v>>8) & 0xFF];
+  const u32 = v => [v & 0xFF, (v>>8) & 0xFF, (v>>16) & 0xFF, (v>>24) & 0xFF];
+
+  archivos.forEach(f=>{
+    const nombre = textoABytes(f.nombre);
+    const datos = textoABytes(f.contenido);
+    const crc = crc32(datos);
+    const local = [].concat(
+      u32(0x04034b50), u16(20), u16(0x0800), u16(0), fechaDos.hora, fechaDos.fecha,
+      u32(crc), u32(datos.length), u32(datos.length),
+      u16(nombre.length), u16(0)
+    );
+    partes.push(new Uint8Array(local), nombre, datos);
+    central.push([].concat(
+      u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), fechaDos.hora, fechaDos.fecha,
+      u32(crc), u32(datos.length), u32(datos.length),
+      u16(nombre.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset)
+    ), nombre);
+    offset += local.length + nombre.length + datos.length;
+  });
+
+  const centralBytes = [];
+  for(let i=0; i<central.length; i+=2){
+    centralBytes.push(new Uint8Array(central[i]), central[i+1]);
+  }
+  const tamCentral = centralBytes.reduce((s,b)=>s+b.length, 0);
+  const fin = new Uint8Array([].concat(
+    u32(0x06054b50), u16(0), u16(0), u16(archivos.length), u16(archivos.length),
+    u32(tamCentral), u32(offset), u16(0)
+  ));
+
+  const todo = partes.concat(centralBytes, [fin]);
+  const total = todo.reduce((s,b)=>s+b.length, 0);
+  const salida = new Uint8Array(total);
+  let pos = 0;
+  todo.forEach(b=>{ salida.set(b, pos); pos += b.length; });
+  return salida;
+}
+function escaparXml(txt){
+  return String(txt).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                    .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+function letraColumna(n){
+  let s = '';
+  while(n > 0){ const r = (n-1) % 26; s = String.fromCharCode(65+r) + s; n = Math.floor((n-1)/26); }
+  return s;
+}
+function hojaXml(encabezados, filas){
+  const fila = (celdas, nf, estilo) => {
+    const cs = celdas.map((v,i)=>{
+      const ref = letraColumna(i+1) + nf;
+      const est = estilo ? ' s="'+estilo+'"' : '';
+      if(v === null || v === undefined || v === '') return '<c r="'+ref+'"'+est+'/>';
+      if(typeof v === 'number' && isFinite(v)) return '<c r="'+ref+'"'+est+'><v>'+v+'</v></c>';
+      return '<c r="'+ref+'"'+est+' t="inlineStr"><is><t xml:space="preserve">'+escaparXml(v)+'</t></is></c>';
+    }).join('');
+    return '<row r="'+nf+'">'+cs+'</row>';
+  };
+  const anchos = encabezados.map((h,i)=>{
+    let max = String(h).length;
+    filas.forEach(f=>{ const v = f[i]; if(v!==undefined && v!==null) max = Math.max(max, String(v).length); });
+    return '<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+Math.min(46, Math.max(8, max+3))+'" customWidth="1"/>';
+  }).join('');
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<cols>'+anchos+'</cols><sheetData>' +
+    fila(encabezados, 1, 1) +
+    filas.map((f,i)=>fila(f, i+2, 0)).join('') +
+    '</sheetData></worksheet>';
+}
+/* hojas = [{nombre, encabezados, filas}] */
+function construirXlsx(hojas){
+  const nombreHoja = (n,i)=>{
+    let x = String(n||('Hoja'+(i+1))).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31).trim();
+    return x || ('Hoja'+(i+1));
+  };
+  const archivos = [
+    {nombre:'[Content_Types].xml', contenido:
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+      '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
+      hojas.map((h,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('') +
+      '</Types>'},
+    {nombre:'_rels/.rels', contenido:
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>' +
+      '</Relationships>'},
+    {nombre:'docProps/core.xml', contenido:
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ' +
+      'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" ' +
+      'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+      '<dc:creator>Cuaderno de Calificaciones</dc:creator>' +
+      '<cp:lastModifiedBy>Cuaderno de Calificaciones</cp:lastModifiedBy>' +
+      '<dcterms:created xsi:type="dcterms:W3CDTF">' + new Date().toISOString().slice(0,19) + 'Z</dcterms:created>' +
+      '</cp:coreProperties>'},
+    {nombre:'docProps/app.xml', contenido:
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" ' +
+      'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+      '<Application>Cuaderno de Calificaciones</Application></Properties>'},
+    {nombre:'xl/workbook.xml', contenido:
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' +
+      hojas.map((h,i)=>'<sheet name="'+escaparXml(nombreHoja(h.nombre,i))+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join('') +
+      '</sheets></workbook>'},
+    {nombre:'xl/_rels/workbook.xml.rels', contenido:
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      hojas.map((h,i)=>'<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join('') +
+      '<Relationship Id="rId'+(hojas.length+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '</Relationships>'},
+    {nombre:'xl/styles.xml', contenido:
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts>' +
+      '<fills count="3"><fill><patternFill patternType="none"/></fill>' +
+      '<fill><patternFill patternType="gray125"/></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FF2F6F5E"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1">' +
+      '<alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs>' +
+      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+      '<dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>' +
+      '</styleSheet>'}
+  ];
+  hojas.forEach((h,i)=>{
+    archivos.push({nombre:'xl/worksheets/sheet'+(i+1)+'.xml', contenido: hojaXml(h.encabezados, h.filas)});
+  });
+  return crearZip(archivos);
+}
+function descargarXlsx(nombreArchivo, hojas){
+  try{
+    const bytes = construirXlsx(hojas);
+    const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nombreArchivo.replace(/[\\\/:\*\?"<>\|]/g,' ').trim() + '.xlsx';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+    showToast('Descargado: ' + nombreArchivo + '.xlsx');
+    return true;
+  }catch(e){
+    console.error('xlsx', e);
+    showToast('No se pudo generar el archivo de Excel.');
+    return false;
+  }
+}
+
+/* Descarga la base completa como libro de Excel (una hoja por sección) */
+function descargarRespaldo(){
+  try{
+    const grados = misGrados(currentUser);            // solo las aulas que le competen
+    const estVisibles = DB.estudiantes.filter(e=>grados.indexOf(e.grado)>=0);
+    const nombreAsig = {};
+    DB.asignaturas.forEach(a=>nombreAsig[a.id]=a.nombre);
+
+    const hEst = ['N°','Grado','Apellidos','Nombres'];
+    const fEst = [];
+    grados.forEach(g=>{
+      ordenarEstudiantes(estVisibles.filter(e=>e.grado===g), 'apellidos')
+        .forEach((e,i)=>fEst.push([i+1, g, apellidosDe(e), nombresDe(e)]));
+    });
+
+    const hNotas = ['Grado','Estudiante','Asignatura','Período','Casilla','Nota','Estado','Fecha','Observaciones'];
+    const fNotas = [];
+    estVisibles.forEach(e=>{
+      asignaturasVisibles(e.grado).forEach(asig=>{
+        const acts = getActividades(e.grado, asig.id);
+        for(let p=1;p<=4;p++){
+          acts.forEach(a=>{
+            const nota = getComp(e.id, asig.id, p, 'act:'+a.id);
+            const est = getEstado(e.id, asig.id, p, a.id);
+            const fec = getFechaTarea(e.grado, asig.id, a.id, p);
+            const ob = getObs(e.id, asig.id, p, 'act:'+a.id);
+            if(nota!==undefined || est || fec || ob)
+              fNotas.push([e.grado, e.nombre, asig.nombre, p, a.nombre,
+                nota!==undefined?nota:'', est?ESTADOS[est].nombre:'', fec||'', ob||'']);
+          });
+          rubrosActivos().forEach(r=>{
+            if(r.conRecuperacion){
+              const rec = getComp(e.id, asig.id, p, claveRecuperacion(r.key));
+              if(rec!==undefined)
+                fNotas.push([e.grado, e.nombre, asig.nombre, p, 'Recuperación de '+getNombreRubro(e.grado, asig.id, r.key), rec, '', '', '']);
+            }
+            const nota = getComp(e.id, asig.id, p, r.key);
+            const ob = getObs(e.id, asig.id, p, r.key);
+            const esTarea = esRubroTarea(r.key);
+            const est = esTarea ? getEstado(e.id, asig.id, p, r.key) : '';
+            const fec = esTarea ? getFechaTarea(e.grado, asig.id, r.key, p) : '';
+            if(nota!==undefined || ob || est || fec)
+              fNotas.push([e.grado, e.nombre, asig.nombre, p, getNombreRubro(e.grado, asig.id, r.key),
+                nota!==undefined?nota:'', est?ESTADOS[est].nombre:'', fec||'', ob||'']);
+          });
+        }
+      });
+    });
+
+    const hRes = ['Grado','Estudiante','Asignatura','Período 1','Período 2','Período 3','Período 4','Promedio final','Estado'];
+    const fRes = [];
+    estVisibles.forEach(e=>{
+      asignaturasVisibles(e.grado).forEach(asig=>{
+        const ps = [1,2,3,4].map(p=>{
+          const i = periodInfo(e.id, asig.id, p, e.grado);
+          return i.valor===null?'':Number(i.valor.toFixed(1));
+        });
+        const si = subjectInfo(e.id, asig.id, e.grado);
+        if(ps.some(v=>v!=='') )
+          fRes.push([e.grado, e.nombre, asig.nombre].concat(ps,
+            [si.valor===null?'':Number(si.valor.toFixed(1)), si.completo?'Completo':'Parcial']));
+      });
+    });
+
+    const hMat = ['N°','Grado','Apellidos','Nombres','Promedio general del año'];
+    const fMat = [];
+    grados.forEach(g=>{
+      ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===g), 'apellidos')
+        .forEach((e,i)=>{
+          const prom = studentFinalAverage(e.id, g);
+          fMat.push([i+1, g, apellidosDe(e), nombresDe(e), prom===null?'':Number(prom.toFixed(1))]);
+        });
+    });
+
+    const guardado = currentUser;
+    const hTar = ['Fecha','Grado','Materia','Estudiante','Nombre de la tarea','Tipo','Período','Estado','Observaciones'];
+    const fTar = listaTareas({}).map(f=>[f.fecha||'', f.grado, f.materia, f.estudiante, f.tarea,
+      f.tipo||'Actividad', f.periodo, f.estado?ESTADOS[f.estado].nombre:'', f.obs||'']);
+
+    const hAl = ['Nivel','Estudiante','Grado','Tareas pendientes','Materias'];
+    const fAl = calcularAlertas({}).map(a=>[a.alerta.nombre, a.estudiante, a.grado, a.cantidad, a.materias.join(', ')]);
+
+    const hDoc = ['Docente','Perfil','Grado de orientación','Asignaturas asignadas'];
+    const fDoc = (isAdmin(currentUser)?DB.docentes:[currentUser]).map(d=>[d.nombre, domainLabel(d), orientacionesDe(d).join(', '),
+      (d.asignaciones||[]).map(a=>(nombreAsig[a.asignaturaId]||'?')+' ('+a.grado+')').join(', ')]);
+
+    const hojas = [
+      ['Estudiantes', hEst, fEst], ['Notas', hNotas, fNotas], ['Resumen', hRes, fRes],
+      ['Matriz', hMat, fMat], ['Tareas', hTar, fTar], ['Alertas', hAl, fAl], ['Docentes', hDoc, fDoc]
+    ];
+    const anioArch = (DB.ajustes && DB.ajustes.anio) || new Date().getFullYear();
+    descargarXlsx('Base escolar ' + anioArch,
+      hojas.map(h=>({nombre:h[0], encabezados:h[1], filas:h[2]})));
+  }catch(e){ console.error(e); showToast('No se pudo generar el archivo de Excel.'); }
+}
+
+/* ============================= SESIÓN ============================= */
+async function guardarSesion(){
+  try{ await escribirCrudo('sesion', JSON.stringify({userId: currentUser?currentUser.id:null, view: currentView}), false); }catch(e){}
+}
+async function restaurarSesion(){
+  try{
+    const v = await leerCrudo('sesion', false);
+    if(!v) return;
+    const s = JSON.parse(v);
+    if(s && s.userId){
+      const u = DB.docentes.find(t=>t.id===s.userId);
+      if(u){ currentUser = u; currentView = s.view || 'panel'; }
+    }
+  }catch(e){}
+}
+
+/* ============================= SINCRONIZACIÓN ============================= */
+let syncStatus = 'ok';
+let lastSync = null;
+let syncTimer = null;
+function setSyncStatus(s){
+  syncStatus = s;
+  if(s==='ok') lastSync = new Date();
+  const el = document.getElementById('sync-indicator');
+  if(el) el.outerHTML = renderSyncIndicator();
+}
+function hayEdicionEnCurso(){
+  const a = document.activeElement;
+  if(a && (a.tagName==='INPUT' || a.tagName==='SELECT' || a.tagName==='TEXTAREA')) return true;
+  if(viewState.modalStudent || viewState.modalTeacher || viewState.modalSubject) return true;
+  return false;
+}
+async function pullCambios(silencioso){
+  if(motor !== 'compartido' && motor !== 'nube') return false;   // sin lugar común no hay nada que traer
+  if(pendientes.length>0 || guardando) return false;
+  const doc = await leerDoc();
+  if(!doc){ setSyncStatus('error'); return false; }
+  const cambio = JSON.stringify(docActual()) !== JSON.stringify(doc);
+  if(cambio){
+    adoptarDoc(doc);
+    if(currentUser){
+      const u = DB.docentes.find(t=>t.id===currentUser.id);
+      currentUser = u || null;
+    }
+    if(!hayEdicionEnCurso()){
+      setSyncStatus('ok');
+      render();
+      if(!silencioso) showToast('Datos actualizados.');
+      return true;
+    }
+  }
+  setSyncStatus('ok');
+  return cambio;
+}
+function iniciarSync(){
+  if(syncTimer) clearInterval(syncTimer);
+  if(motor !== 'compartido' && motor !== 'nube') return;
+  syncTimer = setInterval(()=>{ if(currentUser && !document.hidden) pullCambios(true); }, 15000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && currentUser) pullCambios(true); });
+}
+function renderSyncIndicator(){
+  const hora = lastSync ? lastSync.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'}) : '—';
+  let color = 'var(--primary)', texto;
+  if(syncStatus==='pendiente'){ color = 'var(--gold)'; texto = 'Guardando…'; }
+  else if(syncStatus==='error'){ color = 'var(--red)'; texto = 'No se pudo guardar — toca para reintentar'; }
+  else if(motor==='nube'){ texto = 'Sincronizado ' + hora; }
+  else if(motor==='compartido'){ texto = 'Sincronizado ' + hora; }
+  else if(motor==='local'){ texto = 'Solo este equipo ' + hora; }
+  else { texto = 'Sin guardado — descarga respaldo'; color = 'var(--red)'; }
+  return `<div id="sync-indicator" class="sync-row" onclick="reintentarGuardado()" title="Reintentar / actualizar">
+    <span class="sync-dot" style="background:${color}"></span><span>${texto}</span>
+  </div>`;
+}
+function renderSincronizacion(){
+  const url = getSyncUrl();
+  const estados = {
+    nube: ['Activa', 'Los cambios se ven en todos los dispositivos conectados a este enlace.', 'pill-primary'],
+    compartido: ['Activa', 'Almacenamiento compartido de Claude. Todos los dispositivos ven lo mismo.', 'pill-primary'],
+    local: ['Solo este equipo', 'Los datos se guardan en este navegador y no se comparten.', 'pill-gold'],
+    memoria: ['Sin guardado', 'Este navegador bloquea el almacenamiento. Descarga un respaldo antes de cerrar.', 'pill-muted']
+  };
+  const [etiqueta, detalle, pill] = estados[motor] || estados.local;
+  const codigo = `function doGet(e) {
+  return responder(leerDatos());
+}
+
+function doPost(e) {
+  var bloqueo = LockService.getScriptLock();
+  bloqueo.waitLock(20000);
+  try {
+    guardarDatos(e.postData.contents);
+    return responder('{"ok":true}');
+  } finally {
+    bloqueo.releaseLock();
+  }
+}
+
+function archivo() {
+  var nombre = 'datos_escolares.json';
+  var lista = DriveApp.getFilesByName(nombre);
+  if (lista.hasNext()) return lista.next();
+  return DriveApp.createFile(nombre, '{"vacio":true}', MimeType.PLAIN_TEXT);
+}
+
+function leerDatos() {
+  return archivo().getBlob().getDataAsString();
+}
+
+function guardarDatos(contenido) {
+  archivo().setContent(contenido);
+}
+
+function responder(texto) {
+  return ContentService.createTextOutput(texto)
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+  const admin = canManageAcademicData(currentUser);
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Ajustes</p>
+    <h1 class="page-title">Sincronización entre dispositivos</h1>
+    <p class="page-desc">${admin
+      ? 'Conecta el sistema a una carpeta de Google Drive del centro escolar para que todos los docentes vean los mismos datos desde cualquier equipo o teléfono.'
+      : 'Pega aquí el enlace que te dio Dirección para que este equipo comparta la información con los demás docentes. Solo se hace una vez.'}</p>
+  </div>
+
+  <div class="card">
+    <p class="card-title">Estado actual <span class="pill ${pill}">${esc(etiqueta)}</span></p>
+    <p style="font-size:13.5px; color:var(--muted); margin:0 0 14px;">${esc(detalle)}</p>
+    <div class="field">
+      <label>Enlace de sincronización (termina en /exec)</label>
+      <input type="text" id="sync_input" value="${esc(url)}" placeholder="https://script.google.com/macros/s/…/exec">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="guardarSyncUrl()">Conectar</button>
+      ${url?`<button class="btn btn-danger" onclick="quitarSyncUrl()">Desconectar</button>`:''}
+    </div>
+  </div>
+
+  ${!admin ? `<div class="card">
+    <p class="card-title">¿No tienes el enlace?</p>
+    <p style="font-size:13.5px; color:var(--muted); margin:0;">Pídeselo a Dirección: es el mismo para todo el centro escolar y termina en <b>/exec</b>. Mientras no lo conectes, puedes trabajar normal, pero tus datos se guardan solo en este equipo.</p>
+  </div>` : `
+  <div class="card">
+    <p class="card-title">Cómo obtener el enlace (una sola vez, lo hace Dirección)</p>
+    <ol style="font-size:13.5px; line-height:1.85; padding-left:20px; margin:0;">
+      <li>Entra a <b>script.google.com</b> con la cuenta de Google del centro escolar y crea un proyecto nuevo.</li>
+      <li>Borra lo que aparezca y pega el código de abajo. Guarda.</li>
+      <li>Pulsa <b>Implementar → Nueva implementación</b>. En el engranaje elige <b>Aplicación web</b>.</li>
+      <li>En "Ejecutar como" deja tu cuenta. En "Quién tiene acceso" elige <b>Cualquier usuario</b>. Implementa y autoriza.</li>
+      <li>Copia el enlace que termina en <b>/exec</b> y pégalo aquí arriba.</li>
+      <li>En los demás dispositivos, abre el sistema, ve a esta pantalla y pega el mismo enlace.</li>
+    </ol>
+    <div class="note" style="margin:14px 0 0;">El archivo <b>datos_escolares.json</b> se crea solo en tu Drive. Ahí viven todos los datos: puedes respaldarlo o revisarlo cuando quieras.</div>
+  </div>
+
+  <div class="card">
+    <p class="card-title">Código para pegar en Google Apps Script
+      <button class="btn btn-sm" onclick="copiarCodigo()">Copiar código</button>
+    </p>
+    <textarea id="codigo_gs" readonly style="width:100%; height:270px; font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.5; resize:vertical;">${esc(codigo)}</textarea>
+  </div>`}`;
+}
+function copiarCodigo(){
+  const t = document.getElementById('codigo_gs');
+  t.select();
+  try{ document.execCommand('copy'); showToast('Código copiado.'); }
+  catch(e){ showToast('Selecciona el texto y cópialo manualmente.'); }
+}
+/* Combina lo que este equipo tiene con lo que ya está en el Drive.
+   Regla: nunca se borra nada de nadie. Ante una nota repetida en la misma
+   casilla, se conserva la que ya estaba en el Drive y se reporta el choque. */
+function combinarDocs(local, nube){
+  const res = {
+    estudiantes: (nube.estudiantes||[]).slice(),
+    asignaturas: (nube.asignaturas||[]).slice(),
+    docentes: (nube.docentes||[]).slice(),
+    calificaciones: Object.assign({}, nube.calificaciones||{}),
+    config: nube.config || local.config,
+    actividades: Object.assign({}, nube.actividades||{}),
+    curriculo: Object.assign({}, nube.curriculo||{}),
+    tareas: Object.assign({}, nube.tareas||{}),
+    estados: Object.assign({}, nube.estados||{}),
+    observaciones: Object.assign({}, nube.observaciones||{}),
+    rubros: Object.assign({}, nube.rubros||{}),
+    ajustes: local.ajustes || nube.ajustes
+  };
+  const cuenta = {estudiantes:0, docentes:0, asignaturas:0, notas:0, choques:0};
+  const mapaIds = {};   // id local -> id definitivo en el Drive
+
+  (local.asignaturas||[]).forEach(a=>{
+    const ya = res.asignaturas.find(x=>x.id===a.id || x.nombre.toLowerCase()===a.nombre.toLowerCase());
+    if(ya){ mapaIds[a.id] = ya.id; }
+    else { res.asignaturas.push(a); mapaIds[a.id] = a.id; cuenta.asignaturas++; }
+  });
+  (local.estudiantes||[]).forEach(e=>{
+    const ya = res.estudiantes.find(x=>x.id===e.id ||
+      (x.nombre.trim().toLowerCase()===e.nombre.trim().toLowerCase() && x.grado===e.grado));
+    if(ya){ mapaIds[e.id] = ya.id; }
+    else { res.estudiantes.push(e); mapaIds[e.id] = e.id; cuenta.estudiantes++; }
+  });
+  (local.docentes||[]).forEach(d=>{
+    const ya = res.docentes.find(x=>x.id===d.id || x.nombre.trim().toLowerCase()===d.nombre.trim().toLowerCase());
+    if(!ya){ res.docentes.push(d); cuenta.docentes++; }
+    else if(d.asignaciones){       // se suman asignaciones que el Drive no tenga
+      ya.asignaciones = ya.asignaciones || [];
+      d.asignaciones.forEach(a=>{
+        const aid = mapaIds[a.asignaturaId] || a.asignaturaId;
+        if(!ya.asignaciones.some(z=>z.grado===a.grado && z.asignaturaId===aid))
+          ya.asignaciones.push({grado:a.grado, asignaturaId:aid});
+      });
+      const orientUnion = new Set(orientacionesDe(ya).concat(orientacionesDe(d)));
+      if(orientUnion.size){ ya.orientaciones = Array.from(orientUnion); delete ya.orientacion; }
+    }
+  });
+  Object.keys(local.actividades||{}).forEach(k=>{ if(!res.actividades[k]) res.actividades[k] = local.actividades[k]; });
+  Object.keys(local.tareas||{}).forEach(k=>{ if(!res.tareas[k]) res.tareas[k] = local.tareas[k]; });
+  Object.keys(local.observaciones||{}).forEach(k=>{ if(!res.observaciones[k]) res.observaciones[k] = local.observaciones[k]; });
+  Object.keys(local.rubros||{}).forEach(k=>{ if(!res.rubros[k]) res.rubros[k] = local.rubros[k]; });
+  Object.keys(local.curriculo||{}).forEach(g=>{
+    res.curriculo[g] = res.curriculo[g] || [];
+    (local.curriculo[g]||[]).forEach(id=>{ const d=mapaIds[id]||id; if(res.curriculo[g].indexOf(d)<0) res.curriculo[g].push(d); });
+  });
+  Object.keys(local.estados||{}).forEach(k=>{
+    const p = k.split('|');
+    const nueva = [mapaIds[p[0]]||p[0], mapaIds[p[1]]||p[1], p[2], p[3]].join('|');
+    if(!(nueva in res.estados)) res.estados[nueva] = local.estados[k];
+  });
+  Object.keys(local.calificaciones||{}).forEach(k=>{
+    const p = k.split('|');
+    const nueva = [mapaIds[p[0]]||p[0], mapaIds[p[1]]||p[1], p[2], p[3]].join('|');
+    if(!(nueva in res.calificaciones)){ res.calificaciones[nueva] = local.calificaciones[k]; cuenta.notas++; }
+    else if(res.calificaciones[nueva] !== local.calificaciones[k]){
+      res.calificaciones[nueva] = local.calificaciones[k];   // este equipo actualiza el Drive
+      cuenta.choques++;
+    }
+  });
+  return {doc:res, cuenta};
+}
+
+async function guardarSyncUrl(){
+  const v = document.getElementById('sync_input').value.trim();
+  if(!v){ showToast('Pega el enlace que termina en /exec.'); return; }
+  if(!/^https:\/\/.+\/exec$/.test(v)){ showToast('El enlace debe empezar con https:// y terminar en /exec.'); return; }
+  setSyncUrl(v);
+  showToast('Conectando…');
+  try{
+    const doc = await nubeLeer();
+    const mio = JSON.parse(JSON.stringify(docActual()));
+    motor = 'nube';
+    if(doc){
+      // Este equipo actualiza el Drive: se sube lo suyo y se conserva lo que ya había allá.
+      const {doc:combinado, cuenta} = combinarDocs(mio, doc);
+      adoptarDoc(combinado);
+      await nubeEscribir(JSON.stringify(combinado));
+      const aporto = cuenta.estudiantes + cuenta.docentes + cuenta.asignaturas + cuenta.notas;
+      showToast(aporto > 0
+        ? 'Conectado. Se subieron ' + aporto + ' dato(s) de este equipo al Drive.'
+        : 'Conectado con los datos del centro escolar.');
+    }else{
+      await nubeEscribir(JSON.stringify(mio));  // primer equipo: sube lo que tiene
+      showToast('Conectado. Se subieron los datos actuales.');
+    }
+    setSyncStatus('ok');
+    iniciarSync();
+    render();
+  }catch(e){
+    console.error(e);
+    setSyncUrl('');
+    showToast('No se pudo conectar. Revisa que el acceso sea "Cualquier usuario".');
+    render();
+  }
+}
+function quitarSyncUrl(){
+  if(!confirm('¿Desconectar este equipo? Los datos dejarán de compartirse.')) return;
+  setSyncUrl('');
+  motor = null;
+  detectarMotor().then(()=>{ setSyncStatus('ok'); render(); });
+}
+
+function seedData(){
+  DB.config = { grados:['7° Grado A','8° Grado A','9° Grado A','1° Bachillerato A'], periodos:4 };
+  DB.asignaturas = [
+    {id:'asig_mat', nombre:'Matemática'},
+    {id:'asig_len', nombre:'Lenguaje y Literatura'},
+    {id:'asig_cn', nombre:'Ciencias Naturales'},
+    {id:'asig_soc', nombre:'Estudios Sociales'},
+    {id:'asig_ing', nombre:'Inglés'},
+  ];
+  DB.docentes = [
+    {id:'t_direccion', nombre:'Lic. Ana Martínez', tipo:'admin', dominio:'direccion', asignaciones:[], orientacion:null},
+    {id:'t_coord', nombre:'Lic. Carlos Rivas', tipo:'admin', dominio:'coordinacion', asignaciones:[], orientacion:null},
+    {id:'t_secre', nombre:'Sra. Marta López', tipo:'admin', dominio:'secretaria', asignaciones:[], orientacion:null},
+    {id:'t_jose', nombre:'Prof. José Hernández', tipo:'docente', dominio:null,
+      asignaciones:[{grado:'7° Grado A', asignaturaId:'asig_mat'},{grado:'8° Grado A', asignaturaId:'asig_mat'}], orientaciones:['7° Grado A']},
+    {id:'t_elena', nombre:'Profa. Elena Cruz', tipo:'docente', dominio:null,
+      asignaciones:[{grado:'7° Grado A', asignaturaId:'asig_len'},{grado:'9° Grado A', asignaturaId:'asig_len'}], orientacion:null},
+    {id:'t_walter', nombre:'Prof. Walter Guevara', tipo:'docente', dominio:null,
+      asignaciones:[{grado:'7° Grado A', asignaturaId:'asig_cn'},{grado:'8° Grado A', asignaturaId:'asig_cn'},{grado:'9° Grado A', asignaturaId:'asig_cn'}], orientacion:'8° Grado A'},
+    {id:'t_karla', nombre:'Profa. Karla Ponce', tipo:'docente', dominio:null,
+      asignaciones:[{grado:'7° Grado A', asignaturaId:'asig_soc'},{grado:'8° Grado A', asignaturaId:'asig_soc'},{grado:'1° Bachillerato A', asignaturaId:'asig_soc'}], orientacion:null},
+    {id:'t_mario', nombre:'Prof. Mario Escobar', tipo:'docente', dominio:null,
+      asignaciones:[{grado:'8° Grado A', asignaturaId:'asig_ing'},{grado:'9° Grado A', asignaturaId:'asig_ing'},{grado:'1° Bachillerato A', asignaturaId:'asig_ing'}], orientacion:'9° Grado A'},
+  ];
+  DB.estudiantes = [
+    ['Andrea Beatriz','Alas Portillo','7° Grado A'],
+    ['Diego Alejandro','Cortez Ramírez','7° Grado A'],
+    ['Fátima Nohemy','Reyes Molina','7° Grado A'],
+    ['Josué Ernesto','Pineda Cruz','7° Grado A'],
+    ['Kevin Alexander','Zúniga Mejía','8° Grado A'],
+    ['Melissa Guadalupe','Flores Aguilar','8° Grado A'],
+    ['Nelson Ismael','Torres Vásquez','8° Grado A'],
+    ['Carla Estefanía','Rivas Campos','9° Grado A'],
+    ['Douglas Antonio','Menjívar Sosa','9° Grado A'],
+    ['Ingrid Yamileth','Argueta Bonilla','9° Grado A'],
+    ['Roberto Carlos','Sánchez Deras','1° Bachillerato A'],
+    ['Sofía Alejandra','Chávez Interiano','1° Bachillerato A'],
+  ].map(x=>({id:uid('est'), nombres:x[0], apellidos:x[1], nombre:x[0]+' '+x[1], grado:x[2]}));
+  DB.calificaciones = {};
+  DB.actividades = {};
+  DB.tareas = {};
+  DB.estados = {};
+  DB.observaciones = {};
+  DB.rubros = {};
+  DB.ajustes = {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:'',
+    fraseSaludo:'recuerda que lo haces increíble', mensajeBienvenida:''};
+  DB.curriculo = {};
+  DB.config.grados.forEach(g=>{
+    DB.curriculo[g] = DB.docentes.reduce((acc,d)=>{
+      d.asignaciones.forEach(a=>{ if(a.grado===g && acc.indexOf(a.asignaturaId)<0) acc.push(a.asignaturaId); });
+      return acc;
+    }, []);
+  });
+}
+
+/* ============================= PERMISOS ============================= */
+/* Clave guardada como número derivado, no como texto plano.
+   Es una barrera de uso interno, no cifrado de grado bancario. */
+function hashClave(txt){
+  let h = 5381;
+  for(let i=0;i<txt.length;i++){ h = ((h*33) ^ txt.charCodeAt(i)) >>> 0; }
+  return 'h' + h.toString(36);
+}
+function tieneClave(u){ return !!(u && u.clave); }
+
+/* Los estudiantes guardan nombres y apellidos por separado.
+   El campo "nombre" se mantiene sincronizado para el resto del sistema. */
+function nombreCompleto(nombres, apellidos){
+  return ((nombres||'').trim() + ' ' + (apellidos||'').trim()).trim();
+}
+function separarNombre(completo){
+  const partes = (completo||'').trim().split(/\s+/).filter(Boolean);
+  if(partes.length <= 1) return {nombres: partes[0]||'', apellidos:''};
+  if(partes.length === 2) return {nombres: partes[0], apellidos: partes[1]};
+  if(partes.length === 3) return {nombres: partes.slice(0,2).join(' '), apellidos: partes[2]};
+  return {nombres: partes.slice(0, partes.length-2).join(' '), apellidos: partes.slice(-2).join(' ')};
+}
+/* Rellena nombres/apellidos en registros creados antes de esta versión */
+function normalizarEstudiante(e){
+  if(e.nombres === undefined || e.apellidos === undefined){
+    const p = separarNombre(e.nombre);
+    e.nombres = p.nombres;
+    e.apellidos = p.apellidos;
+  }
+  e.nombre = nombreCompleto(e.nombres, e.apellidos) || e.nombre;
+  return e;
+}
+function apellidosDe(e){ return (e.apellidos||'').trim() || (e.nombre||''); }
+function nombresDe(e){ return (e.nombres||'').trim() || (e.nombre||''); }
+/* Ordena por nombres o por apellidos, según lo elegido en pantalla */
+function ordenarEstudiantes(lista, criterio){
+  const col = new Intl.Collator('es', {sensitivity:'base'});
+  return lista.slice().sort((a,b)=>{
+    if(criterio === 'apellidos'){
+      return col.compare(apellidosDe(a), apellidosDe(b)) || col.compare(nombresDe(a), nombresDe(b));
+    }
+    return col.compare(nombresDe(a), nombresDe(b)) || col.compare(apellidosDe(a), apellidosDe(b));
+  });
+}
+
+/* Un docente puede tener más de un grado de orientación */
+function orientacionesDe(u){
+  if(!u) return [];
+  if(Array.isArray(u.orientaciones)) return u.orientaciones.filter(Boolean);
+  return u.orientacion ? [u.orientacion] : [];
+}
+function esOrientador(u, grado){ return orientacionesDe(u).indexOf(grado) >= 0; }
+
+/* Para el saludo: omite el tratamiento (Lic., Profa., Miss…) y usa el nombre */
+const TRATAMIENTOS = ['lic','lic.','licda','licda.','prof','prof.','profa','profa.','sra','sra.','sr','sr.',
+  'srta','srta.','ing','ing.','miss','mtro','mtro.','mtra','mtra.','dr','dr.','dra','dra.'];
+function nombrePila(completo){
+  const partes = String(completo||'').trim().split(/\s+/).filter(Boolean);
+  if(partes.length > 1 && TRATAMIENTOS.indexOf(partes[0].toLowerCase()) >= 0) return partes[1];
+  return partes[0] || '';
+}
+/* Saludo: las dos primeras palabras del nombre tal como está registrado */
+function saludoNombre(completo){
+  const partes = String(completo||'').trim().split(/\s+/).filter(Boolean);
+  return partes.slice(0, 2).join(' ');
+}
+
+function isAdmin(u){ return u && u.tipo === 'admin'; }
+function isDireccion(u){ return u && u.dominio === 'direccion'; }
+function canAccessGrado(u, grado){
+  if(!u) return false;
+  if(isAdmin(u)) return true;
+  if(esOrientador(u, grado)) return true;
+  return u.asignaciones.some(a=>a.grado===grado);
+}
+function canEditGrades(u, grado, asignaturaId){
+  if(!u) return false;
+  if(isAdmin(u)) return true;
+  if(esOrientador(u, grado)) return true;
+  return u.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asignaturaId);
+}
+function canManageAcademicData(u){ return isAdmin(u); }
+function canEditTeacherAccount(u, target){
+  if(isDireccion(u)) return true;
+  if(isAdmin(u) && target.tipo === 'docente') return true;
+  return false;
+}
+function misGrados(u){
+  if(isAdmin(u)) return DB.config.grados.slice();
+  const set = new Set(u.asignaciones.map(a=>a.grado));
+  orientacionesDe(u).forEach(g=>set.add(g));
+  return DB.config.grados.filter(g=>set.has(g));
+}
+/* Materias que este usuario puede ver en un grado:
+   administración y orientador(a) ven todas; el resto, solo las que imparte. */
+function asignaturasVisibles(grado, u){
+  u = u || currentUser;
+  const todas = asignaturasDeGrado(grado);
+  if(!u) return [];
+  if(isAdmin(u) || esOrientador(u, grado)) return todas;
+  return todas.filter(a=>(u.asignaciones||[]).some(x=>x.grado===grado && x.asignaturaId===a.id));
+}
+function verGradoCompleto(grado, u){
+  u = u || currentUser;
+  return !!u && (isAdmin(u) || esOrientador(u, grado));
+}
+function asignaturasDeGrado(grado){
+  const ids = new Set((DB.curriculo && DB.curriculo[grado]) || []);
+  DB.docentes.forEach(d=>d.asignaciones.forEach(a=>{ if(a.grado===grado) ids.add(a.asignaturaId); }));
+  return DB.asignaturas.filter(s=>ids.has(s.id));
+}
+function docenteDeAsignatura(grado, asignaturaId){
+  return DB.docentes.find(d=>d.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asignaturaId));
+}
+
+/* ============================= ACTIVIDADES (casillas 20%) ============================= */
+function actividadesKey(grado, asigId){ return grado+'|'+asigId; }
+/* SOLO LECTURA: nunca escribe. Las casillas por defecto usan ids fijos, así todos
+   los dispositivos coinciden aunque todavía no se hayan guardado. */
+function getActividades(grado, asigId){
+  if(!DB.actividades) DB.actividades = {};
+  const key = actividadesKey(grado, asigId);
+  if(!DB.actividades[key]){
+    DB.actividades[key] = [1,2,3,4,5,6].map(n=>({id:'act'+n, nombre:'Actividad '+n}));
+  }
+  return DB.actividades[key];
+}
+function mutarActividades(grado, asigId, fn){
+  const key = actividadesKey(grado, asigId);
+  const base = getActividades(grado, asigId);
+  return commit(doc=>{
+    if(!doc.actividades) doc.actividades = {};
+    if(!doc.actividades[key]) doc.actividades[key] = base.map(a=>({id:a.id, nombre:a.nombre}));
+    fn(doc.actividades[key]);
+  });
+}
+async function addActividad(grado, asigId){
+  await mutarActividades(grado, asigId, lista=>{
+    let n = lista.length+1;
+    while(lista.some(a=>a.id==='act'+n)) n++;
+    lista.push({id:'act'+n, nombre:'Actividad '+n});
+  });
+  render();
+}
+async function renameActividad(grado, asigId, actId, nombre){
+  const limpio = nombre.trim();
+  if(!limpio) return;
+  await mutarActividades(grado, asigId, lista=>{
+    const a = lista.find(x=>x.id===actId);
+    if(a) a.nombre = limpio;
+  });
+  render();
+}
+async function removeActividad(grado, asigId, actId){
+  if(!confirm('¿Eliminar esta casilla de actividad? Se perderán las notas registradas en ella.')) return;
+  await mutarActividades(grado, asigId, lista=>{
+    const i = lista.findIndex(a=>a.id===actId);
+    if(i>=0) lista.splice(i,1);
+  });
+  const compKey = 'act:'+actId;
+  commit(doc=>{
+    Object.keys(doc.calificaciones).forEach(k=>{
+      const p = k.split('|');
+      if(p[1]===asigId && p[3]===compKey) delete doc.calificaciones[k];
+    });
+  });
+  render();
+}
+
+/* ============================= TAREAS Y ESTADOS ============================= */
+const ESTADOS = {
+  entregada: {nombre:'Entregada', pill:'pill-primary'},
+  tardia:    {nombre:'Entrega tardía', pill:'pill-gold'},
+  no:        {nombre:'No entregada', pill:'pill-rojo'}
+};
+function getNombreRubro(grado, asigId, key){
+  const r = (DB.rubros||{})[grado+'|'+asigId+'|'+key];
+  if(r) return r;
+  const fijo = rubrosActivos().find(x=>x.key===key);
+  return fijo ? fijo.nombre : key;
+}
+function renameRubro(grado, asigId, key, nombre){
+  const limpio = (nombre||'').trim();
+  if(!limpio) return;
+  commit(doc=>{
+    if(!doc.rubros) doc.rubros = {};
+    doc.rubros[grado+'|'+asigId+'|'+key] = limpio;
+  });
+  render();
+}
+function claveTarea(grado, asigId, actId, periodo){ return grado+'|'+asigId+'|'+actId+'|'+periodo; }
+function getFechaTarea(grado, asigId, actId, periodo){
+  const t = DB.tareas[claveTarea(grado, asigId, actId, periodo)];
+  return t ? t.fecha : '';
+}
+function setFechaTarea(grado, asigId, actId, periodo, fecha){
+  const k = claveTarea(grado, asigId, actId, periodo);
+  commit(doc=>{
+    if(!doc.tareas) doc.tareas = {};
+    if(fecha) doc.tareas[k] = {fecha:fecha}; else delete doc.tareas[k];
+  });
+}
+function getEstado(estId, asigId, periodo, actId){
+  return DB.estados[estId+'|'+asigId+'|'+periodo+'|'+actId] || '';
+}
+function setEstado(estId, asigId, periodo, actId, valor){
+  const k = estId+'|'+asigId+'|'+periodo+'|'+actId;
+  commit(doc=>{
+    if(!doc.estados) doc.estados = {};
+    if(valor) doc.estados[k] = valor; else delete doc.estados[k];
+  });
+  render();
+}
+function getObs(estId, asigId, periodo, comp){
+  return DB.observaciones[estId+'|'+asigId+'|'+periodo+'|'+comp] || '';
+}
+function setObs(estId, asigId, periodo, comp, texto){
+  const k = estId+'|'+asigId+'|'+periodo+'|'+comp;
+  const limpio = (texto||'').trim();
+  commit(doc=>{
+    if(!doc.observaciones) doc.observaciones = {};
+    if(limpio) doc.observaciones[k] = limpio; else delete doc.observaciones[k];
+  });
+}
+
+/* Construye el registro de tareas a partir de lo cargado en Calificaciones */
+function listaTareas(filtro){
+  filtro = filtro || {};
+  const filas = [];
+  const gradosVisibles = misGrados(currentUser);
+  DB.estudiantes.forEach(est=>{
+    if(gradosVisibles.indexOf(est.grado) < 0) return;
+    if(filtro.grado && est.grado !== filtro.grado) return;
+    if(filtro.estudiante && est.id !== filtro.estudiante) return;
+    asignaturasDeGrado(est.grado).forEach(asig=>{
+      if(filtro.asigId && asig.id !== filtro.asigId) return;
+      if(!isAdmin(currentUser) && !esOrientador(currentUser, est.grado) &&
+         !currentUser.asignaciones.some(a=>a.grado===est.grado && a.asignaturaId===asig.id)) return;
+      const acts = getActividades(est.grado, asig.id);
+      for(let p=1; p<=4; p++){
+        if(filtro.periodo && Number(filtro.periodo) !== p) continue;
+        const entradas = acts.map(a=>({id:a.id, nombre:a.nombre, comp:'act:'+a.id, tipo:'Actividad'}))
+          .concat(rubrosTarea().map(r=>({id:r.key, nombre:getNombreRubro(est.grado, asig.id, r.key), comp:r.key, tipo:r.nombre})));
+        entradas.forEach(ent=>{
+          const estado = getEstado(est.id, asig.id, p, ent.id);
+          const fecha = getFechaTarea(est.grado, asig.id, ent.id, p);
+          const nota = getComp(est.id, asig.id, p, ent.comp);
+          const obs = getObs(est.id, asig.id, p, ent.comp);
+          if(!estado && !fecha && nota===undefined && !obs) return;  // aún sin usar
+          if(filtro.estado && estado !== filtro.estado) return;
+          filas.push({fecha, grado:est.grado, materia:asig.nombre, asigId:asig.id,
+            estudiante:est.nombre, estId:est.id, tarea:ent.nombre, tipo:ent.tipo, periodo:p,
+            estado, nota, obs});
+        });
+      }
+    });
+  });
+  filas.sort((a,b)=>{
+    if(a.fecha && b.fecha && a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha);
+    if(a.fecha && !b.fecha) return -1;
+    if(!a.fecha && b.fecha) return 1;
+    return a.estudiante.localeCompare(b.estudiante,'es');
+  });
+  return filas;
+}
+/* Alertas: 2 pendientes = amarilla, 3 = naranja, 4 o más = roja */
+function nivelAlerta(cantidad){
+  if(cantidad >= 4) return {nivel:'roja', nombre:'Roja', clase:'alerta-roja'};
+  if(cantidad === 3) return {nivel:'naranja', nombre:'Naranja', clase:'alerta-naranja'};
+  if(cantidad === 2) return {nivel:'amarilla', nombre:'Amarilla', clase:'alerta-amarilla'};
+  return null;
+}
+function calcularAlertas(filtro){
+  const pendientes = listaTareas(filtro).filter(f=>f.estado === 'no');
+  const porEstudiante = {};
+  pendientes.forEach(f=>{
+    if(!porEstudiante[f.estId]) porEstudiante[f.estId] = {estudiante:f.estudiante, grado:f.grado, filas:[], materias:{}};
+    porEstudiante[f.estId].filas.push(f);
+    porEstudiante[f.estId].materias[f.materia] = true;
+  });
+  const orden = {roja:0, naranja:1, amarilla:2};
+  return Object.keys(porEstudiante).map(id=>{
+    const g = porEstudiante[id];
+    const al = nivelAlerta(g.filas.length);
+    return al ? Object.assign({}, g, {alerta:al, cantidad:g.filas.length,
+      materias:Object.keys(g.materias)}) : null;
+  }).filter(Boolean).sort((a,b)=> orden[a.alerta.nivel]-orden[b.alerta.nivel] ||
+      a.estudiante.localeCompare(b.estudiante,'es'));
+}
+
+/* ============================= CALCULOS ============================= */
+function getComp(estId, asigId, periodo, comp){
+  return DB.calificaciones[estId+'|'+asigId+'|'+periodo+'|'+comp];
+}
+function setComp(estId, asigId, periodo, comp, value){
+  const key = estId+'|'+asigId+'|'+periodo+'|'+comp;
+  if(value===null || value===undefined || value===''){ delete DB.calificaciones[key]; }
+  else { DB.calificaciones[key] = Number(value); }
+}
+/* Nota efectiva de un rubro. Si tiene recuperación, vale la más alta de las dos. */
+function claveRecuperacion(key){ return key + '_rec'; }
+function notaRubro(estId, asigId, periodo, rubro){
+  const base = getComp(estId, asigId, periodo, rubro.key);
+  if(!rubro.conRecuperacion) return (base===undefined||base===null||isNaN(base)) ? null : base;
+  const rec = getComp(estId, asigId, periodo, claveRecuperacion(rubro.key));
+  const vals = [base, rec].filter(v=>v!==undefined && v!==null && !isNaN(v));
+  return vals.length ? Math.max.apply(null, vals) : null;
+}
+/* Calcula la nota del período con lo que ya esté cargado.
+   Devuelve {valor, completo, avance}: el promedio se muestra desde la primera nota,
+   repartiendo proporcionalmente entre los rubros ya calificados. */
+function periodInfo(estId, asigId, periodo, grado){
+  const acts = getActividades(grado, asigId);
+  let suma = 0, pesoUsado = 0, pesoTotal = 0, completo = true;
+
+  const pesoAct = pesoDe('actividades');
+  pesoTotal += pesoAct;
+  if(acts.length > 0){
+    const vals = acts.map(a=>getComp(estId, asigId, periodo, 'act:'+a.id))
+                     .filter(v=>v!==undefined && v!==null && !isNaN(v));
+    if(vals.length > 0){
+      const actAvg = vals.reduce((s,v)=>s+v,0)/vals.length;
+      suma += actAvg * pesoAct;
+      pesoUsado += pesoAct;
+    }
+    if(vals.length < acts.length) completo = false;
+  }else{
+    completo = false;
+  }
+
+  for(const r of rubrosActivos()){
+    const p = pesoDe(r.key);
+    pesoTotal += p;
+    const v = notaRubro(estId, asigId, periodo, r);
+    if(v === null){ completo = false; continue; }
+    suma += v * p;
+    pesoUsado += p;
+  }
+
+  if(pesoUsado === 0) return {valor:null, completo:false, avance:0};
+  return {
+    valor: suma / pesoUsado,           // promedio de lo calificado hasta ahora
+    completo: completo,
+    avance: pesoTotal>0 ? pesoUsado/pesoTotal : 0
+  };
+}
+/* Compatibilidad: la nota del período tal como se muestra */
+function periodScore(estId, asigId, periodo, grado){
+  return periodInfo(estId, asigId, periodo, grado).valor;
+}
+function periodScoreCompleto(estId, asigId, periodo, grado){
+  const i = periodInfo(estId, asigId, periodo, grado);
+  return i.completo ? i.valor : null;
+}
+/* Promedio de la asignatura con los períodos que ya tengan nota */
+function subjectInfo(estId, asigId, grado){
+  const infos = [1,2,3,4].map(p=>periodInfo(estId, asigId, p, grado));
+  const conNota = infos.filter(i=>i.valor !== null);
+  if(conNota.length === 0) return {valor:null, completo:false, periodos:0};
+  return {
+    valor: conNota.reduce((s,i)=>s+i.valor,0)/conNota.length,
+    completo: conNota.length === 4 && conNota.every(i=>i.completo),
+    periodos: conNota.length
+  };
+}
+function subjectFinal(estId, asigId, grado){
+  return subjectInfo(estId, asigId, grado).valor;
+}
+function studentInfo(estId, grado){
+  const asigs = asignaturasDeGrado(grado);
+  const infos = asigs.map(a=>subjectInfo(estId, a.id, grado)).filter(i=>i.valor!==null);
+  if(infos.length===0) return {valor:null, completo:false};
+  return {
+    valor: infos.reduce((s,i)=>s+i.valor,0)/infos.length,
+    completo: infos.length === asigs.length && infos.every(i=>i.completo)
+  };
+}
+function studentFinalAverage(estId, grado){
+  return studentInfo(estId, grado).valor;
+}
+
+/* ============================= HELPERS UI ============================= */
+function showToast(msg){
+  const t = document.getElementById('toast');
+  if(!t){ console.log('[aviso]', msg); return; }
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+function esc(str){ const d=document.createElement('div'); d.textContent = str==null?'':String(str); return d.innerHTML; }
+function initials(name){
+  return name.split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+}
+function domainColor(dominio){
+  if(dominio==='direccion') return '#B98A2E';
+  if(dominio==='coordinacion') return '#2E5C7A';
+  if(dominio) return '#2F6F5E';
+  return '#6E6E62';
+}
+function domainLabel(t){
+  if(t.tipo==='admin'){
+    if(t.dominioNombre) return t.dominioNombre;
+    if(t.dominio==='direccion') return 'Dirección';
+    if(t.dominio==='coordinacion') return 'Coordinación académica';
+    if(t.dominio==='secretaria') return 'Secretaría';
+    return 'Administración';
+  }
+  return 'Docente';
+}
+function badgeClass(t){
+  if(t.tipo==='admin'){
+    if(t.dominio==='direccion') return 'badge-direccion';
+    if(t.dominio==='coordinacion') return 'badge-coordinacion';
+    return 'badge-secretaria';
+  }
+  return 'badge-docente';
+}
+
+/* ============================= RENDER RAÍZ ============================= */
+function render(){
+  const app = document.getElementById('app');
+  try{
+    if(versionRechazada){ app.innerHTML = renderVersionObsoleta(); return; }
+    if(!currentUser){ app.innerHTML = renderLogin(); return; }
+    app.innerHTML = renderLayout();
+  }catch(e){
+    console.error('render', e);
+    showToast('Ocurrió un problema al mostrar esta sección.');
+    if(currentUser){
+      // se regresa al panel en lugar de expulsar al usuario del sistema
+      try{ currentView = 'panel'; viewState = {}; app.innerHTML = renderLayout(); }catch(e2){ console.error(e2); }
+    }
+  }
+}
+
+function renderLogin(){
+  const admins = DB.docentes.filter(t=>t.tipo==='admin');
+  const docentes = DB.docentes.filter(t=>t.tipo==='docente');
+  const item = t => `
+    <button class="user-pick" onclick="doLogin('${t.id}')">
+      <div class="user-avatar" style="background:${domainColor(t.dominio)}">${esc(initials(t.nombre))}</div>
+      <div class="user-meta">
+        <p class="user-name">${esc(t.nombre)}</p>
+      </div>
+      ${tieneClave(t)?'<span class="candado" title="Requiere contraseña">🔒</span>':''}
+      <span class="badge ${badgeClass(t)}">${esc(domainLabel(t))}</span>
+    </button>`;
+  const aj = DB.ajustes || {};
+  const cabecera = `
+      ${aj.logo?`<img src="${aj.logo}" alt="Logo" class="login-logo">`:''}
+      <p class="login-eyebrow">${esc(aj.nombreColegio || 'Centro Escolar')}</p>
+      <h1 class="login-title">Cuaderno de Calificaciones</h1>`;
+
+  if(viewState.pidiendoClave){
+    const u = DB.docentes.find(t=>t.id===viewState.pidiendoClave.id);
+    return `
+    <div class="login-wrap">
+      <div class="login-card">
+        ${cabecera}
+        <p class="login-sub">Ingresa la contraseña de <b>${esc(u?u.nombre:'')}</b>.</p>
+        <div class="field">
+          <input type="password" id="clave_input" placeholder="Contraseña" onkeyup="claveKeyup(event)">
+        </div>
+        ${viewState.pidiendoClave.error?`<p style="color:var(--red); font-size:13px; margin:-4px 0 12px;">${esc(viewState.pidiendoClave.error)}</p>`:''}
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="verificarClave()">Entrar</button>
+          <button class="btn" onclick="cancelarClave()">Volver</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      ${cabecera}
+      <p class="login-sub">Selecciona tu usuario para ingresar al sistema.</p>
+      <div class="user-list">
+        ${admins.map(item).join('')}
+        ${docentes.map(item).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+async function doLogin(id){
+  const u = DB.docentes.find(t=>t.id===id);
+  if(!u) return;
+  if(tieneClave(u)){
+    viewState.pidiendoClave = {id, error:''};
+    render();
+    setTimeout(()=>{ const c = document.getElementById('clave_input'); if(c) c.focus(); }, 60);
+    return;
+  }
+  entrarComo(u);
+}
+let selloVisto = '';
+function hoyTexto(){ return new Date().toISOString().slice(0,10); }
+/* Huella del mensaje: si Dirección lo cambia, se vuelve a mostrar el mismo día */
+function huellaMensaje(txt){
+  let h = 5381;
+  for(let i=0;i<txt.length;i++) h = ((h*33) ^ txt.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+/* El sello incluye al usuario: si en este dispositivo entra alguien que
+   todavía no lo ha visto, el mensaje le aparece aunque otro ya lo haya aceptado. */
+function selloActual(){
+  const txt = (DB.ajustes && DB.ajustes.mensajeBienvenida) || '';
+  const quien = currentUser ? currentUser.id : 'nadie';
+  return quien + '|' + hoyTexto() + '|' + huellaMensaje(txt);
+}
+/* Lee el registro de "ya lo vi". Si viene en un formato viejo o dañado,
+   se descarta y se empieza de cero en lugar de fallar. */
+function leerVistos(){
+  try{
+    const crudo = window.localStorage.getItem('mensaje_visto');
+    if(!crudo) return {};
+    const dato = JSON.parse(crudo);
+    if(dato && typeof dato === 'object' && !Array.isArray(dato)) return dato;
+    window.localStorage.removeItem('mensaje_visto');   // formato anterior: se descarta
+    return {};
+  }catch(e){
+    try{ window.localStorage.removeItem('mensaje_visto'); }catch(e2){}  // valor dañado
+    return {};
+  }
+}
+function quienSoy(){ return currentUser ? currentUser.id : 'nadie'; }
+function debeMostrarMensaje(){
+  const txt = (DB.ajustes && DB.ajustes.mensajeBienvenida) || '';
+  if(!txt) return false;
+  const sello = selloActual();
+  if(selloVisto === sello) return false;       // ya se aceptó en esta sesión
+  return leerVistos()[quienSoy()] !== sello;   // ya se aceptó hoy en este dispositivo
+}
+function cerrarMensajeBienvenida(){
+  selloVisto = selloActual();
+  const vistos = leerVistos();
+  vistos[quienSoy()] = selloVisto;
+  const hoy = hoyTexto();
+  Object.keys(vistos).forEach(k=>{             // se limpian registros de días anteriores
+    const partes = String(vistos[k]).split('|');
+    if(partes[1] && partes[1] !== hoy) delete vistos[k];
+  });
+  try{ window.localStorage.setItem('mensaje_visto', JSON.stringify(vistos)); }
+  catch(e){ console.error('no se pudo registrar el mensaje visto', e); }
+  render();
+}
+function renderMensajeBienvenida(){
+  if(!debeMostrarMensaje()) return '';
+  const aj = DB.ajustes || {};
+  return `
+  <div class="modal-bg" style="align-items:center;">
+    <div class="modal" style="max-width:520px; text-align:center;">
+      ${aj.logo?`<img src="${aj.logo}" alt="Logo" style="width:64px;height:64px;object-fit:contain;margin:0 auto 14px;display:block;">`:''}
+      <h3 class="modal-title" style="text-align:center;">${esc(aj.nombreColegio || 'Centro Escolar')}</h3>
+      <p style="font-size:14.5px; line-height:1.7; white-space:pre-wrap; margin:0 0 22px; text-align:left;">${esc(aj.mensajeBienvenida)}</p>
+      <button class="btn btn-primary" onclick="cerrarMensajeBienvenida()" style="min-width:140px;">Aceptar</button>
+    </div>
+  </div>`;
+}
+
+async function entrarComo(u){
+  selloVisto = '';
+  currentUser = u;
+  currentView = 'panel';
+  viewState = {};
+  render();
+  guardarSesion();
+  await pullCambios(true);
+}
+function verificarClave(){
+  const info = viewState.pidiendoClave;
+  if(!info) return;
+  const u = DB.docentes.find(t=>t.id===info.id);
+  const txt = document.getElementById('clave_input').value;
+  if(!u) return;
+  if(hashClave(txt) === u.clave){ entrarComo(u); }
+  else{
+    viewState.pidiendoClave = {id:info.id, error:'Contraseña incorrecta. Intenta de nuevo.'};
+    render();
+    setTimeout(()=>{ const c = document.getElementById('clave_input'); if(c) c.focus(); }, 60);
+  }
+}
+function cancelarClave(){ viewState.pidiendoClave = null; render(); }
+function claveKeyup(ev){ if(ev.key === 'Enter') verificarClave(); }
+function doLogout(){ currentUser = null; guardarSesion(); render(); }
+
+const NAV_ITEMS = [
+  {id:'panel', label:'Panel principal'},
+  {id:'estudiantes', label:'Estudiantes'},
+  {id:'asignaturas', label:'Asignaturas'},
+  {id:'docentes', label:'Docentes'},
+  {id:'calificaciones', label:'Calificaciones'},
+  {id:'matriz', label:'Matriz por aula'},
+  {id:'tareas', label:'Registro de tareas'},
+  {id:'personalizar', label:'Personalizar'},
+  {id:'sincronizacion', label:'Sincronización'},
+];
+function navAllowed(id){
+  if(id==='personalizar') return canManageAcademicData(currentUser);
+  if(id==='asignaturas' || id==='docentes') return canManageAcademicData(currentUser);
+  return true;
+}
+
+function renderLayout(){
+  const nav = NAV_ITEMS.filter(n=>navAllowed(n.id));
+  return `
+  <div class="layout">
+    <div class="sidebar">
+      <div class="brand">
+        ${DB.ajustes && DB.ajustes.logo?`<img src="${DB.ajustes.logo}" alt="Logo" class="brand-logo">`:''}
+        <p class="brand-title display">${esc((DB.ajustes&&DB.ajustes.nombreColegio) || 'Centro Escolar')}</p>
+        <p class="brand-sub">Año escolar ${esc((DB.ajustes&&DB.ajustes.anio) || String(new Date().getFullYear()))}</p>
+      </div>
+      <div>
+        ${nav.map(n=>`<div class="nav-item ${currentView===n.id?'active':''}" onclick="goTo('${n.id}')"><span class="nav-dot"></span>${esc(n.label)}</div>`).join('')}
+      </div>
+      <div class="sidebar-footer">
+        <div class="who">
+          <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:${domainColor(currentUser.dominio)}">${esc(initials(currentUser.nombre))}</div>
+          <div class="user-meta">
+            <p class="user-name">${esc(currentUser.nombre)}</p>
+            <p class="user-role">${esc(domainLabel(currentUser))}</p>
+          </div>
+        </div>
+        ${renderSyncIndicator()}
+        <button class="logout-btn" onclick="doLogout()">Cambiar de usuario</button>
+      </div>
+    </div>
+    <div class="main">
+      ${renderView()}
+    </div>
+    ${renderMensajeBienvenida()}
+  </div>`;
+}
+
+function goTo(id){
+  currentView = id; viewState = {}; render();
+  guardarSesion();
+  pullCambios(true); // al cambiar de sección se traen los cambios de otros docentes
+}
+
+function renderView(){
+  switch(currentView){
+    case 'panel': return renderPanel();
+    case 'estudiantes': return renderEstudiantes();
+    case 'asignaturas': return renderAsignaturas();
+    case 'docentes': return renderDocentes();
+    case 'calificaciones': return renderCalificaciones();
+    case 'matriz': return renderMatriz();
+    case 'tareas': return renderTareas();
+    case 'personalizar': return renderPersonalizar();
+    case 'sincronizacion': return renderSincronizacion();
+    default: return '';
+  }
+}
+
+/* ============================= PANEL ============================= */
+function renderPanel(){
+  const totalEst = DB.estudiantes.length;
+  const totalDoc = DB.docentes.filter(t=>t.tipo==='docente').length;
+  const totalGrados = DB.config.grados.length;
+  let sumAvg=0, countAvg=0;
+  DB.estudiantes.forEach(e=>{ const avg = studentFinalAverage(e.id, e.grado); if(avg!==null){ sumAvg+=avg; countAvg++; } });
+  const promedioGeneral = countAvg? (sumAvg/countAvg).toFixed(1) : '—';
+
+  const misGradosList = misGrados(currentUser);
+
+  return `
+  <div class="page-head">
+    <p class="saludo-grande">Hola, ${esc(saludoNombre(currentUser.nombre))}${(DB.ajustes && DB.ajustes.fraseSaludo) ? ' (' + esc(DB.ajustes.fraseSaludo) + ')' : ''}</p>
+    <h1 class="page-title">Panel principal</h1>
+    <p class="page-desc">Resumen general del centro escolar y accesos según tu perfil (${esc(domainLabel(currentUser))}).</p>
+  </div>
+  <div class="grid grid-4" style="margin-bottom:18px;">
+    <div class="stat"><p class="stat-label">Estudiantes</p><p class="stat-value">${totalEst}</p></div>
+    <div class="stat"><p class="stat-label">Docentes</p><p class="stat-value">${totalDoc}</p></div>
+    <div class="stat"><p class="stat-label">Aulas / grados</p><p class="stat-value">${totalGrados}</p></div>
+    <div class="stat"><p class="stat-label">Promedio general</p><p class="stat-value">${promedioGeneral}</p></div>
+  </div>
+  <div class="card">
+    <p class="card-title">Tus aulas asignadas</p>
+    ${misGradosList.length===0?`<p class="empty">Aún no tienes asignaturas ni grado de orientación asignados.</p>`:`
+    <div class="tag-row">
+      ${misGradosList.map(g=>{
+        const esOrientacion = esOrientador(currentUser, g);
+        return `<span class="pill ${esOrientacion?'pill-gold':'pill-primary'}">${esc(g)}${esOrientacion?' · orientación':''}</span>`;
+      }).join('')}
+    </div>`}
+  </div>
+  ${renderTarjetaClave()}
+  ${!isAdmin(currentUser) ? `
+  <div class="card">
+    <p class="card-title">Tus asignaturas</p>
+    ${currentUser.asignaciones.length===0?`<p class="empty">No tienes asignaturas asignadas todavía.</p>`:`
+    <table><thead><tr><th>Asignatura</th><th>Grado</th></tr></thead><tbody>
+      ${currentUser.asignaciones.map(a=>{
+        const s = DB.asignaturas.find(x=>x.id===a.asignaturaId);
+        return `<tr><td>${esc(s?s.nombre:'—')}</td><td>${esc(a.grado)}</td></tr>`;
+      }).join('')}
+    </tbody></table>`}
+  </div>` : ''}`;
+}
+
+/* ============================= ESTUDIANTES ============================= */
+function renderEstudiantes(){
+  const filtro = viewState.filtroGrado || '';
+  const orden = viewState.ordenEst || 'apellidos';
+  const gradosVisibles = misGrados(currentUser);
+  const puedeEditar = puedeGestionarEstudiantes(currentUser);
+  const gradosMostrados = filtro ? [filtro] : gradosVisibles;
+  const total = DB.estudiantes.filter(e=>gradosMostrados.indexOf(e.grado)>=0).length;
+
+  const filasDe = (g) => {
+    const lista = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===g), orden);
+    if(lista.length===0){
+      return `<tr><td colspan="${puedeEditar?5:4}" class="empty">Sin estudiantes en ${esc(g)}.</td></tr>`;
+    }
+    return lista.map((e,i)=>`
+      <tr>
+        <td class="mono num-est">${i+1}</td>
+        <td>${esc(apellidosDe(e))}</td>
+        <td>${esc(nombresDe(e))}</td>
+        <td><span class="pill pill-muted">${esc(e.grado)}</span></td>
+        ${puedeEditar?`<td>
+          <button class="icon-btn" onclick="openStudentModal('${e.id}')">Editar</button>
+          <button class="icon-btn" onclick="deleteStudent('${e.id}')">Eliminar</button>
+        </td>`:''}
+      </tr>`).join('');
+  };
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Base de datos</p>
+    <h1 class="page-title">Estudiantes</h1>
+    <p class="page-desc">Listado de estudiantes matriculados, numerados por aula.</p>
+  </div>
+  <div class="filters">
+    <div class="field">
+      <label>Filtrar por grado</label>
+      <select class="grado-select" onchange="viewState.filtroGrado=this.value; render()">
+        <option value="">Todos los grados visibles</option>
+        ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${filtro===g?'selected':''}>${esc(g)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Ordenar por</label>
+      <select onchange="viewState.ordenEst=this.value; render()">
+        <option value="apellidos" ${orden==='apellidos'?'selected':''}>Apellidos (A-Z)</option>
+        <option value="nombres" ${orden==='nombres'?'selected':''}>Nombres (A-Z)</option>
+      </select>
+    </div>
+    <button class="btn" onclick="descargarListado()">Descargar listado</button>
+    ${puedeEditar?`<button class="btn btn-primary" onclick="openStudentModal()">Agregar estudiante</button>`:''}
+  </div>
+
+  ${gradosMostrados.length===0?`<div class="card"><p class="empty">No tienes grados asignados.</p></div>`:''}
+  ${gradosMostrados.map(g=>{
+    const cuantos = DB.estudiantes.filter(e=>e.grado===g).length;
+    return `
+    <div class="card">
+      <p class="card-title">${esc(g)} <span class="pill pill-primary">${cuantos} estudiante(s)</span></p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:48px;">N°</th><th>Apellidos</th><th>Nombres</th><th>Grado</th>${puedeEditar?'<th></th>':''}
+        </tr></thead>
+        <tbody>${filasDe(g)}</tbody>
+      </table>
+      </div>
+    </div>`;
+  }).join('')}
+  ${gradosMostrados.length>1?`<p class="nota-chica" style="text-align:right;">Total en los grados mostrados: <b>${total}</b> estudiante(s).</p>`:''}
+  ${renderStudentModal()}`;
+}
+function openStudentModal(id){
+  editingId = id || null;
+  viewState.modalStudent = true;
+  render();
+}
+function closeModal(){ viewState.modalStudent=false; viewState.modalSubject=false; viewState.modalTeacher=false; editingId=null; render(); }
+function renderStudentModal(){
+  if(!viewState.modalStudent) return '';
+  const est = editingId ? DB.estudiantes.find(e=>e.id===editingId) : {nombres:'', apellidos:'', grado: DB.config.grados[0]||''};
+  return `
+  <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal()">×</button>
+      <h3 class="modal-title">${editingId?'Editar estudiante':'Agregar estudiante'}</h3>
+      <div class="grid grid-2">
+        <div class="field"><label>Nombres</label><input type="text" id="f_nombres" value="${esc(est.nombres||'')}" placeholder="Ej.: Andrea Beatriz"></div>
+        <div class="field"><label>Apellidos</label><input type="text" id="f_apellidos" value="${esc(est.apellidos||'')}" placeholder="Ej.: Alas Portillo"></div>
+      </div>
+      <div class="field"><label>Grado / aula</label>
+        <select id="f_grado">
+          ${DB.config.grados.map(g=>`<option value="${esc(g)}" ${est.grado===g?'selected':''}>${esc(g)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveStudent()">Guardar</button>
+        <button class="btn" onclick="closeModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+}
+/* Descarga el listado: una hoja por grado cuando están todos, o una sola si hay filtro */
+function descargarListado(){
+  const filtro = viewState.filtroGrado || '';
+  const orden = viewState.ordenEst || 'apellidos';
+  const grados = filtro ? [filtro] : misGrados(currentUser);
+  const siglas = ((DB.ajustes && DB.ajustes.siglas) || '').trim();
+
+  const hojas = grados.map(g=>{
+    const lista = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===g), orden);
+    return {
+      nombre: g.toUpperCase(),
+      encabezados: ['N°','APELLIDOS','NOMBRES','GRADO'],
+      filas: lista.map((e,i)=>[i+1, apellidosDe(e), nombresDe(e), g])
+    };
+  });
+  if(hojas.length === 0){ showToast('No hay grados para descargar.'); return; }
+
+  let nombre = 'Listado de Estudiantes' + (siglas ? ' ' + siglas : '');
+  if(filtro) nombre += ' ' + filtro;
+  descargarXlsx(nombre, hojas);
+}
+
+async function saveStudent(){
+  if(!puedeGestionarEstudiantes(currentUser)){ showToast('No tienes permiso para modificar estudiantes.'); return; }
+  const nombres = document.getElementById('f_nombres').value.trim();
+  const apellidos = document.getElementById('f_apellidos').value.trim();
+  const grado = document.getElementById('f_grado').value;
+  if(!nombres){ showToast('Escribe los nombres del estudiante.'); return; }
+  if(!apellidos){ showToast('Escribe los apellidos del estudiante.'); return; }
+  const nombre = nombreCompleto(nombres, apellidos);
+  let item;
+  if(editingId){
+    const e = DB.estudiantes.find(x=>x.id===editingId) || {id:editingId};
+    item = Object.assign({}, e, {nombres, apellidos, nombre, grado});
+  }else{
+    item = {id:uid('est'), nombres, apellidos, nombre, grado};
+  }
+  commit(doc=>{
+    const i = doc.estudiantes.findIndex(x=>x.id===item.id);
+    if(i>=0) doc.estudiantes[i] = item; else doc.estudiantes.push(item);
+  });
+  showToast('Estudiante guardado. Ya es visible para los demás docentes de '+grado+'.');
+  closeModal();
+}
+async function deleteStudent(id){
+  if(!puedeGestionarEstudiantes(currentUser)){ showToast('No tienes permiso para eliminar estudiantes.'); return; }
+  if(!confirm('¿Eliminar este estudiante? También se borrarán sus calificaciones.')) return;
+  commit(doc=>{
+    const i = doc.estudiantes.findIndex(x=>x.id===id);
+    if(i>=0) doc.estudiantes.splice(i,1);
+    Object.keys(doc.calificaciones).forEach(k=>{ if(k.startsWith(id+'|')) delete doc.calificaciones[k]; });
+  });
+  showToast('Estudiante eliminado.');
+  render();
+}
+
+/* ============================= ASIGNATURAS ============================= */
+function renderAsignaturas(){
+  if(!canManageAcademicData(currentUser)) return renderNoAccess();
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Base de datos</p>
+    <h1 class="page-title">Asignaturas</h1>
+    <p class="page-desc">Catálogo general de materias. Se vinculan a un grado cuando se asignan a un docente.</p>
+  </div>
+  <div class="card">
+    <p class="card-title">Agregar asignatura</p>
+    <div class="field"><label>Nombre de la asignatura</label><input type="text" id="new_subject" placeholder="Ej.: Educación Física"></div>
+    <div class="field">
+      <label>¿En qué grados se imparte?</label>
+      <div class="tag-row">
+        ${DB.config.grados.map((g,i)=>`
+          <label class="check-chip"><input type="checkbox" id="ng_${i}" value="${esc(g)}"> ${esc(g)}</label>`).join('')}
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn btn-primary" onclick="addSubject()">Agregar</button></div>
+  </div>
+  <div class="card">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Asignatura</th><th>Grados donde se imparte</th><th></th></tr></thead>
+      <tbody>
+        ${DB.asignaturas.length===0?`<tr><td colspan="3" class="empty">No hay asignaturas registradas.</td></tr>`:''}
+        ${DB.asignaturas.map(s=>{
+          const grados = DB.config.grados.filter(g=>asignaturasDeGrado(g).some(x=>x.id===s.id));
+          return `<tr>
+            <td>${esc(s.nombre)}</td>
+            <td><div class="tag-row">${DB.config.grados.map(g=>{
+                const activo = grados.indexOf(g)>=0;
+                return `<button class="pill ${activo?'pill-primary':'pill-muted'}" style="cursor:pointer;border:none;"
+                  title="${activo?'Quitar de':'Agregar a'} ${esc(g)}"
+                  onclick="toggleGradoAsignatura('${s.id}','${esc(g)}')">${activo?'✓ ':''}${esc(g)}</button>`;
+              }).join('')}</div></td>
+            <td><button class="icon-btn" onclick="deleteSubject('${s.id}')">Eliminar</button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+}
+async function addSubject(){
+  const input = document.getElementById('new_subject');
+  const nombre = input.value.trim();
+  if(!nombre){ showToast('Escribe el nombre de la asignatura.'); return; }
+  const grados = [];
+  DB.config.grados.forEach((g,i)=>{
+    const chk = document.getElementById('ng_'+i);
+    if(chk && chk.checked) grados.push(g);
+  });
+  if(grados.length===0){ showToast('Selecciona al menos un grado.'); return; }
+  const nueva = {id:uid('asig'), nombre};
+  commit(doc=>{
+    doc.asignaturas.push(nueva);
+    if(!doc.curriculo) doc.curriculo = {};
+    grados.forEach(g=>{
+      doc.curriculo[g] = doc.curriculo[g] || [];
+      if(doc.curriculo[g].indexOf(nueva.id)<0) doc.curriculo[g].push(nueva.id);
+    });
+  });
+  showToast('Asignatura agregada.');
+  render();
+}
+function toggleGradoAsignatura(asigId, grado){
+  const docenteAsignado = DB.docentes.some(d=>d.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asigId));
+  const estaba = asignaturasDeGrado(grado).some(x=>x.id===asigId);
+  if(estaba && docenteAsignado){
+    showToast('Primero quita la asignación del docente en la pantalla Docentes.');
+    return;
+  }
+  commit(doc=>{
+    if(!doc.curriculo) doc.curriculo = {};
+    doc.curriculo[grado] = doc.curriculo[grado] || [];
+    const i = doc.curriculo[grado].indexOf(asigId);
+    if(i>=0) doc.curriculo[grado].splice(i,1); else doc.curriculo[grado].push(asigId);
+  });
+  render();
+}
+async function deleteSubject(id){
+  if(!confirm('¿Eliminar esta asignatura? Se quitará de las asignaciones de los docentes.')) return;
+  commit(doc=>{
+    const i = doc.asignaturas.findIndex(x=>x.id===id);
+    if(i>=0) doc.asignaturas.splice(i,1);
+    doc.docentes.forEach(d=> d.asignaciones = (d.asignaciones||[]).filter(a=>a.asignaturaId!==id));
+    Object.keys(doc.calificaciones).forEach(k=>{ if(k.split('|')[1]===id) delete doc.calificaciones[k]; });
+    Object.keys(doc.actividades).forEach(k=>{ if(k.split('|')[1]===id) delete doc.actividades[k]; });
+  });
+  showToast('Asignatura eliminada.');
+  render();
+}
+
+/* ============================= DOCENTES ============================= */
+function renderDocentes(){
+  if(!canManageAcademicData(currentUser)) return renderNoAccess();
+  const admins = DB.docentes.filter(t=>t.tipo==='admin');
+  const docentes = DB.docentes.filter(t=>t.tipo==='docente').slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Base de datos</p>
+    <h1 class="page-title">Docentes y administración</h1>
+    <p class="page-desc">Los dominios tienen acceso total al sistema. Solo Dirección puede crear, renombrar o eliminar dominios, y su propio dominio está protegido.</p>
+  </div>
+
+  <div class="card">
+    <p class="card-title">Dominios de acceso total
+      ${isDireccion(currentUser)?`<button class="btn btn-sm btn-primary" onclick="agregarDominio()">+ Agregar dominio</button>`:''}
+    </p>
+    <p style="font-size:13px; color:var(--muted); margin:0 0 14px;">
+      Estas cuentas ven y editan todo el sistema. El dominio de Dirección no se puede renombrar ni eliminar.
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nombre de la persona</th><th>Nombre del dominio</th><th></th></tr></thead>
+      <tbody>
+        ${admins.map(t=>{
+          const esDir = t.dominio==='direccion';
+          const puede = isDireccion(currentUser);
+          return `
+          <tr>
+            <td>${esc(t.nombre)}</td>
+            <td>${(puede && !esDir)
+              ? `<input type="text" value="${esc(domainLabel(t))}" onchange="renombrarDominio('${t.id}', this.value)" style="max-width:250px;">`
+              : `<span class="badge ${badgeClass(t)}">${esc(domainLabel(t))}</span>`}</td>
+            <td>
+              ${canEditTeacherAccount(currentUser,t) ? `<button class="icon-btn" onclick="openTeacherModal('${t.id}')">Editar</button>` : `<span class="empty" style="padding:0;">Solo Dirección</span>`}
+              ${(puede && !esDir) ? `<button class="icon-btn" onclick="eliminarDominio('${t.id}')">Eliminar</button>` : ''}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="card-title">
+      Docentes
+      <button class="btn btn-primary btn-sm" onclick="openTeacherModal()">Agregar docente</button>
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nombre</th><th>Asignaturas / grados</th><th>Orientación</th><th></th></tr></thead>
+      <tbody>
+        ${docentes.length===0?`<tr><td colspan="4" class="empty">No hay docentes registrados.</td></tr>`:''}
+        ${docentes.map(t=>`
+          <tr>
+            <td>${esc(t.nombre)}</td>
+            <td>${t.asignaciones.length? `<div class="tag-row">${t.asignaciones.map(a=>{
+              const s = DB.asignaturas.find(x=>x.id===a.asignaturaId);
+              return `<span class="pill pill-blue">${esc(s?s.nombre:'—')} · ${esc(a.grado)}</span>`;
+            }).join('')}</div>` : '<span class="empty" style="padding:0;">Sin asignar</span>'}</td>
+            <td>${orientacionesDe(t).length?`<div class="tag-row">${orientacionesDe(t).map(g=>`<span class="pill pill-gold">${esc(g)}</span>`).join('')}</div>`:'—'}</td>
+            <td>
+              <button class="icon-btn" onclick="openTeacherModal('${t.id}')">Editar</button>
+              <button class="icon-btn" onclick="deleteTeacher('${t.id}')">Eliminar</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  ${renderTeacherModal()}`;
+}
+function agregarDominio(){
+  if(!isDireccion(currentUser)) return;
+  const persona = prompt('Nombre de la persona a cargo (ej.: Lic. Rosa Méndez):');
+  if(persona === null) return;
+  const nombrePersona = persona.trim();
+  if(!nombrePersona){ showToast('Escribe el nombre de la persona.'); return; }
+  const dom = prompt('Nombre del dominio (ej.: Subdirección, Consejo Académico):');
+  if(dom === null) return;
+  const nombreDominio = dom.trim();
+  if(!nombreDominio){ showToast('Escribe el nombre del dominio.'); return; }
+  const nuevo = {id:uid('t'), nombre:nombrePersona, tipo:'admin', dominio:uid('dom'),
+    dominioNombre:nombreDominio, asignaciones:[], orientacion:null};
+  commit(doc=>{ doc.docentes.push(nuevo); });
+  showToast('Dominio agregado con acceso total.');
+  render();
+}
+function renombrarDominio(id, nombre){
+  const limpio = (nombre||'').trim();
+  const t = DB.docentes.find(x=>x.id===id);
+  if(!t) return;
+  if(t.dominio === 'direccion'){ showToast('El dominio de Dirección no se puede renombrar.'); render(); return; }
+  if(!limpio){ showToast('El dominio necesita un nombre.'); render(); return; }
+  commit(doc=>{
+    const d = doc.docentes.find(x=>x.id===id);
+    if(d) d.dominioNombre = limpio;
+  });
+  showToast('Dominio renombrado.');
+  render();
+}
+function eliminarDominio(id){
+  const t = DB.docentes.find(x=>x.id===id);
+  if(!t) return;
+  if(t.dominio === 'direccion'){ showToast('El dominio de Dirección no se puede eliminar.'); return; }
+  if(id === currentUser.id){ showToast('No puedes eliminar tu propia cuenta mientras la usas.'); return; }
+  if(!confirm('¿Eliminar la cuenta de "' + t.nombre + '" (' + domainLabel(t) + ')?')) return;
+  commit(doc=>{
+    const i = doc.docentes.findIndex(x=>x.id===id);
+    if(i>=0) doc.docentes.splice(i,1);
+  });
+  showToast('Dominio eliminado.');
+  render();
+}
+function openTeacherModal(id){
+  editingId = id || null;
+  viewState.modalTeacher = true;
+  viewState.newAsigGrado = DB.config.grados[0] || '';
+  viewState.newAsigAsig = DB.asignaturas[0] ? DB.asignaturas[0].id : '';
+  render();
+}
+function renderTeacherModal(){
+  if(!viewState.modalTeacher) return '';
+  const t = editingId ? DB.docentes.find(x=>x.id===editingId) : {nombre:'', tipo:'docente', dominio:null, asignaciones:[], orientacion:null};
+  const esAdminTarget = t.tipo === 'admin';
+  return `
+  <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal()">×</button>
+      <h3 class="modal-title">${editingId? 'Editar docente' : 'Agregar docente'}</h3>
+      <div class="field"><label>Nombre completo</label><input type="text" id="t_nombre" value="${esc(t.nombre)}" placeholder="Nombre del docente"></div>
+
+      ${esAdminTarget ? `
+        <div class="note">Esta es una cuenta de dominio (${esc(domainLabel(t))}). Su acceso académico es total por defecto.</div>
+      ` : `
+        <div class="field">
+          <label>Grados de orientación (acceso total a esas aulas)</label>
+          <div class="tag-row">
+            ${DB.config.grados.map((g,i)=>`
+              <label class="check-chip"><input type="checkbox" id="t_ori_${i}" value="${esc(g)}"
+                ${orientacionesDe(t).indexOf(g)>=0?'checked':''}> ${esc(g)}</label>`).join('')}
+          </div>
+          <p class="nota-chica">Puedes marcar más de uno. Déjalos sin marcar si no es orientador(a).</p>
+        </div>
+
+        <label>Asignaturas asignadas</label>
+        <div id="asig_list">
+          ${t.asignaciones.length===0?`<p class="empty" style="padding:8px 0;">Sin asignaturas asignadas.</p>`:''}
+          ${t.asignaciones.map((a,i)=>{
+            const s = DB.asignaturas.find(x=>x.id===a.asignaturaId);
+            return `<div class="assign-list-item"><span>${esc(s?s.nombre:'—')} · ${esc(a.grado)}</span><button class="icon-btn" onclick="removeAsigFromModal(${i})">Quitar</button></div>`;
+          }).join('')}
+        </div>
+        <div class="assign-row">
+          <div class="field" style="margin-bottom:0; flex:1;">
+            <label>Asignatura</label>
+            <select id="new_asig_select">${DB.asignaturas.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select>
+          </div>
+          <div class="field" style="margin-bottom:0; flex:1;">
+            <label>Grado</label>
+            <select id="new_grado_select">${DB.config.grados.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('')}</select>
+          </div>
+          <button class="btn btn-sm" onclick="addAsigToModal()">Añadir</button>
+        </div>
+      `}
+
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn btn-primary" onclick="saveTeacher(${esAdminTarget})">Guardar</button>
+        <button class="btn" onclick="closeModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+}
+async function addAsigToModal(){
+  const asigId = document.getElementById('new_asig_select').value;
+  const grado = document.getElementById('new_grado_select').value;
+  const t = editingId ? DB.docentes.find(x=>x.id===editingId) : null;
+  if(!t){ showToast('Guarda el docente primero para agregar asignaturas.'); return; }
+  if(t.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asigId)){ showToast('Esa asignación ya existe.'); return; }
+  const objetivo = editingId;
+  commit(doc=>{
+    const d = doc.docentes.find(x=>x.id===objetivo);
+    if(d){
+      d.asignaciones = d.asignaciones||[];
+      if(!d.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asigId)) d.asignaciones.push({grado, asignaturaId:asigId});
+    }
+  });
+  render();
+}
+async function removeAsigFromModal(index){
+  const actual = DB.docentes.find(x=>x.id===editingId);
+  if(!actual || !actual.asignaciones[index]) return;
+  const {grado, asignaturaId} = actual.asignaciones[index];
+  const objetivo = editingId;
+  commit(doc=>{
+    const d = doc.docentes.find(x=>x.id===objetivo);
+    if(d) d.asignaciones = (d.asignaciones||[]).filter(a=>!(a.grado===grado && a.asignaturaId===asignaturaId));
+  });
+  render();
+}
+async function saveTeacher(esAdmin){
+  const nombre = document.getElementById('t_nombre').value.trim();
+  if(!nombre){ showToast('Escribe el nombre del docente.'); return; }
+  const orientaciones = [];
+  DB.config.grados.forEach((g,i)=>{
+    const chk = document.getElementById('t_ori_'+i);
+    if(chk && chk.checked) orientaciones.push(g);
+  });
+  if(editingId){
+    const objetivo = editingId;
+    commit(doc=>{
+      const t = doc.docentes.find(x=>x.id===objetivo);
+      if(t){ t.nombre = nombre; if(!esAdmin){ t.orientaciones = orientaciones; delete t.orientacion; } }
+    });
+  }else{
+    const nuevo = {id:uid('t'), nombre, tipo:'docente', dominio:null, asignaciones:[], orientaciones:orientaciones};
+    commit(doc=>{ doc.docentes.push(nuevo); });
+  }
+  showToast('Docente guardado.');
+  closeModal();
+}
+async function deleteTeacher(id){
+  const t = DB.docentes.find(x=>x.id===id);
+  if(t && t.tipo==='admin'){ showToast('No se pueden eliminar las cuentas de dominio.'); return; }
+  if(id === currentUser.id){ showToast('No puedes eliminar tu propia cuenta mientras la usas.'); return; }
+  if(!confirm('¿Eliminar este docente?')) return;
+  commit(doc=>{
+    const i = doc.docentes.findIndex(x=>x.id===id);
+    if(i>=0) doc.docentes.splice(i,1);
+  });
+  showToast('Docente eliminado.');
+  render();
+}
+
+function renderPersonalizar(){
+  if(!canManageAcademicData(currentUser)) return renderNoAccess();
+  const soloDir = isDireccion(currentUser);
+  const aj = DB.ajustes || {};
+  const docentes = DB.docentes.slice().sort((a,b)=>
+    (a.tipo===b.tipo?0:(a.tipo==='admin'?-1:1)) || a.nombre.localeCompare(b.nombre,'es'));
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Ajustes de Dirección</p>
+    <h1 class="page-title">Personalizar el sistema</h1>
+    <p class="page-desc">Cambia el nombre y el logo del centro escolar, y define la contraseña de cada usuario.</p>
+  </div>
+
+  <div class="card">
+    <p class="card-title">Mensajes para los docentes</p>
+    <div class="field">
+      <label>Frase del saludo (aparece entre paréntesis junto al "Hola, ...")</label>
+      <input type="text" id="aj_frase" value="${esc(aj.fraseSaludo||'')}" placeholder="Ej.: recuerda que lo haces increíble">
+    </div>
+    <div class="field">
+      <label>Mensaje al ingresar (se muestra una vez al día, con botón Aceptar)</label>
+      <textarea id="aj_mensaje" rows="4" placeholder="Déjalo vacío si no quieres que aparezca ningún mensaje.">${esc(aj.mensajeBienvenida||'')}</textarea>
+    </div>
+    <div class="note" style="margin-bottom:14px;">
+      Si cambias el mensaje, vuelve a aparecer hoy mismo aunque los docentes ya lo hubieran visto.
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="guardarMensajes()">Guardar mensajes</button>
+      <button class="btn" onclick="verMensajeAhora()">Ver cómo se ve</button>
+    </div>
+  </div>
+
+  ${!soloDir ? '' : `
+  <div class="card">
+    <p class="card-title">Identidad del centro escolar</p>
+    <div class="grid grid-2">
+      <div class="field"><label>Nombre del colegio</label>
+        <input type="text" id="aj_nombre" value="${esc(aj.nombreColegio||'')}" placeholder="Ej.: Centro Escolar San José"></div>
+      <div class="field"><label>Siglas del centro (para nombrar los archivos)</label>
+        <input type="text" id="aj_siglas" value="${esc(aj.siglas||'')}" placeholder="Ej.: ECAN"></div>
+      <div class="field"><label>Año escolar</label>
+        <input type="text" id="aj_anio" value="${esc(aj.anio || String(new Date().getFullYear()))}" placeholder="2026"></div>
+    </div>
+    <div class="field">
+      <label>Logo (imagen cuadrada, menos de 200 KB)</label>
+      <div style="display:flex; align-items:center; gap:14px;">
+        ${aj.logo?`<img src="${aj.logo}" alt="Logo actual" style="width:56px;height:56px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff;">`:'<span class="empty" style="padding:0;">Sin logo</span>'}
+        <button class="btn btn-sm" onclick="subirLogo()">Elegir imagen</button>
+        ${aj.logo?`<button class="btn btn-sm btn-danger" onclick="quitarLogo()">Quitar</button>`:''}
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn btn-primary" onclick="guardarAjustes()">Guardar cambios</button></div>
+  </div>
+
+  <div class="card">
+    <p class="card-title">Contraseñas de acceso</p>
+    <div class="note" style="margin-bottom:14px;">
+      Si un usuario no tiene contraseña, entra directamente al seleccionar su nombre. Al definirla, el sistema se la pedirá cada vez.
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Usuario</th><th>Perfil</th><th>Contraseña</th><th style="width:190px;">Puede agregar y editar estudiantes</th><th></th></tr></thead>
+      <tbody>
+        ${docentes.map(t=>`
+          <tr>
+            <td>${esc(t.nombre)}</td>
+            <td><span class="badge ${badgeClass(t)}">${esc(domainLabel(t))}</span></td>
+            <td>
+              ${soloDir && tieneClave(t) ? `<div class="clave-actual">
+                  <span id="vc_${t.id}">${t.claveTexto ? '••••••' : 'definida por el usuario'}</span>
+                  ${t.claveTexto?`<button class="icon-btn" onclick="verClave('${t.id}')" title="Mostrar u ocultar">👁</button>`:''}
+                </div>` : (tieneClave(t) ? '<span class="empty" style="padding:0;">Definida</span>' : '')}
+              <input type="text" id="cl_${t.id}" placeholder="${tieneClave(t)?'Escribe una nueva para restablecer':'Sin contraseña'}" style="max-width:220px;">
+            </td>
+            <td>${isAdmin(t)
+              ? '<span class="pill pill-primary">Siempre</span>'
+              : `<label class="check-chip"><input type="checkbox" ${t.permisoEstudiantes?'checked':''}
+                   onchange="togglePermisoEstudiantes('${t.id}', this.checked)"> Autorizado</label>`}</td>
+            <td>
+              <button class="btn btn-sm" onclick="definirClave('${t.id}')">Guardar</button>
+              ${tieneClave(t)?`<button class="btn btn-sm btn-danger" onclick="quitarClave('${t.id}')">Quitar</button>`:''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  ${renderGrados()}
+  ${renderPonderacion()}
+  ${renderCierreAnio()}
+  ${renderCierreModal()}
+  `}
+  ${!soloDir ? `<div class="note">La identidad del centro escolar, los grados, la ponderación, las contraseñas y el cierre de año los administra Dirección.</div>` : ''}`;
+}
+function renderPonderacion(){
+  const lista = rubrosActivos();
+  const suma = Math.round(sumaPesos()*100);
+  const ok = suma === 100;
+  return `
+  <div class="card">
+    <p class="card-title">Ponderación del período
+      <span class="pill ${ok?'pill-primary':'pill-rojo'}">Suma: ${suma}%</span>
+    </p>
+    <p style="font-size:13.5px; color:var(--muted); margin:0 0 14px;">
+      Agrega o quita rubros y define cuánto vale cada uno. Marca "Con fecha" si el rubro es una entrega
+      que lleva calendario y estado y debe aparecer en el Registro de tareas. Marca "Con recuperación"
+      para habilitar una segunda casilla: el sistema tomará la nota más alta de las dos.
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Rubro</th><th style="width:120px;">Porcentaje</th>
+        <th style="width:110px;">Con fecha</th><th style="width:130px;">Con recuperación</th><th style="width:90px;"></th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td>
+            <b>Actividades</b>
+            <div class="nota-chica" style="margin:2px 0 0;">Promedio de las casillas. Siempre lleva fecha y estado.</div>
+          </td>
+          <td><div style="display:flex;align-items:center;gap:6px;">
+            <input type="number" id="pw_actividades" min="0" max="100" step="1"
+              value="${Math.round(pesoDe('actividades')*100)}" style="max-width:80px;text-align:center;" oninput="previewPesos()">
+            <span style="color:var(--muted);">%</span></div></td>
+          <td><span class="pill pill-primary">Sí</span></td>
+          <td><span class="empty" style="padding:0;">—</span></td>
+          <td><span class="empty" style="padding:0;">Fijo</span></td>
+        </tr>
+        ${lista.map((r,i)=>`
+          <tr>
+            <td><input type="text" id="rb_nom_${i}" value="${esc(r.nombre)}" placeholder="Nombre del rubro"></td>
+            <td><div style="display:flex;align-items:center;gap:6px;">
+              <input type="number" id="rb_peso_${i}" min="0" max="100" step="1"
+                value="${Math.round(r.peso*100)}" style="max-width:80px;text-align:center;" oninput="previewPesos()">
+              <span style="color:var(--muted);">%</span></div></td>
+            <td><label class="check-chip"><input type="checkbox" id="rb_tar_${i}" ${r.tarea?'checked':''}> Con fecha</label></td>
+            <td><label class="check-chip"><input type="checkbox" id="rb_rec_${i}" ${r.conRecuperacion?'checked':''}> Recuperación</label></td>
+            <td><button class="btn btn-sm btn-danger" onclick="quitarRubro(${i})">Quitar</button></td>
+          </tr>`).join('')}
+      </tbody>
+      <tfoot><tr>
+        <td style="font-weight:600;">Total</td>
+        <td><span id="pw_total" class="pill ${ok?'pill-primary':'pill-rojo'}">${suma}%</span></td>
+        <td colspan="3"></td>
+      </tr></tfoot>
+    </table>
+    </div>
+    <div class="btn-row" style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="guardarPesos()">Guardar ponderación</button>
+      <button class="btn" onclick="agregarRubro()">+ Agregar rubro</button>
+    </div>
+    ${!ok?`<div class="note" style="margin:14px 0 0; border-left-color:var(--red);">Los porcentajes deben sumar 100% para poder guardar. Ahora suman ${suma}%.</div>`:''}
+  </div>`;
+}
+/* Lee la tabla tal como está en pantalla, sin perder lo que el usuario acaba de escribir */
+function leerPonderacionFormulario(){
+  const lista = rubrosActivos();
+  const elAct = document.getElementById('pw_actividades');
+  const actividades = elAct ? Math.max(0, Math.min(100, Number(elAct.value)||0)) : Math.round(pesoDe('actividades')*100);
+  let suma = actividades;
+  const rubros = lista.map((r,i)=>{
+    const nom = document.getElementById('rb_nom_'+i);
+    const pes = document.getElementById('rb_peso_'+i);
+    const tar = document.getElementById('rb_tar_'+i);
+    const rec = document.getElementById('rb_rec_'+i);
+    const peso = pes ? Math.max(0, Math.min(100, Number(pes.value)||0)) : Math.round(r.peso*100);
+    suma += peso;
+    return {key:r.key, nombre: nom ? nom.value.trim() : r.nombre, pesoPct:peso,
+      tarea: tar ? !!tar.checked : !!r.tarea,
+      conRecuperacion: rec ? !!rec.checked : !!r.conRecuperacion};
+  });
+  return {actividades, rubros, suma};
+}
+function previewPesos(){
+  const {suma} = leerPonderacionFormulario();
+  const el = document.getElementById('pw_total');
+  if(el){
+    el.textContent = suma + '%';
+    el.className = 'pill ' + (suma===100 ? 'pill-primary' : 'pill-rojo');
+  }
+}
+function aplicarPonderacion(actividades, rubros){
+  commit(doc=>{
+    doc.config = doc.config || {};
+    doc.config.pesos = {actividades: actividades/100};
+    doc.config.rubros = rubros.map(r=>({key:r.key, nombre:r.nombre, peso:r.pesoPct/100, tarea:r.tarea, conRecuperacion:r.conRecuperacion}));
+  });
+}
+function agregarRubro(){
+  const {actividades, rubros} = leerPonderacionFormulario();
+  rubros.push({key:uid('rb'), nombre:'Nuevo rubro', pesoPct:0, tarea:false, conRecuperacion:false});
+  aplicarPonderacion(actividades, rubros);
+  showToast('Rubro agregado. Ponle nombre y porcentaje, luego guarda.');
+  render();
+}
+function quitarRubro(indice){
+  const lista = rubrosActivos();
+  const r = lista[indice];
+  if(!r) return;
+  if(lista.length <= 1){ showToast('Debe quedar al menos un rubro además de Actividades.'); return; }
+  const usos = Object.keys(DB.calificaciones||{}).filter(k=>k.split('|')[3]===r.key).length;
+  const aviso = usos>0
+    ? '¿Quitar el rubro "'+r.nombre+'"? Se borrarán '+usos+' nota(s) ya cargada(s) en él y no se pueden recuperar.'
+    : '¿Quitar el rubro "'+r.nombre+'"?';
+  if(!confirm(aviso)) return;
+  const {actividades, rubros} = leerPonderacionFormulario();
+  const restantes = rubros.filter((x,i)=>i!==indice);
+  commit(doc=>{
+    doc.config = doc.config || {};
+    doc.config.pesos = {actividades: actividades/100};
+    doc.config.rubros = restantes.map(x=>({key:x.key, nombre:x.nombre, peso:x.pesoPct/100, tarea:x.tarea, conRecuperacion:x.conRecuperacion}));
+    ['calificaciones','observaciones','estados'].forEach(mapa=>{
+      if(!doc[mapa]) return;
+      Object.keys(doc[mapa]).forEach(k=>{
+        const c = k.split('|')[3];
+        if(c===r.key || c===claveRecuperacion(r.key)) delete doc[mapa][k];
+      });
+    });
+    if(doc.tareas) Object.keys(doc.tareas).forEach(k=>{ if(k.split('|')[2]===r.key) delete doc.tareas[k]; });
+    if(doc.rubros) Object.keys(doc.rubros).forEach(k=>{ if(k.split('|')[2]===r.key) delete doc.rubros[k]; });
+  });
+  showToast('Rubro quitado. Revisa que los porcentajes sumen 100%.');
+  render();
+}
+function guardarPesos(){
+  const {actividades, rubros, suma} = leerPonderacionFormulario();
+  if(rubros.some(r=>!r.nombre)){ showToast('Todos los rubros deben tener nombre.'); return; }
+  if(suma !== 100){
+    showToast('Los porcentajes deben sumar exactamente 100%. Ahora suman ' + suma + '%.');
+    return;
+  }
+  aplicarPonderacion(actividades, rubros);
+  showToast('Ponderación guardada. Las notas se recalcularon.');
+  render();
+}
+
+function renderGrados(){
+  const grados = DB.config.grados || [];
+  const conteo = {};
+  grados.forEach(g=>conteo[g] = DB.estudiantes.filter(e=>e.grado===g).length);
+  return `
+  <div class="card">
+    <p class="card-title">Grados y aulas</p>
+    <p style="font-size:13.5px; color:var(--muted); margin:0 0 14px;">
+      El orden importa: en el cierre de año, cada aula promueve a la que está justo debajo.
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Grado / aula</th><th style="width:110px;">Estudiantes</th><th style="width:190px;">Orden</th><th></th></tr></thead>
+      <tbody>
+        ${grados.length===0?`<tr><td colspan="4" class="empty">Aún no hay grados. Agrega el primero abajo.</td></tr>`:''}
+        ${grados.map((g,i)=>`
+          <tr>
+            <td><input type="text" id="gr_${i}" value="${esc(g)}" onchange="renombrarGrado(${i}, this.value)"></td>
+            <td class="mono">${conteo[g]}</td>
+            <td>
+              <button class="btn btn-sm" onclick="moverGrado(${i},-1)" ${i===0?'disabled':''}>↑</button>
+              <button class="btn btn-sm" onclick="moverGrado(${i},1)" ${i===grados.length-1?'disabled':''}>↓</button>
+            </td>
+            <td><button class="btn btn-sm btn-danger" onclick="eliminarGrado(${i})">Eliminar</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    <div class="assign-row" style="margin-top:14px;">
+      <div class="field" style="flex:1; margin-bottom:0;">
+        <label>Nuevo grado o aula</label>
+        <input type="text" id="nuevo_grado" placeholder="Ej.: 7° Grado B">
+      </div>
+      <button class="btn btn-primary" onclick="agregarGrado()">Agregar</button>
+    </div>
+  </div>`;
+}
+function agregarGrado(){
+  const campo = document.getElementById('nuevo_grado');
+  const nombre = campo.value.trim();
+  if(!nombre){ showToast('Escribe el nombre del grado.'); return; }
+  if((DB.config.grados||[]).some(g=>g.toLowerCase()===nombre.toLowerCase())){
+    showToast('Ese grado ya existe.'); return;
+  }
+  commit(doc=>{
+    doc.config = doc.config || {};
+    doc.config.grados = doc.config.grados || [];
+    doc.config.grados.push(nombre);
+    doc.curriculo = doc.curriculo || {};
+    doc.curriculo[nombre] = doc.curriculo[nombre] || [];
+  });
+  campo.value = '';
+  showToast('Grado agregado.');
+  render();
+}
+function moverGrado(i, dir){
+  const destino = i + dir;
+  commit(doc=>{
+    const g = doc.config.grados;
+    if(destino < 0 || destino >= g.length) return;
+    const tmp = g[i]; g[i] = g[destino]; g[destino] = tmp;
+  });
+  render();
+}
+/* Renombrar arrastra el cambio a estudiantes, docentes, currículo, actividades y tareas */
+function renombrarGrado(i, nuevo){
+  const limpio = (nuevo||'').trim();
+  const anterior = DB.config.grados[i];
+  if(!limpio || limpio === anterior){ render(); return; }
+  if(DB.config.grados.some((g,j)=>j!==i && g.toLowerCase()===limpio.toLowerCase())){
+    showToast('Ya existe un grado con ese nombre.');
+    render();
+    return;
+  }
+  commit(doc=>{
+    doc.config.grados[i] = limpio;
+    (doc.estudiantes||[]).forEach(e=>{ if(e.grado===anterior) e.grado = limpio; });
+    (doc.docentes||[]).forEach(d=>{
+      if(Array.isArray(d.orientaciones)) d.orientaciones = d.orientaciones.map(x=>x===anterior?limpio:x);
+      if(d.orientacion===anterior) d.orientacion = limpio;
+      (d.asignaciones||[]).forEach(a=>{ if(a.grado===anterior) a.grado = limpio; });
+    });
+    if(doc.curriculo && doc.curriculo[anterior]){
+      doc.curriculo[limpio] = doc.curriculo[anterior];
+      delete doc.curriculo[anterior];
+    }
+    ['actividades','tareas','rubros'].forEach(mapa=>{
+      if(!doc[mapa]) return;
+      Object.keys(doc[mapa]).forEach(k=>{
+        const p = k.split('|');
+        if(p[0] === anterior){
+          p[0] = limpio;
+          doc[mapa][p.join('|')] = doc[mapa][k];
+          delete doc[mapa][k];
+        }
+      });
+    });
+  });
+  showToast('Grado renombrado en todo el sistema.');
+  render();
+}
+function eliminarGrado(i){
+  const g = DB.config.grados[i];
+  const cuantos = DB.estudiantes.filter(e=>e.grado===g).length;
+  if(cuantos > 0){
+    showToast('No se puede eliminar: hay ' + cuantos + ' estudiante(s) en ese grado. Muévelos primero.');
+    return;
+  }
+  if(!confirm('¿Eliminar el grado "' + g + '"? También se quitarán las asignaciones de docentes a ese grado.')) return;
+  commit(doc=>{
+    doc.config.grados.splice(i,1);
+    if(doc.curriculo) delete doc.curriculo[g];
+    (doc.docentes||[]).forEach(d=>{
+      if(Array.isArray(d.orientaciones)) d.orientaciones = d.orientaciones.filter(x=>x!==g);
+      if(d.orientacion===g) d.orientacion = null;
+      d.asignaciones = (d.asignaciones||[]).filter(a=>a.grado!==g);
+    });
+    ['actividades','tareas','rubros'].forEach(mapa=>{
+      if(!doc[mapa]) return;
+      Object.keys(doc[mapa]).forEach(k=>{ if(k.split('|')[0] === g) delete doc[mapa][k]; });
+    });
+  });
+  showToast('Grado eliminado.');
+  render();
+}
+
+function renderCierreAnio(){
+  const aj = DB.ajustes || {};
+  const anioActual = aj.anio || String(new Date().getFullYear());
+  const conteo = {
+    notas: Object.keys(DB.calificaciones||{}).length,
+    tareas: Object.keys(DB.estados||{}).length,
+    obs: Object.keys(DB.observaciones||{}).length
+  };
+  return `
+  <div class="card">
+    <p class="card-title">Cierre de año escolar</p>
+    <div class="field" style="max-width:260px;">
+      <label>Año escolar en curso</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="cierre_anio_actual" value="${esc(anioActual)}" style="max-width:120px;">
+        <button class="btn btn-sm" onclick="cambiarAnioActual()">Guardar</button>
+      </div>
+    </div>
+    <p style="font-size:13.5px; color:var(--muted); margin:0 0 14px;">
+      Al terminar el año, esto archiva las calificaciones, promueve a los estudiantes al grado siguiente
+      y deja el sistema limpio para empezar de nuevo. Se conservan docentes, asignaturas, contraseñas y el logo.
+    </p>
+    <div class="grid grid-3" style="margin-bottom:16px;">
+      <div class="stat"><p class="stat-label">Calificaciones</p><p class="stat-value">${conteo.notas}</p></div>
+      <div class="stat"><p class="stat-label">Estados de tareas</p><p class="stat-value">${conteo.tareas}</p></div>
+      <div class="stat"><p class="stat-label">Observaciones</p><p class="stat-value">${conteo.obs}</p></div>
+    </div>
+    <div class="note" style="margin-bottom:14px;">
+      <b>Antes de continuar, descarga el Excel del año.</b> Una vez cerrado el año, las calificaciones
+      no se pueden recuperar desde el sistema: el archivo de Excel es el registro histórico.
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="descargarRespaldo()">1. Descargar el año ${esc(anioActual)} en Excel</button>
+      <button class="btn btn-danger" onclick="abrirCierre()">2. Iniciar cierre de año</button>
+    </div>
+  </div>`;
+}
+function cambiarAnioActual(){
+  const v = document.getElementById('cierre_anio_actual').value.trim();
+  if(!v){ showToast('Escribe el año escolar.'); return; }
+  commit(doc=>{ doc.ajustes = doc.ajustes || {}; doc.ajustes.anio = v; });
+  showToast('Año escolar actualizado a ' + v + '.');
+  render();
+}
+function abrirCierre(){ viewState.cierre = {paso:1}; render(); }
+function cerrarCierre(){ viewState.cierre = null; render(); }
+function renderCierreModal(){
+  if(!viewState.cierre) return '';
+  const grados = DB.config.grados;
+  const aj = DB.ajustes || {};
+  const anioActual = aj.anio || String(new Date().getFullYear());
+  const sugerido = String(Number(anioActual) + 1);
+  return `
+  <div class="modal-bg" onclick="if(event.target===this) cerrarCierre()">
+    <div class="modal" style="max-width:620px;">
+      <button class="modal-close" onclick="cerrarCierre()">×</button>
+      <h3 class="modal-title">Cierre del año ${esc(anioActual)}</h3>
+      <div class="field">
+        <label>Año escolar nuevo</label>
+        <input type="text" id="c_anio" value="${esc(sugerido)}" style="max-width:160px;">
+      </div>
+      <label style="margin-bottom:8px;">¿A qué grado pasa cada aula?</label>
+      <div style="max-height:230px; overflow-y:auto; padding-right:4px;">
+        ${grados.map((g,i)=>`
+          <div class="assign-list-item" style="gap:12px;">
+            <span style="flex:1;">${esc(g)}</span>
+            <span style="color:var(--muted);">&rarr;</span>
+            <select id="c_dest_${i}" style="max-width:230px;">
+              ${grados.map((d,j)=>`<option value="${j}" ${j===i+1?'selected':''}>${esc(d)}</option>`).join('')}
+              <option value="egresa" ${i===grados.length-1?'selected':''}>Egresa del centro escolar</option>
+              <option value="queda">Repite / se queda en ${esc(g)}</option>
+            </select>
+          </div>`).join('')}
+      </div>
+      <div class="note" style="margin:14px 0;">
+        Los estudiantes que egresan se eliminan del listado. Los que repiten se quedan en su grado.
+        Puedes ajustar casos individuales después, en la pantalla Estudiantes.
+      </div>
+      <div class="field">
+        <label>Para confirmar, escribe la palabra CERRAR</label>
+        <input type="text" id="c_confirma" placeholder="CERRAR" style="max-width:200px;">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-danger" onclick="ejecutarCierre()">Cerrar el año y empezar ${esc(sugerido)}</button>
+        <button class="btn" onclick="cerrarCierre()">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+}
+function ejecutarCierre(){
+  if(document.getElementById('c_confirma').value.trim().toUpperCase() !== 'CERRAR'){
+    showToast('Escribe la palabra CERRAR para confirmar.');
+    return;
+  }
+  const grados = DB.config.grados;
+  const anioNuevo = document.getElementById('c_anio').value.trim() || String(new Date().getFullYear()+1);
+  const destino = {};
+  grados.forEach((g,i)=>{
+    const v = document.getElementById('c_dest_'+i).value;
+    if(v === 'egresa') destino[g] = null;
+    else if(v === 'queda') destino[g] = g;
+    else destino[g] = grados[Number(v)] || g;
+  });
+  let promovidos = 0, egresados = 0;
+  commit(doc=>{
+    doc.calificaciones = {};
+    doc.estados = {};
+    doc.observaciones = {};
+    doc.tareas = {};
+    doc.estudiantes = (doc.estudiantes||[]).filter(e=>{
+      const d = destino[e.grado];
+      if(d === null || d === undefined){ egresados++; return false; }
+      if(d !== e.grado) promovidos++;
+      e.grado = d;
+      return true;
+    });
+    doc.ajustes = doc.ajustes || {};
+    doc.ajustes.anio = anioNuevo;
+  });
+  viewState.cierre = null;
+  render();
+  showToast('Año cerrado. ' + promovidos + ' promovido(s), ' + egresados + ' egresado(s). Ya puedes trabajar el ' + anioNuevo + '.');
+}
+
+function guardarMensajes(){
+  const frase = document.getElementById('aj_frase').value.trim();
+  const mensaje = document.getElementById('aj_mensaje').value.trim();
+  commit(doc=>{
+    doc.ajustes = doc.ajustes || {};
+    doc.ajustes.fraseSaludo = frase;
+    doc.ajustes.mensajeBienvenida = mensaje;
+  });
+  selloVisto = '';   // el texto cambió: se vuelve a mostrar hoy mismo
+  showToast('Mensajes guardados.');
+  render();
+}
+function verMensajeAhora(){
+  const mensaje = document.getElementById('aj_mensaje').value.trim();
+  if(!mensaje){ showToast('Escribe primero el mensaje.'); return; }
+  DB.ajustes = DB.ajustes || {};
+  DB.ajustes.mensajeBienvenida = mensaje;
+  selloVisto = '';
+  try{ window.localStorage.removeItem('mensaje_visto'); }catch(e){}
+  render();
+}
+function guardarAjustes(){
+  const leer = id => { const el = document.getElementById(id); return el ? String(el.value).trim() : null; };
+  const nombre = leer('aj_nombre') || 'Centro Escolar';
+  const anio = leer('aj_anio');
+  const frase = leer('aj_frase');
+  const mensaje = leer('aj_mensaje');
+  const siglas = leer('aj_siglas');
+  const mensajeAnterior = (DB.ajustes && DB.ajustes.mensajeBienvenida) || '';
+  commit(doc=>{
+    doc.ajustes = doc.ajustes || {};
+    doc.ajustes.nombreColegio = nombre;
+    if(anio !== null) doc.ajustes.anio = anio;
+    if(frase !== null) doc.ajustes.fraseSaludo = frase;
+    if(siglas !== null) doc.ajustes.siglas = siglas;
+    if(mensaje !== null) doc.ajustes.mensajeBienvenida = mensaje;
+  });
+  if(mensaje !== null && mensaje !== mensajeAnterior){
+    selloVisto = '';                                  // el texto cambió: se vuelve a mostrar hoy mismo
+    try{ window.localStorage.removeItem('mensaje_visto'); }catch(e){}   // vuelve a aparecer a todos
+  }
+  showToast('Cambios guardados.');
+  render();
+}
+function subirLogo(){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if(!f) return;
+    if(f.size > 200*1024){ showToast('La imagen supera 200 KB. Usa una más pequeña.'); return; }
+    const lector = new FileReader();
+    lector.onload = () => {
+      commit(doc=>{ doc.ajustes = doc.ajustes || {}; doc.ajustes.logo = lector.result; });
+      showToast('Logo actualizado.');
+      render();
+    };
+    lector.readAsDataURL(f);
+  };
+  inp.click();
+}
+function quitarLogo(){
+  commit(doc=>{ doc.ajustes = doc.ajustes || {}; doc.ajustes.logo = ''; });
+  render();
+}
+/* Dirección autoriza (o retira) el permiso para agregar y editar estudiantes */
+function verClave(id){
+  const t = DB.docentes.find(x=>x.id===id);
+  const el = document.getElementById('vc_'+id);
+  if(!t || !el) return;
+  el.textContent = (el.textContent === '••••••') ? (t.claveTexto || '—') : '••••••';
+}
+function togglePermisoEstudiantes(id, valor){
+  commit(doc=>{
+    const t = doc.docentes.find(x=>x.id===id);
+    if(t){ if(valor) t.permisoEstudiantes = true; else delete t.permisoEstudiantes; }
+  });
+  const t = DB.docentes.find(x=>x.id===id);
+  showToast(valor
+    ? (t?t.nombre:'El docente') + ' ya puede agregar y editar estudiantes.'
+    : 'Permiso retirado.');
+  render();
+}
+function puedeGestionarEstudiantes(u){
+  u = u || currentUser;
+  return !!u && (isAdmin(u) || u.permisoEstudiantes === true);
+}
+function definirClave(id){
+  const campo = document.getElementById('cl_'+id);
+  const txt = campo.value.trim();
+  if(txt.length < 4){ showToast('La contraseña debe tener al menos 4 caracteres.'); return; }
+  const h = hashClave(txt);
+  commit(doc=>{
+    const t = doc.docentes.find(x=>x.id===id);
+    if(t){ t.clave = h; t.claveTexto = txt; }   // el texto queda a la vista de Dirección
+  });
+  campo.value = '';
+  showToast('Contraseña definida.');
+  render();
+}
+/* Cada usuario cambia la suya desde "Mi cuenta" */
+function cambiarMiClave(){
+  const actual = document.getElementById('mi_actual');
+  const nueva = document.getElementById('mi_nueva').value.trim();
+  const repetir = document.getElementById('mi_repetir').value.trim();
+  if(tieneClave(currentUser)){
+    if(!actual || hashClave(actual.value.trim()) !== currentUser.clave){
+      showToast('La contraseña actual no es correcta.');
+      return;
+    }
+  }
+  if(nueva.length < 4){ showToast('La nueva contraseña debe tener al menos 4 caracteres.'); return; }
+  if(nueva !== repetir){ showToast('Las dos contraseñas nuevas no coinciden.'); return; }
+  const h = hashClave(nueva);
+  const yo = currentUser.id;
+  commit(doc=>{
+    const t = doc.docentes.find(x=>x.id===yo);
+    if(t){ t.clave = h; t.claveTexto = nueva; }
+  });
+  viewState.abrirClave = false;
+  showToast('Tu contraseña quedó actualizada.');
+  render();
+}
+function quitarMiClave(){
+  if(!confirm('¿Quitar tu contraseña? Entrarás solo con seleccionar tu nombre.')) return;
+  const yo = currentUser.id;
+  commit(doc=>{
+    const t = doc.docentes.find(x=>x.id===yo);
+    if(t){ delete t.clave; delete t.claveTexto; }
+  });
+  viewState.abrirClave = false;
+  showToast('Contraseña eliminada.');
+  render();
+}
+function renderTarjetaClave(){
+  const tiene = tieneClave(currentUser);
+  const abierto = !!viewState.abrirClave;
+  return `
+  <div class="card">
+    <p class="card-title">
+      Mi contraseña
+      <span class="pill ${tiene?'pill-primary':'pill-muted'}">${tiene?'Definida':'Sin contraseña'}</span>
+      <button class="btn btn-sm" style="margin-left:auto;" onclick="viewState.abrirClave=${abierto?'false':'true'}; render()">
+        ${abierto?'Cerrar':(tiene?'Cambiar contraseña':'Crear contraseña')}
+      </button>
+    </p>
+    ${!abierto ? `<p style="font-size:13px;color:var(--muted);margin:0;">
+        ${tiene
+          ? 'El sistema te pide esta contraseña cada vez que entras.'
+          : 'Entras solo con seleccionar tu nombre. Si quieres, crea una contraseña.'}
+      </p>` : `
+    <div style="max-width:420px;">
+      ${tiene?`<div class="field">
+        <label>Contraseña actual</label>
+        <input type="password" id="mi_actual" placeholder="La que usas ahora">
+      </div>`:''}
+      <div class="field">
+        <label>Nueva contraseña (mínimo 4 caracteres)</label>
+        <input type="password" id="mi_nueva" placeholder="Nueva contraseña">
+      </div>
+      <div class="field">
+        <label>Repetir la nueva contraseña</label>
+        <input type="password" id="mi_repetir" placeholder="Escríbela otra vez">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="cambiarMiClave()">Guardar contraseña</button>
+        ${tiene?`<button class="btn btn-danger" onclick="quitarMiClave()">Quitar mi contraseña</button>`:''}
+      </div>
+      <div class="note" style="margin-top:14px;">Dirección puede consultar y restablecer las contraseñas del personal.</div>
+    </div>`}
+  </div>`;
+}
+function quitarClave(id){
+  if(!confirm('¿Quitar la contraseña? Ese usuario entrará sin pedirla.')) return;
+  commit(doc=>{
+    const t = doc.docentes.find(x=>x.id===id);
+    if(t){ delete t.clave; delete t.claveTexto; }
+  });
+  render();
+}
+
+function renderTareas(){
+  const pestana = viewState.tareaTab || 'registro';
+  const gradosVisibles = misGrados(currentUser);
+  const filtro = {
+    grado: viewState.tGrado || '',
+    estudiante: viewState.tEst || '',
+    estado: viewState.tEstado || '',
+    periodo: viewState.tPeriodo || '',
+    asigId: viewState.tAsig || ''
+  };
+  const estudiantesFiltro = DB.estudiantes
+    .filter(e=>gradosVisibles.indexOf(e.grado)>=0)
+    .filter(e=>!filtro.grado || e.grado===filtro.grado)
+    .slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+
+  const materiasVisibles = (()=>{
+    const ids = new Set();
+    gradosVisibles.forEach(g=>{
+      if(filtro.grado && g !== filtro.grado) return;
+      asignaturasDeGrado(g).forEach(a=>{
+        if(isAdmin(currentUser) || esOrientador(currentUser, g) ||
+           currentUser.asignaciones.some(x=>x.grado===g && x.asignaturaId===a.id)) ids.add(a.id);
+      });
+    });
+    return DB.asignaturas.filter(a=>ids.has(a.id));
+  })();
+
+  const buscador = `
+  <div class="filters">
+    <div class="field">
+      <label>Buscar por grado</label>
+      <select onchange="viewState.tGrado=this.value; viewState.tEst=''; render()">
+        <option value="">Todos los grados</option>
+        ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${filtro.grado===g?'selected':''}>${esc(g)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Buscar por materia</label>
+      <select onchange="viewState.tAsig=this.value; render()">
+        <option value="">Todas mis materias</option>
+        ${materiasVisibles.map(a=>`<option value="${a.id}" ${filtro.asigId===a.id?'selected':''}>${esc(a.nombre)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Buscar por estudiante</label>
+      <select onchange="viewState.tEst=this.value; render()">
+        <option value="">${filtro.grado?'Todos los de '+esc(filtro.grado):'Todos los estudiantes'}</option>
+        ${estudiantesFiltro.map(e=>`<option value="${e.id}" ${filtro.estudiante===e.id?'selected':''}>${esc(e.nombre)}${filtro.grado?'':' — '+esc(e.grado)}</option>`).join('')}
+      </select>
+    </div>
+    ${pestana==='registro'?`
+    <div class="field">
+      <label>Período</label>
+      <select onchange="viewState.tPeriodo=this.value; render()">
+        <option value="">Todos los períodos</option>
+        ${[1,2,3,4].map(p=>`<option value="${p}" ${String(filtro.periodo)===String(p)?'selected':''}>Período ${p}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Estado</label>
+      <select onchange="viewState.tEstado=this.value; render()">
+        <option value="">Todos</option>
+        <option value="entregada" ${filtro.estado==='entregada'?'selected':''}>Entregada</option>
+        <option value="tardia" ${filtro.estado==='tardia'?'selected':''}>Entrega tardía</option>
+        <option value="no" ${filtro.estado==='no'?'selected':''}>No entregada</option>
+      </select>
+    </div>`:''}
+  </div>`;
+
+  let contenido;
+  if(pestana === 'registro'){
+    const filas = listaTareas(filtro);
+    contenido = `
+    ${buscador}
+    <div class="card">
+      <p class="card-title">Registro de tareas <span class="pill pill-muted">${filas.length} registro(s)</span></p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Fecha</th><th>Grado</th><th>Materia</th><th>Estudiante</th>
+          <th>Nombre de la tarea</th><th>Tipo</th><th>Período</th><th>Nota</th><th>Estado</th><th>Observaciones</th>
+        </tr></thead>
+        <tbody>
+          ${filas.length===0?`<tr><td colspan="10" class="empty">Aún no hay tareas registradas. Se llenan solas al cargar fechas, notas o estados en Calificaciones.</td></tr>`:''}
+          ${filas.map(f=>`<tr>
+            <td class="mono">${f.fecha?esc(f.fecha):'—'}</td>
+            <td>${esc(f.grado)}</td>
+            <td>${esc(f.materia)}</td>
+            <td>${esc(f.estudiante)}</td>
+            <td>${esc(f.tarea)}</td>
+            <td><span class="pill pill-muted">${esc(f.tipo||'Actividad')}</span></td>
+            <td class="mono">Período ${f.periodo}</td>
+            <td class="mono">${f.nota!==undefined?f.nota:'—'}</td>
+            <td>${f.estado?`<span class="pill ${ESTADOS[f.estado].pill}">${ESTADOS[f.estado].nombre}</span>`:'<span class="empty" style="padding:0;">Sin estado</span>'}</td>
+            <td style="max-width:230px; font-size:12.5px; color:var(--muted);">${f.obs?esc(f.obs):'—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+  }else{
+    const alertas = calcularAlertas({grado:filtro.grado, estudiante:filtro.estudiante, asigId:filtro.asigId});
+    const conteo = {roja:0, naranja:0, amarilla:0};
+    alertas.forEach(a=>conteo[a.alerta.nivel]++);
+    contenido = `
+    ${buscador}
+    <div class="grid grid-3" style="margin-bottom:18px;">
+      <div class="stat alerta-amarilla"><p class="stat-label">Alerta amarilla · 2 pendientes</p><p class="stat-value">${conteo.amarilla}</p></div>
+      <div class="stat alerta-naranja"><p class="stat-label">Alerta naranja · 3 pendientes</p><p class="stat-value">${conteo.naranja}</p></div>
+      <div class="stat alerta-roja"><p class="stat-label">Alerta roja · 4 o más</p><p class="stat-value">${conteo.roja}</p></div>
+    </div>
+    ${alertas.length===0?`<div class="card"><p class="empty">Ningún estudiante alcanza el umbral de alerta. Se necesitan al menos 2 tareas marcadas como "No entregada".</p></div>`:''}
+    ${alertas.map(a=>`
+      <div class="card ${a.alerta.clase}">
+        <p class="card-title">
+          ${esc(a.estudiante)} — ${esc(a.grado)}
+          <span class="pill ${a.alerta.nivel==='roja'?'pill-rojo':(a.alerta.nivel==='naranja'?'pill-naranja':'pill-gold')}">
+            Alerta ${esc(a.alerta.nombre)} · ${a.cantidad} pendientes en ${a.materias.length} materia(s)
+          </span>
+        </p>
+        <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Grado</th><th>Materia</th><th>Estudiante</th><th>Nombre de la tarea</th><th>Estado</th></tr></thead>
+          <tbody>
+            ${a.filas.map(f=>`<tr>
+              <td class="mono">${f.fecha?esc(f.fecha):'—'}</td>
+              <td>${esc(f.grado)}</td>
+              <td>${esc(f.materia)}</td>
+              <td>${esc(f.estudiante)}</td>
+              <td>${esc(f.tarea)} <span class="pill pill-muted">${esc(f.tipo||'Actividad')}</span></td>
+              <td><span class="pill pill-rojo">No entregada</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        </div>
+      </div>`).join('')}`;
+  }
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Seguimiento</p>
+    <h1 class="page-title">Registro de tareas</h1>
+    <p class="page-desc">Se alimenta solo de lo que cada docente carga en Calificaciones: fecha de la tarea, nota, estado y observaciones.</p>
+  </div>
+  <div class="period-tabs">
+    <div class="period-tab ${pestana==='registro'?'active':''}" onclick="viewState.tareaTab='registro'; render()">Registro</div>
+    <div class="period-tab ${pestana==='alertas'?'active':''}" onclick="viewState.tareaTab='alertas'; render()">Alertas</div>
+  </div>
+  <div style="border:1px solid var(--line-strong); border-radius:0 var(--radius) var(--radius) var(--radius); padding:18px; background:var(--panel-2);">
+    ${contenido}
+  </div>`;
+}
+
+function renderNoAccess(){
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Acceso restringido</p>
+    <h1 class="page-title">No tienes permiso para ver esta sección</h1>
+    <p class="page-desc">Esta sección está reservada para los dominios de administración (Dirección, Coordinación académica y Secretaría).</p>
+  </div>`;
+}
+
+/* ============================= CALIFICACIONES ============================= */
+function renderCalificaciones(){
+  const gradosVisibles = misGrados(currentUser);
+  if(gradosVisibles.length===0){
+    return `<div class="page-head"><p class="page-eyebrow">Evaluación</p><h1 class="page-title">Calificaciones</h1><p class="page-desc">No tienes grados ni asignaturas asignadas todavía. Contacta a Dirección o Coordinación académica.</p></div>`;
+  }
+  const grado = viewState.califGrado || gradosVisibles[0];
+  const asignaturasPosibles = isAdmin(currentUser) || esOrientador(currentUser, grado)
+    ? asignaturasDeGrado(grado)
+    : asignaturasDeGrado(grado).filter(s=>currentUser.asignaciones.some(a=>a.grado===grado && a.asignaturaId===s.id));
+  const asignatura = viewState.califAsig && asignaturasPosibles.some(s=>s.id===viewState.califAsig) ? viewState.califAsig : (asignaturasPosibles[0] ? asignaturasPosibles[0].id : '');
+  const periodo = viewState.califPeriodo || 1;
+  const puedeEditar = asignatura && canEditGrades(currentUser, grado, asignatura);
+  const acts = asignatura ? getActividades(grado, asignatura) : [];
+
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), viewState.ordenEst || 'apellidos');
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Evaluación</p>
+    <h1 class="page-title">Calificaciones</h1>
+    <p class="page-desc">Cada período se compone de: Actividades ${Math.round(pesoDe('actividades')*100)}% (repartido entre las casillas que definas), ${rubrosActivos().map(r=>esc(r.nombre)+' '+Math.round(r.peso*100)+'%').join(', ')}. La nota final del año promedia los 4 períodos.</p>
+  </div>
+  <div class="filters">
+    <div class="field">
+      <label>Aula</label>
+      <select class="grado-select" onchange="viewState.califGrado=this.value; viewState.califAsig=null; render()">
+        ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Asignatura</label>
+      <select onchange="viewState.califAsig=this.value; render()">
+        ${asignaturasPosibles.length===0?'<option value="">Sin asignaturas disponibles</option>':''}
+        ${asignaturasPosibles.map(s=>`<option value="${s.id}" ${asignatura===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+
+  ${asignaturasPosibles.length===0 ? `<div class="card"><p class="empty">No tienes asignaturas asignadas en esta aula.</p></div>` : `
+  <div class="period-tabs">
+    ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="viewState.califPeriodo=${p}; render()">Período ${p}</div>`).join('')}
+    <button class="btn btn-sm" style="margin-left:auto; align-self:center;"
+      onclick="descargarCalificaciones('${esc(grado)}','${asignatura}',${periodo})">Descargar en Excel</button>
+  </div>
+
+  <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius); margin-top:0;">
+    <p class="card-title">Actividades (${Math.round(pesoDe('actividades')*100)}% del período)${puedeEditar?`<button class="btn btn-sm" onclick="addActividad('${esc(grado)}','${asignatura}')">+ Agregar casilla</button>`:''}</p>
+    <div class="acts-grid">
+      ${acts.map(a=>{
+        const fecha = getFechaTarea(grado, asignatura, a.id, periodo);
+        return `
+        <div class="act-chip">
+          <div class="act-chip-top">
+            ${puedeEditar
+              ? `<input type="text" value="${esc(a.nombre)}" class="act-nombre" onchange="renameActividad('${esc(grado)}','${asignatura}','${a.id}',this.value); this.blur();">
+                 <button class="icon-btn" style="padding:2px 6px;" title="Eliminar casilla" onclick="removeActividad('${esc(grado)}','${asignatura}','${a.id}')">×</button>`
+              : `<span class="act-nombre" style="padding:3px 2px;">${esc(a.nombre)}</span>`}
+          </div>
+          <label class="act-fecha-lbl">Fecha solicitada</label>
+          <input type="date" class="act-fecha" value="${esc(fecha)}" ${puedeEditar?'':'disabled'}
+            onchange="setFechaTarea('${esc(grado)}','${asignatura}','${a.id}',${periodo},this.value)">
+        </div>`;
+      }).join('')}
+      ${acts.length===0?'<span class="empty" style="padding:4px 0;">Sin casillas de actividades — agrega al menos una.</span>':''}
+    </div>
+    <p class="nota-chica">La fecha se guarda por período y alimenta el Registro de tareas.</p>
+  </div>
+
+  <div class="card" style="margin-top:-4px;">
+    <p class="card-title">Rubros con fecha de entrega</p>
+    <div class="acts-grid">
+      ${rubrosTarea().map(rt=>{
+        const k = rt.key;
+        const fecha = getFechaTarea(grado, asignatura, k, periodo);
+        const nom = getNombreRubro(grado, asignatura, k);
+        return `
+        <div class="act-chip">
+          <div class="act-chip-top">
+            ${puedeEditar
+              ? `<input type="text" value="${esc(nom)}" class="act-nombre" onchange="renameRubro('${esc(grado)}','${asignatura}','${k}',this.value); this.blur();">`
+              : `<span class="act-nombre" style="padding:3px 2px;">${esc(nom)}</span>`}
+          </div>
+          <label class="act-fecha-lbl">Fecha solicitada</label>
+          <input type="date" class="act-fecha" value="${esc(fecha)}" ${puedeEditar?'':'disabled'}
+            onchange="setFechaTarea('${esc(grado)}','${asignatura}','${k}',${periodo},this.value)">
+        </div>`;
+      }).join('')}
+    </div>
+    <p class="nota-chica">Estos rubros se agregan o quitan desde Personalizar → Ponderación del período (solo Dirección).</p>
+  </div>
+
+  <div class="ledger">
+    <div class="table-wrap">
+    <table class="ledger-table">
+      <thead><tr>
+        <th style="width:44px;">N°</th>
+        <th>Estudiante</th>
+        ${acts.map(a=>`<th style="width:64px;">${esc(a.nombre)}</th>`).join('')}
+        ${rubrosActivos().map(r=>{
+          const nom = esc(getNombreRubro(grado,asignatura,r.key));
+          let th = `<th style="width:80px;">${nom} (${Math.round(r.peso*100)}%)</th>`;
+          if(r.conRecuperacion) th += `<th style="width:80px;">Recuperación<br><span style="font-weight:400;text-transform:none;">de ${nom}</span></th>`;
+          return th;
+        }).join('')}
+        <th style="width:100px;">Nota período ${periodo}</th>
+        <th style="width:110px;">Promedio final</th>
+      </tr></thead>
+      <tbody>
+        ${estudiantes.length===0?`<tr><td colspan="${acts.length+rubrosActivos().length+rubrosActivos().filter(r=>r.conRecuperacion).length+4}" class="empty">No hay estudiantes en esta aula.</td></tr>`:''}
+        ${estudiantes.map((e,idxEst)=>{
+          const pInfo = periodInfo(e.id, asignatura, periodo, grado);
+          const pScore = pInfo.valor;
+          const sInfo = subjectInfo(e.id, asignatura, grado);
+          const final = sInfo.valor;
+          const cell = (comp) => {
+            const val = getComp(e.id, asignatura, periodo, comp);
+            const deficiente = val!==undefined && val<60;
+            const obs = getObs(e.id, asignatura, periodo, comp);
+            const btnObs = `<button class="obs-btn ${obs?'con-obs':''}" title="${obs?esc(obs):'Agregar observación'}"
+                onclick="abrirObs('${e.id}','${asignatura}',${periodo},'${comp}')">${obs?'✎':'+'}</button>`;
+            const input = puedeEditar
+              ? `<input class="score-input ${deficiente?'deficiente':''}" type="number" min="0" max="100" step="1"
+                  value="${val!==undefined?val:''}" placeholder="—"
+                  onchange="updateComp('${e.id}','${asignatura}',${periodo},'${comp}',this.value)">`
+              : `<span class="mono">${val!==undefined?val:'—'}</span>`;
+            return `<div class="celda-nota">${input}${puedeEditar?btnObs:''}</div>`;
+          };
+          const selectorEstado = (idTarea) => {
+            const estado = getEstado(e.id, asignatura, periodo, idTarea);
+            return puedeEditar
+              ? `<select class="estado-sel estado-${estado||'vacio'}" onchange="setEstado('${e.id}','${asignatura}',${periodo},'${idTarea}',this.value)">
+                   <option value="">Estado…</option>
+                   <option value="entregada" ${estado==='entregada'?'selected':''}>Entregada</option>
+                   <option value="tardia" ${estado==='tardia'?'selected':''}>Entrega tardía</option>
+                   <option value="no" ${estado==='no'?'selected':''}>No entregada</option>
+                 </select>`
+              : (estado?`<span class="pill ${ESTADOS[estado].pill}">${ESTADOS[estado].nombre}</span>`:'<span class="mono">—</span>');
+          };
+          const celdaAct = (a) => {
+            const estado = getEstado(e.id, asignatura, periodo, a.id);
+            const sel = puedeEditar
+              ? `<select class="estado-sel estado-${estado||'vacio'}" onchange="setEstado('${e.id}','${asignatura}',${periodo},'${a.id}',this.value)">
+                   <option value="">Estado…</option>
+                   <option value="entregada" ${estado==='entregada'?'selected':''}>Entregada</option>
+                   <option value="tardia" ${estado==='tardia'?'selected':''}>Entrega tardía</option>
+                   <option value="no" ${estado==='no'?'selected':''}>No entregada</option>
+                 </select>`
+              : (estado?`<span class="pill ${ESTADOS[estado].pill}">${ESTADOS[estado].nombre}</span>`:'<span class="mono">—</span>');
+            return `<td>${cell('act:'+a.id)}${sel}</td>`;
+          };
+          return `<tr>
+            <td class="mono num-est">${idxEst+1}</td>
+            <td>${esc(e.nombre)}</td>
+            ${acts.map(celdaAct).join('')}
+            ${rubrosActivos().map(r=>{
+              let td = `<td>${cell(r.key)}${r.tarea?selectorEstado(r.key):''}</td>`;
+              if(r.conRecuperacion){
+                const base = getComp(e.id, asignatura, periodo, r.key);
+                const rec = getComp(e.id, asignatura, periodo, claveRecuperacion(r.key));
+                const usada = notaRubro(e.id, asignatura, periodo, r);
+                const gana = rec!==undefined && usada===rec && (base===undefined || rec>base);
+                td += `<td>${cell(claveRecuperacion(r.key))}
+                  ${gana?'<span class="pill pill-primary" style="margin-top:4px;display:inline-block;">Cuenta esta</span>':''}</td>`;
+              }
+              return td;
+            }).join('')}
+            <td class="avg-cell ${pScore===null?'avg-pending':(pScore>=60?'avg-good':'avg-bad')}"
+                title="${pInfo.completo?'Nota definitiva del período':'Promedio con lo calificado hasta ahora ('+Math.round(pInfo.avance*100)+'% del período)'}">
+              ${pScore===null?'Pendiente':pScore.toFixed(1)}
+              ${pScore!==null && !pInfo.completo?`<span class="marca-parcial">parcial ${Math.round(pInfo.avance*100)}%</span>`:''}
+            </td>
+            <td class="avg-cell ${final===null?'avg-pending':(final>=60?'avg-good':'avg-bad')}">
+              ${final===null?'Pendiente':final.toFixed(1)}
+              ${final!==null && !sInfo.completo?`<span class="marca-parcial">${sInfo.periodos} de 4 per.</span>`:''}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <div class="note" style="margin-top:12px;">El promedio se calcula desde la primera nota que cargues, repartiendo proporcionalmente entre lo ya calificado; la etiqueta <b>parcial</b> indica que aún faltan notas. En los rubros con recuperación se toma automáticamente la nota más alta.</div>
+  ${!puedeEditar ? `<div class="note" style="margin-top:12px;">Solo puedes consultar esta asignatura. La edición está reservada al docente asignado, a su orientador(a) o a administración.</div>`:''}
+  `}
+  ${renderObsModal()}`;
+}
+/* Descarga exactamente el cuadro que está en pantalla en Calificaciones */
+function descargarCalificaciones(grado, asigId, periodo){
+  const asig = DB.asignaturas.find(a=>a.id===asigId);
+  if(!asig){ showToast('Selecciona una asignatura.'); return; }
+  const acts = getActividades(grado, asigId);
+  const rubros = rubrosActivos();
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), viewState.ordenEst || 'apellidos');
+
+  const enc = ['N°','Apellidos','Nombres'];
+  acts.forEach(a=>enc.push(a.nombre));
+  rubros.forEach(r=>{
+    const nom = getNombreRubro(grado, asigId, r.key);
+    enc.push(nom + ' (' + Math.round(r.peso*100) + '%)');
+    if(r.conRecuperacion) enc.push('Recuperación de ' + nom);
+  });
+  enc.push('Nota período ' + periodo, 'Estado del período', 'Promedio final');
+
+  const num = v => (v===undefined || v===null || isNaN(v)) ? '' : v;
+  const filas = estudiantes.map((e,i)=>{
+    const f = [i+1, apellidosDe(e), nombresDe(e)];
+    acts.forEach(a=>f.push(num(getComp(e.id, asigId, periodo, 'act:'+a.id))));
+    rubros.forEach(r=>{
+      f.push(num(getComp(e.id, asigId, periodo, r.key)));
+      if(r.conRecuperacion) f.push(num(getComp(e.id, asigId, periodo, claveRecuperacion(r.key))));
+    });
+    const pi = periodInfo(e.id, asigId, periodo, grado);
+    const si = subjectInfo(e.id, asigId, grado);
+    f.push(pi.valor===null ? '' : Number(pi.valor.toFixed(1)));
+    f.push(pi.valor===null ? 'Sin notas' : (pi.completo ? 'Completo' : 'Parcial ' + Math.round(pi.avance*100) + '%'));
+    f.push(si.valor===null ? '' : Number(si.valor.toFixed(1)));
+    return f;
+  });
+
+  const obs = [];
+  estudiantes.forEach(e=>{
+    const comps = acts.map(a=>({k:'act:'+a.id, n:a.nombre}))
+      .concat(rubros.map(r=>({k:r.key, n:getNombreRubro(grado, asigId, r.key)})));
+    comps.forEach(c=>{
+      const t = getObs(e.id, asigId, periodo, c.k);
+      if(t) obs.push([apellidosDe(e)+', '+nombresDe(e), c.n, t]);
+    });
+  });
+
+  const hojas = [{nombre:'Período '+periodo, encabezados:enc, filas:filas}];
+  if(obs.length) hojas.push({nombre:'Observaciones', encabezados:['Estudiante','Casilla','Observación'], filas:obs});
+  descargarXlsx('Calificaciones ' + grado + ' ' + asig.nombre + ' periodo ' + periodo, hojas);
+}
+
+/* Descarga la matriz tal como se ve en pantalla */
+function descargarMatriz(grado){
+  const asigs = asignaturasVisibles(grado);
+  const completo = verGradoCompleto(grado);
+  const vista = viewState.matrizVista || 'periodos';
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), viewState.ordenEst || 'apellidos');
+
+  const enc = ['N°','Apellidos','Nombres'];
+  if(vista === 'periodos'){
+    asigs.forEach(a=>enc.push(a.nombre+' P1', a.nombre+' P2', a.nombre+' P3', a.nombre+' P4', a.nombre+' FINAL'));
+  }else{
+    asigs.forEach(a=>enc.push(a.nombre));
+  }
+  if(completo) enc.push('PROMEDIO GLOBAL');
+
+  const r1 = v => (v===null || v===undefined) ? '' : Number(v.toFixed(1));
+  const filas = estudiantes.map((e,i)=>{
+    const f = [i+1, apellidosDe(e), nombresDe(e)];
+    asigs.forEach(a=>{
+      if(vista === 'periodos') [1,2,3,4].forEach(p=>f.push(r1(periodInfo(e.id, a.id, p, grado).valor)));
+      f.push(r1(subjectInfo(e.id, a.id, grado).valor));
+    });
+    if(completo) f.push(r1(studentInfo(e.id, grado).valor));
+    return f;
+  });
+  descargarXlsx('Promedios ' + grado, [{nombre:grado, encabezados:enc, filas:filas}]);
+}
+
+function abrirObs(estId, asigId, periodo, comp){
+  viewState.obs = {estId, asigId, periodo, comp};
+  render();
+}
+function renderObsModal(){
+  if(!viewState.obs) return '';
+  const {estId, asigId, periodo, comp} = viewState.obs;
+  const est = DB.estudiantes.find(e=>e.id===estId);
+  const asig = DB.asignaturas.find(a=>a.id===asigId);
+  let nombreComp = comp;
+  if(comp.indexOf('act:')===0){
+    const acts = getActividades(est.grado, asigId);
+    const a = acts.find(x=>'act:'+x.id===comp);
+    nombreComp = a ? a.nombre : 'Actividad';
+  }else{
+    nombreComp = getNombreRubro(est.grado, asigId, comp);
+  }
+  return `
+  <div class="modal-bg" onclick="if(event.target===this) cerrarObs()">
+    <div class="modal">
+      <button class="modal-close" onclick="cerrarObs()">×</button>
+      <h3 class="modal-title">Observación</h3>
+      <p style="font-size:13px;color:var(--muted);margin:-8px 0 14px;">
+        ${esc(est?est.nombre:'')} · ${esc(asig?asig.nombre:'')} · ${esc(nombreComp)} · Período ${periodo}
+      </p>
+      <div class="field">
+        <textarea id="obs_texto" rows="4" placeholder="Ej.: entregó incompleta, se le dio prórroga…">${esc(getObs(estId, asigId, periodo, comp))}</textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="guardarObs()">Guardar</button>
+        <button class="btn" onclick="cerrarObs()">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+}
+function cerrarObs(){ viewState.obs = null; render(); }
+function guardarObs(){
+  const {estId, asigId, periodo, comp} = viewState.obs;
+  setObs(estId, asigId, periodo, comp, document.getElementById('obs_texto').value);
+  viewState.obs = null;
+  render();
+}
+async function updateComp(estId, asigId, periodo, comp, value){
+  const v = value===''? null : Math.max(0, Math.min(100, Number(value)));
+  const key = estId+'|'+asigId+'|'+periodo+'|'+comp;
+  setComp(estId, asigId, periodo, comp, v); // se refleja en pantalla de inmediato
+  render();
+  commit(doc=>{
+    if(v===null) delete doc.calificaciones[key]; else doc.calificaciones[key] = v;
+  });
+}
+
+/* ============================= MATRIZ POR AULA ============================= */
+function renderMatriz(){
+  const gradosVisibles = misGrados(currentUser);
+  if(gradosVisibles.length===0){
+    return `<div class="page-head"><p class="page-eyebrow">Reportes</p><h1 class="page-title">Matriz por aula</h1><p class="page-desc">No tienes aulas visibles todavía.</p></div>`;
+  }
+  const grado = viewState.matrizGrado && gradosVisibles.includes(viewState.matrizGrado) ? viewState.matrizGrado : gradosVisibles[0];
+  const vista = viewState.matrizVista || 'periodos';
+  const asigs = asignaturasVisibles(grado);
+  const completo = verGradoCompleto(grado);
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), viewState.ordenEst || 'apellidos');
+
+  const celda = (valor, completo, extra) => {
+    if(valor===null) return `<td class="avg-cell avg-pending">—</td>`;
+    return `<td class="avg-cell ${valor>=60?'avg-good':'avg-bad'} ${extra||''}">${valor.toFixed(1)}${completo?'':'<span class="marca-parcial">parcial</span>'}</td>`;
+  };
+
+  let tabla;
+  if(vista === 'periodos'){
+    tabla = `
+    <table class="matriz-detalle">
+      <thead>
+        <tr>
+          <th rowspan="2" style="vertical-align:bottom;">N°</th>
+          <th rowspan="2" style="vertical-align:bottom;">Estudiante</th>
+          ${asigs.map(a=>`<th colspan="5" class="col-materia">${esc(a.nombre)}</th>`).join('')}
+          ${completo?`<th rowspan="2" style="vertical-align:bottom;">PROMEDIO<br>GLOBAL</th>`:''}
+        </tr>
+        <tr>
+          ${asigs.map(()=>`<th>P1</th><th>P2</th><th>P3</th><th>P4</th><th class="col-final">Final</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${estudiantes.length===0?`<tr><td colspan="${asigs.length*5+(completo?3:2)}" class="empty">No hay estudiantes en esta aula.</td></tr>`:''}
+        ${asigs.length===0 && estudiantes.length>0 ? `<tr><td colspan="3" class="empty">Esta aula todavía no tiene asignaturas vinculadas.</td></tr>`:''}
+        ${estudiantes.map((e,i)=>{
+          const gInfo = studentInfo(e.id, grado);
+          return `<tr>
+            <td class="mono num-est">${i+1}</td>
+            <td>${esc(nombreCompleto(e.nombres, e.apellidos) || e.nombre)}</td>
+            ${asigs.map(a=>{
+              const celdas = [1,2,3,4].map(p=>{
+                const pi = periodInfo(e.id, a.id, p, grado);
+                return celda(pi.valor, pi.completo);
+              }).join('');
+              const si = subjectInfo(e.id, a.id, grado);
+              return celdas + celda(si.valor, si.completo, 'col-final');
+            }).join('')}
+            ${completo?celda(gInfo.valor, gInfo.completo, 'col-global'):''}
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  }else{
+    tabla = `
+    <table>
+      <thead><tr>
+        <th style="width:48px;">N°</th><th>Estudiante</th>
+        ${asigs.map(a=>`<th>${esc(a.nombre)}</th>`).join('')}
+        ${completo?`<th>PROMEDIO GLOBAL</th>`:''}
+      </tr></thead>
+      <tbody>
+        ${estudiantes.length===0?`<tr><td colspan="${asigs.length+(completo?3:2)}" class="empty">No hay estudiantes en esta aula.</td></tr>`:''}
+        ${estudiantes.map((e,i)=>{
+          const gInfo = studentInfo(e.id, grado);
+          return `<tr>
+            <td class="mono num-est">${i+1}</td>
+            <td>${esc(nombreCompleto(e.nombres, e.apellidos) || e.nombre)}</td>
+            ${asigs.map(a=>{ const si = subjectInfo(e.id, a.id, grado); return celda(si.valor, si.completo); }).join('')}
+            ${completo?celda(gInfo.valor, gInfo.completo, 'col-global'):''}
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  }
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Reportes</p>
+    <h1 class="page-title">Matriz de datos por aula</h1>
+    <p class="page-desc">Notas de cada período por materia y promedio final de cada materia${completo?', además del promedio global del estudiante':''}.</p>
+  </div>
+  <div class="filters">
+    <div class="field">
+      <label>Aula</label>
+      <select class="grado-select" onchange="viewState.matrizGrado=this.value; render()">
+        ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Detalle</label>
+      <select onchange="viewState.matrizVista=this.value; render()">
+        <option value="periodos" ${vista==='periodos'?'selected':''}>Períodos y final por materia</option>
+        <option value="resumen" ${vista==='resumen'?'selected':''}>Solo promedio final por materia</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Ordenar por</label>
+      <select onchange="viewState.ordenEst=this.value; render()">
+        <option value="apellidos" ${(viewState.ordenEst||'apellidos')==='apellidos'?'selected':''}>Apellidos</option>
+        <option value="nombres" ${viewState.ordenEst==='nombres'?'selected':''}>Nombres</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <p class="card-title">${esc(grado)} <span class="pill pill-muted">${estudiantes.length} estudiante(s)</span>
+      <button class="btn btn-sm" onclick="descargarMatriz('${esc(grado)}')">Descargar en Excel</button>
+    </p>
+    <div class="table-wrap">${tabla}</div>
+    <p class="nota-chica">La marca <b>parcial</b> señala que todavía faltan notas por cargar; el valor mostrado es el promedio de lo calificado hasta ahora.
+    ${!completo?'<br>Ves únicamente las materias que impartes en esta aula. El promedio global del estudiante lo consultan Dirección y el orientador(a) del grado.':''}</p>
+  </div>`;
+}
+/* ============================= INICIO ============================= */
+(async function init(){
+  try{
+    await loadAll();
+    await restaurarSesion();
+    setSyncStatus('ok');
+  }catch(e){ console.error('init', e); }
+  render();
+  iniciarSync();
+})();
+</script>
+</body>
+</html>
