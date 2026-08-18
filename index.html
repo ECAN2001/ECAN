@@ -115,6 +115,80 @@
   .num-est{ color:var(--muted); }
   .marca-parcial{ display:block; font-size:9.5px; font-weight:600; color:var(--muted);
     text-transform:uppercase; letter-spacing:.03em; margin-top:2px; font-family:'Inter',sans-serif; }
+  .panel-fila{ display:flex; align-items:center; gap:6px; margin-bottom:3px; font-size:11.5px; }
+  .panel-fila > span{ flex:1; color:var(--muted); }
+  .panel-sel{ width:auto; min-width:96px; padding:2px 5px; font-size:11px; border-radius:5px; }
+  .panel-sel.nivel-no{ background:var(--panel-2); color:var(--muted); }
+  .panel-sel.nivel-ver{ background:var(--blue-light); color:var(--blue); }
+  .panel-sel.nivel-editar{ background:var(--primary-light); color:var(--primary-dark); }
+  .boleta-hoja{ overflow:visible; }
+  .boleta-ident{ display:flex; justify-content:space-between; align-items:flex-end;
+    gap:20px; padding:0 2px 12px; margin-bottom:12px; border-bottom:1px solid var(--line); }
+  .boleta-sub2{ display:none; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin:4px 0 0; }
+  /* La pantalla replica la estructura de la hoja impresa:
+     dos columnas fijas, filas parejas y nombres de materia en una sola línea. */
+  .boleta-hoja{ max-width:1060px; }
+  .bol-tabla th, .bol-mini th{ font-weight:700; }
+  .boleta-cuerpo{ display:flex; gap:14px; align-items:stretch; }
+  .boleta-col{ flex:1.55; min-width:0; display:flex; flex-direction:column; }
+  .boleta-col-lateral{ flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; }
+  @media(max-width:1000px){
+    .boleta-cuerpo{ flex-direction:column; }
+    .boleta-col, .boleta-col-lateral{ flex:none; }
+  }
+  .bol-tabla, .bol-mini{ width:100%; border-collapse:collapse; margin-bottom:0; font-size:12.5px;
+    table-layout:fixed; }
+  .bol-tabla{ height:314px; }          /* equivale a los 8.3 cm de la hoja impresa */
+  .bol-tabla th, .bol-tabla td, .bol-mini th, .bol-mini td{ border:1px solid var(--line-strong);
+    padding:3px 7px; vertical-align:middle; }
+  .bol-tabla tr, .bol-mini tr{ height:38px; }
+  .bol-tabla th, .bol-mini th{ text-align:center; background:var(--panel-2); color:var(--ink);
+    font-size:10px; letter-spacing:.01em; white-space:normal; word-break:break-word; line-height:1.2; }
+  .bol-tabla th:first-child{ width:30%; }
+  .bol-tabla td:not(:first-child){ text-align:center; white-space:nowrap; }
+  .bol-tabla th:not(:first-child){ text-align:center; white-space:normal; }
+  .bol-mini th:first-child, .bol-mini td:first-child{ text-align:left; }
+  .bol-mat{ font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bol-mini td:first-child{ font-size:12px; }
+  .bol-mini .col-valor{ width:58px; text-align:center; }
+  .bol-mini .col-x{ width:30px; }
+  .bol-num{ text-align:center; font-family:'JetBrains Mono',monospace; }
+  .bol-fuerte{ font-weight:700; }
+  .bol-total td{ font-weight:700; background:var(--panel-2); }
+  .bol-verde{ color:var(--primary-dark); }
+  .bol-in{ width:100%; padding:2px 5px; font-size:11.5px; border:1px solid transparent;
+    background:transparent; border-radius:4px; }
+  .bol-in:hover{ border-color:var(--line); background:#fff; }
+  .bol-in:focus{ border-color:var(--primary); background:#fff; }
+  .bol-obs{ border:1px solid var(--line-strong); border-radius:6px; padding:9px 11px;
+    font-size:12.5px; line-height:1.5; margin:12px 0 14px; }
+  .boleta-col .boleta-firmas{ margin-top:auto; }
+  .bol-obs-txt{ overflow:hidden; }
+  .bol-obs-txt{ width:100%; border:none; padding:4px 0 0; font-size:12.5px; resize:vertical; }
+  .bol-obs-txt:focus{ outline:none; }
+  .bol-firma-nom{ text-align:center; font-weight:600; font-size:12px; }
+  .bol-firma-cargo{ text-align:center; font-size:11px; color:var(--muted); }
+  .bol-firma-nom-txt{ font-weight:600; font-size:12px; margin:0; }
+  .boleta-cab{ display:flex; align-items:center; gap:14px;
+    padding-bottom:14px; margin-bottom:16px; }
+  .boleta-logo{ width:78px; height:78px; object-fit:contain; }
+  .boleta-colegio{ font-family:'Fraunces',serif; font-size:22px; font-weight:600; margin:0; }
+  .boleta-sub{ font-size:15px; color:var(--ink); margin:4px 0 0; text-transform:uppercase;
+    letter-spacing:.05em; font-weight:600; }
+  .boleta-lbl{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .boleta-dato{ font-size:17px; font-weight:700; }
+  .boleta-firmas{ display:flex; gap:28px; margin-top:34px; }
+  .boleta-firmas > div{ flex:1; text-align:center; }
+  .boleta-firmas span{ display:block; border-top:1px solid var(--ink); margin-bottom:6px; }
+  .boleta-firmas p{ font-size:11.5px; color:var(--muted); margin:0; }
+  @page{ size: letter landscape; margin:14mm; }
+  @media print{
+    .sidebar, .filters, .toast, .nota-chica, .btn, .icon-btn{ display:none !important; }
+    .main{ padding:0 !important; max-width:none !important; }
+    .card{ box-shadow:none; border:none; }
+    body{ background:#fff; }
+  }
   .nota-chica{ font-size:11.5px; color:var(--muted); margin:10px 0 0; }
   .celda-nota{ display:flex; align-items:center; gap:3px; }
   .obs-btn{ border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:5px;
@@ -295,7 +369,25 @@ function sumaPesos(){
 }
 let currentUser = null;
 let currentView = 'panel';
-let viewState = {}; // scratch state per view (selected grado, periodo, etc.)
+let viewState = {}; // estado temporal de cada pantalla (modales, formularios)
+/* Lo que el usuario elige en los selectores se recuerda en este equipo,
+   así no hay que volver a escogerlo al cambiar de pantalla ni al recargar. */
+let PREFS = {};
+function cargarPrefs(){
+  try{
+    const v = window.localStorage.getItem('prefs_ui');
+    const d = v ? JSON.parse(v) : {};
+    PREFS = (d && typeof d === 'object' && !Array.isArray(d)) ? d : {};
+  }catch(e){ PREFS = {}; }
+}
+function getPref(clave, porDefecto){
+  return (PREFS[clave] !== undefined && PREFS[clave] !== null) ? PREFS[clave] : porDefecto;
+}
+function setPref(clave, valor){
+  PREFS[clave] = valor;
+  try{ window.localStorage.setItem('prefs_ui', JSON.stringify(PREFS)); }catch(e){}
+  render();
+}
 let editingId = null;
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
@@ -483,7 +575,8 @@ function docActual(){
     estudiantes: DB.estudiantes, asignaturas: DB.asignaturas, docentes: DB.docentes,
     calificaciones: DB.calificaciones, config: DB.config, actividades: DB.actividades,
     curriculo: DB.curriculo, tareas: DB.tareas, estados: DB.estados,
-    observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros
+    observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros,
+    boletaDatos: DB.boletaDatos
   };
 }
 function adoptarDoc(doc){
@@ -498,6 +591,7 @@ function adoptarDoc(doc){
   DB.estados = doc.estados || {};
   DB.observaciones = doc.observaciones || {};
   DB.rubros = doc.rubros || {};
+  DB.boletaDatos = doc.boletaDatos || {};
   DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
   if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
@@ -559,6 +653,7 @@ async function loadAll(){
   if(!DB.estados) DB.estados = {};
   if(!DB.observaciones) DB.observaciones = {};
   if(!DB.rubros) DB.rubros = {};
+  if(!DB.boletaDatos) DB.boletaDatos = {};
   if(!DB.curriculo) DB.curriculo = {};
   if(!DB.ajustes) DB.ajustes = {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
 }
@@ -1100,6 +1195,7 @@ function combinarDocs(local, nube){
     estados: Object.assign({}, nube.estados||{}),
     observaciones: Object.assign({}, nube.observaciones||{}),
     rubros: Object.assign({}, nube.rubros||{}),
+    boletaDatos: Object.assign({}, nube.boletaDatos||{}, local.boletaDatos||{}),
     ajustes: (local.ajustes && local.ajustes.nombreColegio &&
               local.ajustes.nombreColegio !== 'Centro Escolar') ? local.ajustes : (nube.ajustes || local.ajustes)
   };
@@ -1228,6 +1324,7 @@ function seedData(){
   DB.estados = {};
   DB.observaciones = {};
   DB.rubros = {};
+  DB.boletaDatos = {};
   DB.curriculo = {};
   DB.ajustes = {nombreColegio:'Centro Escolar', logo:'', anio:String(new Date().getFullYear()),
     fraseSaludo:'recuerda que lo haces increíble', mensajeBienvenida:'', siglas:''};
@@ -1300,6 +1397,37 @@ function saludoNombre(completo){
   return partes.slice(0, 2).join(' ');
 }
 
+/* Paneles cuyo acceso se configura por usuario.
+   El nivel elegido NUNCA amplía las reglas del sistema: solo las restringe.
+   Un docente con "editar" en Calificaciones sigue editando únicamente
+   sus asignaturas o su grado de orientación. */
+const PANELES = [
+  {id:'estudiantes',    label:'Estudiantes'},
+  {id:'calificaciones', label:'Calificaciones'},
+  {id:'matriz',         label:'Matriz por aula'},
+  {id:'tareas',         label:'Registro de tareas'},
+  {id:'boletas',        label:'Boletas de notas'}
+];
+function nivelPanel(u, panelId){
+  u = u || currentUser;
+  if(!u) return 'no';
+  if(isAdmin(u)) return 'editar';
+  if(u.paneles && u.paneles[panelId]) return u.paneles[panelId];
+  if(u.soloLectura) return 'ver';
+  return 'editar';                 // docentes de antes: todo habilitado como siempre
+}
+function puedeVerPanel(u, panelId){ return nivelPanel(u, panelId) !== 'no'; }
+function puedeEditarPanel(u, panelId){ return nivelPanel(u, panelId) === 'editar'; }
+/* Usuarios como Recepción ven todas las aulas, pero sin editar nada */
+function tieneAlcanceTotal(u){ return !!(u && (isAdmin(u) || u.alcanceTotal)); }
+/* Grados de los que este usuario puede emitir boletas */
+function gradosBoleta(u){
+  u = u || currentUser;
+  if(!u) return [];
+  if(tieneAlcanceTotal(u)) return DB.config.grados.slice();
+  return DB.config.grados.filter(g=>esOrientador(u, g));   // solo su grado de orientación
+}
+
 function isAdmin(u){ return u && u.tipo === 'admin'; }
 function isDireccion(u){ return u && u.dominio === 'direccion'; }
 function canAccessGrado(u, grado){
@@ -1310,7 +1438,9 @@ function canAccessGrado(u, grado){
 }
 function canEditGrades(u, grado, asignaturaId){
   if(!u) return false;
+  if(!puedeEditarPanel(u, 'calificaciones')) return false;   // panel en modo consulta
   if(isAdmin(u)) return true;
+  if(u.soloLectura) return false;
   if(esOrientador(u, grado)) return true;
   return u.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asignaturaId);
 }
@@ -1321,7 +1451,7 @@ function canEditTeacherAccount(u, target){
   return false;
 }
 function misGrados(u){
-  if(isAdmin(u)) return DB.config.grados.slice();
+  if(tieneAlcanceTotal(u)) return DB.config.grados.slice();
   const set = new Set(u.asignaciones.map(a=>a.grado));
   orientacionesDe(u).forEach(g=>set.add(g));
   return DB.config.grados.filter(g=>set.has(g));
@@ -1332,12 +1462,12 @@ function asignaturasVisibles(grado, u){
   u = u || currentUser;
   const todas = asignaturasDeGrado(grado);
   if(!u) return [];
-  if(isAdmin(u) || esOrientador(u, grado)) return todas;
+  if(tieneAlcanceTotal(u) || esOrientador(u, grado)) return todas;
   return todas.filter(a=>(u.asignaciones||[]).some(x=>x.grado===grado && x.asignaturaId===a.id));
 }
 function verGradoCompleto(grado, u){
   u = u || currentUser;
-  return !!u && (isAdmin(u) || esOrientador(u, grado));
+  return !!u && (tieneAlcanceTotal(u) || esOrientador(u, grado));
 }
 function asignaturasDeGrado(grado){
   const ids = new Set((DB.curriculo && DB.curriculo[grado]) || []);
@@ -1641,7 +1771,7 @@ function domainLabel(t){
     if(t.dominio==='secretaria') return 'Secretaría';
     return 'Administración';
   }
-  return 'Docente';
+  return (t.cargo && String(t.cargo).trim()) || 'Docente';
 }
 function badgeClass(t){
   if(t.tipo==='admin'){
@@ -1828,12 +1958,14 @@ const NAV_ITEMS = [
   {id:'calificaciones', label:'Calificaciones'},
   {id:'matriz', label:'Matriz por aula'},
   {id:'tareas', label:'Registro de tareas'},
+  {id:'boletas', label:'Boletas de notas'},
   {id:'personalizar', label:'Personalizar'},
   {id:'sincronizacion', label:'Sincronización'},
 ];
 function navAllowed(id){
   if(id==='personalizar') return canManageAcademicData(currentUser);
   if(id==='asignaturas' || id==='docentes') return canManageAcademicData(currentUser);
+  if(PANELES.some(p=>p.id===id)) return puedeVerPanel(currentUser, id);
   return true;
 }
 
@@ -1884,6 +2016,7 @@ function renderView(){
     case 'calificaciones': return renderCalificaciones();
     case 'matriz': return renderMatriz();
     case 'tareas': return renderTareas();
+    case 'boletas': return renderBoletas();
     case 'personalizar': return renderPersonalizar();
     case 'sincronizacion': return renderSincronizacion();
     default: return '';
@@ -1944,8 +2077,8 @@ function renderPanel(){
 
 /* ============================= ESTUDIANTES ============================= */
 function renderEstudiantes(){
-  const filtro = viewState.filtroGrado || '';
-  const orden = viewState.ordenEst || 'apellidos';
+  const filtro = getPref('filtroGrado','');
+  const orden = getPref('ordenEst','apellidos');
   const gradosVisibles = misGrados(currentUser);
   const puedeEditar = puedeGestionarEstudiantes(currentUser);
   const gradosMostrados = filtro ? [filtro] : gradosVisibles;
@@ -1978,14 +2111,14 @@ function renderEstudiantes(){
   <div class="filters">
     <div class="field">
       <label>Filtrar por grado</label>
-      <select class="grado-select" onchange="viewState.filtroGrado=this.value; render()">
+      <select class="grado-select" onchange="setPref('filtroGrado', this.value)">
         <option value="">Todos los grados visibles</option>
         ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${filtro===g?'selected':''}>${esc(g)}</option>`).join('')}
       </select>
     </div>
     <div class="field">
       <label>Ordenar por</label>
-      <select onchange="viewState.ordenEst=this.value; render()">
+      <select onchange="setPref('ordenEst', this.value)">
         <option value="apellidos" ${orden==='apellidos'?'selected':''}>Apellidos (A-Z)</option>
         <option value="nombres" ${orden==='nombres'?'selected':''}>Nombres (A-Z)</option>
       </select>
@@ -2045,8 +2178,8 @@ function renderStudentModal(){
 }
 /* Descarga el listado: una hoja por grado cuando están todos, o una sola si hay filtro */
 function descargarListado(){
-  const filtro = viewState.filtroGrado || '';
-  const orden = viewState.ordenEst || 'apellidos';
+  const filtro = getPref('filtroGrado','');
+  const orden = getPref('ordenEst','apellidos');
   const grados = filtro ? [filtro] : misGrados(currentUser);
   const siglas = ((DB.ajustes && DB.ajustes.siglas) || '').trim();
 
@@ -2129,7 +2262,8 @@ function renderAsignaturas(){
         ${DB.asignaturas.map(s=>{
           const grados = DB.config.grados.filter(g=>asignaturasDeGrado(g).some(x=>x.id===s.id));
           return `<tr>
-            <td>${esc(s.nombre)}</td>
+            <td><input type="text" value="${esc(s.nombre)}" style="max-width:280px;"
+              onchange="renombrarAsignatura('${s.id}', this.value)"></td>
             <td><div class="tag-row">${DB.config.grados.map(g=>{
                 const activo = grados.indexOf(g)>=0;
                 return `<button class="pill ${activo?'pill-primary':'pill-muted'}" style="cursor:pointer;border:none;"
@@ -2166,6 +2300,24 @@ async function addSubject(){
   showToast('Asignatura agregada.');
   render();
 }
+function renombrarAsignatura(id, nombre){
+  const limpio = (nombre||'').trim();
+  const actual = DB.asignaturas.find(a=>a.id===id);
+  if(!actual) return;
+  if(!limpio){ showToast('La asignatura necesita un nombre.'); render(); return; }
+  if(limpio === actual.nombre) return;
+  if(DB.asignaturas.some(a=>a.id!==id && a.nombre.toLowerCase()===limpio.toLowerCase())){
+    showToast('Ya existe una asignatura con ese nombre.');
+    render();
+    return;
+  }
+  commit(doc=>{
+    const a = doc.asignaturas.find(x=>x.id===id);
+    if(a) a.nombre = limpio;
+  });
+  showToast('Asignatura renombrada. El cambio se aplica en todo el sistema.');
+  render();
+}
 function toggleGradoAsignatura(asigId, grado){
   const docenteAsignado = DB.docentes.some(d=>d.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asigId));
   const estaba = asignaturasDeGrado(grado).some(x=>x.id===asigId);
@@ -2198,7 +2350,14 @@ async function deleteSubject(id){
 function renderDocentes(){
   if(!canManageAcademicData(currentUser)) return renderNoAccess();
   const admins = DB.docentes.filter(t=>t.tipo==='admin');
-  const docentes = DB.docentes.filter(t=>t.tipo==='docente').slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  // Esta pantalla lista solo a quienes imparten clases. El resto del personal
+  // (Recepción, administrativos) se administra desde Personalizar.
+  const esDocente = t => {
+    const c = String(t.cargo||'').trim().toLowerCase();
+    return t.tipo==='docente' && (c === '' || c === 'docente');
+  };
+  const docentes = DB.docentes.filter(esDocente).slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const otros = DB.docentes.filter(t=>t.tipo==='docente' && !esDocente(t)).length;
 
   return `
   <div class="page-head">
@@ -2241,16 +2400,28 @@ function renderDocentes(){
   <div class="card">
     <p class="card-title">
       Docentes
-      <button class="btn btn-primary btn-sm" onclick="openTeacherModal()">Agregar docente</button>
+      <button class="btn btn-primary btn-sm" onclick="openTeacherModal()">Agregar usuario</button>
     </p>
     <div class="table-wrap">
     <table>
-      <thead><tr><th>Nombre</th><th>Asignaturas / grados</th><th>Orientación</th><th></th></tr></thead>
+      <thead><tr><th>Nombre</th><th>Cargo</th><th style="min-width:250px;">Paneles de acceso</th><th>Asignaturas / grados</th><th>Orientación</th><th></th></tr></thead>
       <tbody>
-        ${docentes.length===0?`<tr><td colspan="4" class="empty">No hay docentes registrados.</td></tr>`:''}
+        ${docentes.length===0?`<tr><td colspan="6" class="empty">No hay docentes registrados.</td></tr>`:''}
         ${docentes.map(t=>`
           <tr>
             <td>${esc(t.nombre)}</td>
+            <td><span class="badge badge-docente">${esc(domainLabel(t))}</span>
+              ${t.soloLectura?'<br><span class="pill pill-muted" style="margin-top:4px;">Solo consulta</span>':''}
+              ${t.alcanceTotal?'<br><span class="pill pill-blue" style="margin-top:4px;">Todas las aulas</span>':''}</td>
+            <td>${PANELES.map(p=>`
+              <div class="panel-fila">
+                <span>${esc(p.label)}</span>
+                <select class="panel-sel nivel-${nivelPanel(t,p.id)}" onchange="cambiarPanel('${t.id}','${p.id}',this.value)">
+                  <option value="no" ${nivelPanel(t,p.id)==='no'?'selected':''}>Sin acceso</option>
+                  <option value="ver" ${nivelPanel(t,p.id)==='ver'?'selected':''}>Ver</option>
+                  <option value="editar" ${nivelPanel(t,p.id)==='editar'?'selected':''} ${t.soloLectura?'disabled':''}>Editar</option>
+                </select>
+              </div>`).join('')}</td>
             <td>${t.asignaciones.length? `<div class="tag-row">${t.asignaciones.map(a=>{
               const s = DB.asignaturas.find(x=>x.id===a.asignaturaId);
               return `<span class="pill pill-blue">${esc(s?s.nombre:'—')} · ${esc(a.grado)}</span>`;
@@ -2264,6 +2435,7 @@ function renderDocentes(){
       </tbody>
     </table>
     </div>
+    ${otros>0?`<p class="nota-chica">Hay ${otros} usuario(s) con otro cargo (Recepción, administrativos). Se gestionan desde <b>Personalizar</b>.</p>`:''}
   </div>
   ${renderTeacherModal()}`;
 }
@@ -2309,11 +2481,22 @@ function eliminarDominio(id){
   showToast('Dominio eliminado.');
   render();
 }
+function cambiarPanel(id, panelId, nivel){
+  commit(doc=>{
+    const t = doc.docentes.find(x=>x.id===id);
+    if(!t) return;
+    t.paneles = t.paneles || {};
+    if(t.soloLectura && nivel === 'editar') nivel = 'ver';   // un usuario de consulta nunca edita
+    t.paneles[panelId] = nivel;
+  });
+  render();
+}
 function openTeacherModal(id){
+  const asigPrevia = viewState.selAsig, gradoPrevio = viewState.selGrado;
   editingId = id || null;
   viewState.modalTeacher = true;
-  viewState.newAsigGrado = DB.config.grados[0] || '';
-  viewState.newAsigAsig = DB.asignaturas[0] ? DB.asignaturas[0].id : '';
+  viewState.selAsig = asigPrevia || (DB.asignaturas[0] ? DB.asignaturas[0].id : '');
+  viewState.selGrado = gradoPrevio || (DB.config.grados[0] || '');
   render();
 }
 function renderTeacherModal(){
@@ -2324,8 +2507,36 @@ function renderTeacherModal(){
   <div class="modal-bg" onclick="if(event.target===this) closeModal()">
     <div class="modal">
       <button class="modal-close" onclick="closeModal()">×</button>
-      <h3 class="modal-title">${editingId? 'Editar docente' : 'Agregar docente'}</h3>
-      <div class="field"><label>Nombre completo</label><input type="text" id="t_nombre" value="${esc(t.nombre)}" placeholder="Nombre del docente"></div>
+      <h3 class="modal-title">${editingId? 'Editar usuario' : 'Agregar usuario'}</h3>
+      <div class="grid grid-2">
+        <div class="field"><label>Nombre completo</label><input type="text" id="t_nombre" value="${esc(t.nombre)}" placeholder="Ej.: Miss Brenda Gómez"></div>
+        <div class="field"><label>Cargo (aparece junto al nombre)</label>
+          <input type="text" id="t_cargo" value="${esc(t.cargo||'')}" placeholder="Ej.: Docente, Recepción, Bibliotecaria"></div>
+      </div>
+      ${esAdminTarget?'':`
+      <div class="field">
+        <label>Tipo de acceso</label>
+        <div class="tag-row">
+          <label class="check-chip"><input type="checkbox" id="t_lectura" ${t.soloLectura?'checked':''}> Solo consulta (no puede editar nada)</label>
+          <label class="check-chip"><input type="checkbox" id="t_alcance" ${t.alcanceTotal?'checked':''}> Ve todas las aulas y materias</label>
+        </div>
+        <p class="nota-chica">Para un puesto como Recepción, marca las dos: verá todo el centro escolar sin poder modificar nada.</p>
+      </div>
+      <div class="field">
+        <label>Paneles a los que tendrá acceso</label>
+        <div id="paneles_modal">
+          ${PANELES.map(p=>`
+            <div class="assign-list-item">
+              <span style="flex:1;">${esc(p.label)}</span>
+              <select id="t_pan_${p.id}" style="max-width:150px;">
+                <option value="no" ${nivelPanel(t,p.id)==='no'?'selected':''}>Sin acceso</option>
+                <option value="ver" ${nivelPanel(t,p.id)==='ver'?'selected':''}>Ver</option>
+                <option value="editar" ${nivelPanel(t,p.id)==='editar'?'selected':''}>Editar</option>
+              </select>
+            </div>`).join('')}
+        </div>
+        <p class="nota-chica">"Editar" no amplía permisos: el docente sigue editando solo sus asignaturas o su aula de orientación.</p>
+      </div>`}
 
       ${esAdminTarget ? `
         <div class="note">Esta es una cuenta de dominio (${esc(domainLabel(t))}). Su acceso académico es total por defecto.</div>
@@ -2351,11 +2562,11 @@ function renderTeacherModal(){
         <div class="assign-row">
           <div class="field" style="margin-bottom:0; flex:1;">
             <label>Asignatura</label>
-            <select id="new_asig_select">${DB.asignaturas.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select>
+            <select id="new_asig_select" onchange="viewState.selAsig=this.value">${DB.asignaturas.map(s=>`<option value="${s.id}" ${viewState.selAsig===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select>
           </div>
           <div class="field" style="margin-bottom:0; flex:1;">
             <label>Grado</label>
-            <select id="new_grado_select">${DB.config.grados.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('')}</select>
+            <select id="new_grado_select" onchange="viewState.selGrado=this.value">${DB.config.grados.map(g=>`<option value="${esc(g)}" ${viewState.selGrado===g?'selected':''}>${esc(g)}</option>`).join('')}</select>
           </div>
           <button class="btn btn-sm" onclick="addAsigToModal()">Añadir</button>
         </div>
@@ -2371,6 +2582,8 @@ function renderTeacherModal(){
 async function addAsigToModal(){
   const asigId = document.getElementById('new_asig_select').value;
   const grado = document.getElementById('new_grado_select').value;
+  viewState.selAsig = asigId;    // se conservan tras redibujar el formulario
+  viewState.selGrado = grado;
   const t = editingId ? DB.docentes.find(x=>x.id===editingId) : null;
   if(!t){ showToast('Guarda el docente primero para agregar asignaturas.'); return; }
   if(t.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asigId)){ showToast('Esa asignación ya existe.'); return; }
@@ -2397,7 +2610,23 @@ async function removeAsigFromModal(index){
 }
 async function saveTeacher(esAdmin){
   const nombre = document.getElementById('t_nombre').value.trim();
-  if(!nombre){ showToast('Escribe el nombre del docente.'); return; }
+  if(!nombre){ showToast('Escribe el nombre del usuario.'); return; }
+  const leerEl = id => document.getElementById(id);
+  const campoCargo = leerEl('t_cargo');
+  const cargo = campoCargo ? campoCargo.value.trim() : '';
+  const chkLectura = leerEl('t_lectura');
+  const chkAlcance = leerEl('t_alcance');
+  const soloLectura = chkLectura ? !!chkLectura.checked : false;
+  const alcanceTotal = chkAlcance ? !!chkAlcance.checked : false;
+  const paneles = {};
+  PANELES.forEach(p=>{
+    const sel = leerEl('t_pan_'+p.id);
+    if(sel){
+      let v = sel.value;
+      if(soloLectura && v === 'editar') v = 'ver';
+      paneles[p.id] = v;
+    }
+  });
   const orientaciones = [];
   DB.config.grados.forEach((g,i)=>{
     const chk = document.getElementById('t_ori_'+i);
@@ -2407,30 +2636,43 @@ async function saveTeacher(esAdmin){
     const objetivo = editingId;
     commit(doc=>{
       const t = doc.docentes.find(x=>x.id===objetivo);
-      if(t){ t.nombre = nombre; if(!esAdmin){ t.orientaciones = orientaciones; delete t.orientacion; } }
+      if(t){
+        t.nombre = nombre;
+        if(!esAdmin){
+          t.orientaciones = orientaciones; delete t.orientacion;
+          t.cargo = cargo;
+          if(soloLectura) t.soloLectura = true; else delete t.soloLectura;
+          if(alcanceTotal) t.alcanceTotal = true; else delete t.alcanceTotal;
+          if(Object.keys(paneles).length) t.paneles = paneles;
+        }
+      }
     });
   }else{
-    const nuevo = {id:uid('t'), nombre, tipo:'docente', dominio:null, asignaciones:[], orientaciones:orientaciones};
+    const nuevo = {id:uid('t'), nombre, tipo:'docente', dominio:null, asignaciones:[], orientaciones:orientaciones,
+      cargo: cargo, paneles: Object.keys(paneles).length ? paneles : undefined};
+    if(soloLectura) nuevo.soloLectura = true;
+    if(alcanceTotal) nuevo.alcanceTotal = true;
     commit(doc=>{ doc.docentes.push(nuevo); });
   }
-  showToast('Docente guardado.');
+  showToast('Usuario guardado.');
   closeModal();
 }
 async function deleteTeacher(id){
   const t = DB.docentes.find(x=>x.id===id);
   if(t && t.tipo==='admin'){ showToast('No se pueden eliminar las cuentas de dominio.'); return; }
   if(id === currentUser.id){ showToast('No puedes eliminar tu propia cuenta mientras la usas.'); return; }
-  if(!confirm('¿Eliminar este docente?')) return;
+  if(!confirm('¿Eliminar este usuario?')) return;
   commit(doc=>{
     const i = doc.docentes.findIndex(x=>x.id===id);
     if(i>=0) doc.docentes.splice(i,1);
   });
-  showToast('Docente eliminado.');
+  showToast('Usuario eliminado.');
   render();
 }
 
 function renderPersonalizar(){
   if(!canManageAcademicData(currentUser)) return renderNoAccess();
+  const modalUsuario = renderTeacherModal();
   const soloDir = isDireccion(currentUser);
   const aj = DB.ajustes || {};
   const docentes = DB.docentes.slice().sort((a,b)=>
@@ -2484,13 +2726,17 @@ function renderPersonalizar(){
   </div>
 
   <div class="card">
-    <p class="card-title">Contraseñas de acceso</p>
+    <p class="card-title">Usuarios, contraseñas y accesos
+      <button class="btn btn-sm btn-primary" onclick="openTeacherModal()">Agregar usuario</button>
+    </p>
     <div class="note" style="margin-bottom:14px;">
       Si un usuario no tiene contraseña, entra directamente al seleccionar su nombre. Al definirla, el sistema se la pedirá cada vez.
+      En "Paneles de acceso" defines qué pantallas ve cada quien: <b>Editar</b> no amplía permisos — el docente sigue editando
+      solo sus asignaturas o su aula de orientación.
     </div>
     <div class="table-wrap">
     <table>
-      <thead><tr><th>Usuario</th><th>Perfil</th><th>Contraseña</th><th style="width:190px;">Puede agregar y editar estudiantes</th><th></th></tr></thead>
+      <thead><tr><th>Usuario</th><th>Perfil</th><th>Contraseña</th><th style="width:170px;">Puede agregar y editar estudiantes</th><th style="min-width:250px;">Paneles de acceso</th><th></th></tr></thead>
       <tbody>
         ${docentes.map(t=>`
           <tr>
@@ -2507,6 +2753,19 @@ function renderPersonalizar(){
               ? '<span class="pill pill-primary">Siempre</span>'
               : `<label class="check-chip"><input type="checkbox" ${t.permisoEstudiantes?'checked':''}
                    onchange="togglePermisoEstudiantes('${t.id}', this.checked)"> Autorizado</label>`}</td>
+            <td>${isAdmin(t)
+              ? '<span class="pill pill-primary">Acceso total a todos los paneles</span>'
+              : PANELES.map(p=>`
+                <div class="panel-fila">
+                  <span>${esc(p.label)}</span>
+                  <select class="panel-sel nivel-${nivelPanel(t,p.id)}" onchange="cambiarPanel('${t.id}','${p.id}',this.value)">
+                    <option value="no" ${nivelPanel(t,p.id)==='no'?'selected':''}>Sin acceso</option>
+                    <option value="ver" ${nivelPanel(t,p.id)==='ver'?'selected':''}>Ver</option>
+                    <option value="editar" ${nivelPanel(t,p.id)==='editar'?'selected':''} ${t.soloLectura?'disabled':''}>Editar</option>
+                  </select>
+                </div>`).join('') +
+                (t.soloLectura?'<span class="pill pill-muted" style="margin-top:4px;display:inline-block;">Solo consulta</span>':'') +
+                (t.alcanceTotal?'<span class="pill pill-blue" style="margin-top:4px;display:inline-block;">Todas las aulas</span>':'')}</td>
             <td>
               <button class="btn btn-sm" onclick="definirClave('${t.id}')">Guardar</button>
               ${tieneClave(t)?`<button class="btn btn-sm btn-danger" onclick="quitarClave('${t.id}')">Quitar</button>`:''}
@@ -2521,6 +2780,7 @@ function renderPersonalizar(){
   ${renderCierreAnio()}
   ${renderCierreModal()}
   `}
+  ${modalUsuario}
   ${!soloDir ? `<div class="note">La identidad del centro escolar, los grados, la ponderación, las contraseñas y el cierre de año los administra Dirección.</div>` : ''}`;
 }
 function renderPonderacion(){
@@ -3000,7 +3260,9 @@ function togglePermisoEstudiantes(id, valor){
 }
 function puedeGestionarEstudiantes(u){
   u = u || currentUser;
-  return !!u && (isAdmin(u) || u.permisoEstudiantes === true);
+  if(!u || u.soloLectura) return false;
+  if(!puedeEditarPanel(u, 'estudiantes')) return false;
+  return isAdmin(u) || u.permisoEstudiantes === true;
 }
 function definirClave(id){
   const campo = document.getElementById('cl_'+id);
@@ -3097,14 +3359,14 @@ function quitarClave(id){
 }
 
 function renderTareas(){
-  const pestana = viewState.tareaTab || 'registro';
+  const pestana = getPref('tareaTab','registro');
   const gradosVisibles = misGrados(currentUser);
   const filtro = {
-    grado: viewState.tGrado || '',
-    estudiante: viewState.tEst || '',
-    estado: viewState.tEstado || '',
-    periodo: viewState.tPeriodo || '',
-    asigId: viewState.tAsig || ''
+    grado: getPref('tGrado',''),
+    estudiante: getPref('tEst',''),
+    estado: getPref('tEstado',''),
+    periodo: getPref('tPeriodo',''),
+    asigId: getPref('tAsig','')
   };
   const estudiantesFiltro = DB.estudiantes
     .filter(e=>gradosVisibles.indexOf(e.grado)>=0)
@@ -3127,21 +3389,21 @@ function renderTareas(){
   <div class="filters">
     <div class="field">
       <label>Buscar por grado</label>
-      <select onchange="viewState.tGrado=this.value; viewState.tEst=''; render()">
+      <select onchange="setPref('tEst',''); setPref('tGrado', this.value)">
         <option value="">Todos los grados</option>
         ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${filtro.grado===g?'selected':''}>${esc(g)}</option>`).join('')}
       </select>
     </div>
     <div class="field">
       <label>Buscar por materia</label>
-      <select onchange="viewState.tAsig=this.value; render()">
+      <select onchange="setPref('tAsig', this.value)">
         <option value="">Todas mis materias</option>
         ${materiasVisibles.map(a=>`<option value="${a.id}" ${filtro.asigId===a.id?'selected':''}>${esc(a.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="field">
       <label>Buscar por estudiante</label>
-      <select onchange="viewState.tEst=this.value; render()">
+      <select onchange="setPref('tEst', this.value)">
         <option value="">${filtro.grado?'Todos los de '+esc(filtro.grado):'Todos los estudiantes'}</option>
         ${estudiantesFiltro.map(e=>`<option value="${e.id}" ${filtro.estudiante===e.id?'selected':''}>${esc(e.nombre)}${filtro.grado?'':' — '+esc(e.grado)}</option>`).join('')}
       </select>
@@ -3149,14 +3411,14 @@ function renderTareas(){
     ${pestana==='registro'?`
     <div class="field">
       <label>Período</label>
-      <select onchange="viewState.tPeriodo=this.value; render()">
+      <select onchange="setPref('tPeriodo', this.value)">
         <option value="">Todos los períodos</option>
         ${[1,2,3,4].map(p=>`<option value="${p}" ${String(filtro.periodo)===String(p)?'selected':''}>Período ${p}</option>`).join('')}
       </select>
     </div>
     <div class="field">
       <label>Estado</label>
-      <select onchange="viewState.tEstado=this.value; render()">
+      <select onchange="setPref('tEstado', this.value)">
         <option value="">Todos</option>
         <option value="entregada" ${filtro.estado==='entregada'?'selected':''}>Entregada</option>
         <option value="tardia" ${filtro.estado==='tardia'?'selected':''}>Entrega tardía</option>
@@ -3241,12 +3503,463 @@ function renderTareas(){
     <p class="page-desc">Se alimenta solo de lo que cada docente carga en Calificaciones: fecha de la tarea, nota, estado y observaciones.</p>
   </div>
   <div class="period-tabs">
-    <div class="period-tab ${pestana==='registro'?'active':''}" onclick="viewState.tareaTab='registro'; render()">Registro</div>
-    <div class="period-tab ${pestana==='alertas'?'active':''}" onclick="viewState.tareaTab='alertas'; render()">Alertas</div>
+    <div class="period-tab ${pestana==='registro'?'active':''}" onclick="setPref('tareaTab','registro')">Registro</div>
+    <div class="period-tab ${pestana==='alertas'?'active':''}" onclick="setPref('tareaTab','alertas')">Alertas</div>
   </div>
   <div style="border:1px solid var(--line-strong); border-radius:0 var(--radius) var(--radius) var(--radius); padding:18px; background:var(--panel-2);">
     ${contenido}
   </div>`;
+}
+
+/* ============================= BOLETAS DE NOTAS ============================= */
+/* Configuración de la boleta: se guarda una vez y queda como valor por defecto
+   para todas las siguientes. Cada edición reemplaza a la anterior. */
+const BOLETA_DEF = {
+  casillasPadres: ['Relación padre de familia / escuela','Asistencia a reuniones',
+    'Responsabilidad con la escuela','Aportes a la escuela','Escuela de Padres'],
+  conducta: ['Valores Cristianos','Acepta y Valora la Diversidad',
+    'Toma decisiones de forma autónoma y responsable',
+    'Se expresa y participa con respeto por nuestra cultura',
+    'Evidencia actitudes favorables para la convivencia y cultura de paz'],
+  escala: [{nombre:'EXCELENTE', rango:'90-100'},{nombre:'MUY BUENO', rango:'80-89'},
+    {nombre:'BUENO', rango:'70-79'},{nombre:'REPROBADO', rango:'0-69'}],
+  firmas: [{nombre:'', cargo:'Coordinadora Académica'},{nombre:'', cargo:'Directora'},
+    {nombre:'', cargo:'Orientadora de grado'}]
+};
+function boletaCfg(){
+  const c = (DB.config && DB.config.boleta) || {};
+  return {
+    casillasPadres: Array.isArray(c.casillasPadres) ? c.casillasPadres : BOLETA_DEF.casillasPadres.slice(),
+    conducta:       Array.isArray(c.conducta)       ? c.conducta       : BOLETA_DEF.conducta.slice(),
+    escala:         Array.isArray(c.escala)         ? c.escala         : BOLETA_DEF.escala.map(x=>Object.assign({},x)),
+    firmas:         Array.isArray(c.firmas)         ? c.firmas         : BOLETA_DEF.firmas.map(x=>Object.assign({},x))
+  };
+}
+function guardarBoletaCfg(mutador){
+  const actual = boletaCfg();
+  mutador(actual);
+  commit(doc=>{
+    doc.config = doc.config || {};
+    doc.config.boleta = actual;
+  });
+}
+/* Datos propios de cada estudiante dentro de la boleta */
+function boletaDatos(estId){
+  const d = (DB.boletaDatos || {})[estId] || {};
+  return {
+    padres: d.padres || {}, conducta: d.conducta || {},
+    notaConducta: d.notaConducta || {}, inasistencias: d.inasistencias || {},
+    observaciones: d.observaciones || ''
+  };
+}
+function setBoletaDato(estId, grupo, clave, valor){
+  commit(doc=>{
+    doc.boletaDatos = doc.boletaDatos || {};
+    doc.boletaDatos[estId] = doc.boletaDatos[estId] || {};
+    if(grupo === 'observaciones'){ doc.boletaDatos[estId].observaciones = valor; return; }
+    doc.boletaDatos[estId][grupo] = doc.boletaDatos[estId][grupo] || {};
+    if(valor === '' || valor === null) delete doc.boletaDatos[estId][grupo][clave];
+    else doc.boletaDatos[estId][grupo][clave] = valor;
+  });
+}
+function puedeEditarBoleta(grado){
+  return puedeEditarPanel(currentUser, 'boletas') &&
+    (isAdmin(currentUser) || esOrientador(currentUser, grado));
+}
+/* Promedio del aula-estudiante en un período, sobre todas sus asignaturas */
+function promedioPeriodoEstudiante(estId, grado, periodo){
+  const vals = asignaturasDeGrado(grado)
+    .map(a=>periodInfo(estId, a.id, periodo, grado).valor)
+    .filter(v=>v!==null);
+  if(vals.length===0) return null;
+  return vals.reduce((s,v)=>s+v,0)/vals.length;
+}
+
+function renderBoletas(){
+  if(!puedeVerPanel(currentUser, 'boletas')) return renderNoAccess();
+  const grados = gradosBoleta(currentUser);
+  if(grados.length === 0){
+    return `
+    <div class="page-head">
+      <p class="page-eyebrow">Reportes</p>
+      <h1 class="page-title">Boletas de notas</h1>
+      <p class="page-desc">Las boletas las emiten Dirección y el docente orientador de cada aula. No tienes un grado de orientación asignado.</p>
+    </div>`;
+  }
+  const grado = getPref('bolGrado','') && grados.includes(getPref('bolGrado','')) ? getPref('bolGrado','') : grados[0];
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
+  const estId = (getPref('bolEst','') && estudiantes.some(e=>e.id===getPref('bolEst','')) ? getPref('bolEst','') : (estudiantes[0]?estudiantes[0].id:''));
+  const est = estudiantes.find(e=>e.id===estId) || estudiantes[0];
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Reportes</p>
+    <h1 class="page-title">Boletas de notas</h1>
+    <p class="page-desc">Boleta individual con las notas de los cuatro períodos, el promedio de cada asignatura y el promedio global del año.</p>
+  </div>
+  <div class="filters">
+    <div class="field">
+      <label>Aula</label>
+      <select class="grado-select" onchange="setPref('bolEst',''); setPref('bolGrado', this.value)">
+        ${grados.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Estudiante</label>
+      <select onchange="setPref('bolEst', this.value)">
+        ${estudiantes.length===0?'<option value="">Sin estudiantes</option>':''}
+        ${estudiantes.map((e,i)=>`<option value="${e.id}" ${est&&est.id===e.id?'selected':''}>${i+1}. ${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="descargarBoletasPdf('${esc(grado)}')">Descargar todas en PDF</button>
+    <button class="btn" onclick="descargarBoletasPdf('${esc(grado)}','${est?est.id:''}')">Esta boleta en PDF</button>
+  </div>
+  ${est ? renderBoletaEstudiante(est, grado) : '<div class="card"><p class="empty">No hay estudiantes en esta aula.</p></div>'}`;
+}
+function renderBoletaEstudiante(est, grado){
+  const cfg = boletaCfg();
+  const dat = boletaDatos(est.id);
+  const asigs = asignaturasDeGrado(grado);
+  const aj = DB.ajustes || {};
+  const edit = puedeEditarBoleta(grado);
+  const gInfo = studentInfo(est.id, grado);
+
+  const n1 = v => v===null||v===undefined ? '' : v.toFixed(0);
+  const campo = (valor, onchange, ancho, centro) => edit
+    ? `<input class="bol-in" style="${ancho?'width:'+ancho+';':''}${centro?'text-align:center;':''}"
+        value="${esc(valor)}" onchange="${onchange}">`
+    : `<span>${esc(valor)}</span>`;
+
+  const filasMaterias = asigs.map(a=>{
+    const si = subjectInfo(est.id, a.id, grado);
+    return `<tr>
+      <td class="bol-mat">${esc(a.nombre.toUpperCase())}</td>
+      ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(periodInfo(est.id, a.id, p, grado).valor)}</td>`).join('')}
+      <td class="bol-num bol-fuerte">${n1(si.valor)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div class="card boleta-hoja">
+    <div class="boleta-cab">
+      ${aj.logo?`<img src="${aj.logo}" alt="Logo" class="boleta-logo">`:''}
+      <div style="flex:1; text-align:center;">
+        <p class="boleta-colegio">${esc((aj.nombreColegio || 'Centro Escolar').toUpperCase())}</p>
+        <p class="boleta-sub">Año escolar ${esc(aj.anio || '')}</p>
+      </div>
+      ${aj.logo?`<span style="width:78px;"></span>`:''}
+    </div>
+    <div class="boleta-ident">
+      <div><span class="boleta-lbl">Estudiante</span><span class="boleta-dato">${esc(apellidosDe(est))}, ${esc(nombresDe(est))}</span></div>
+      <div style="text-align:right;"><span class="boleta-lbl">Grado / aula</span><span class="boleta-dato">${esc(grado)}</span></div>
+    </div>
+
+    <div class="boleta-cuerpo">
+      <div class="boleta-col">
+        <table class="bol-tabla">
+          <thead><tr>
+            <th>MATERIAS</th><th>I PERÍODO</th><th>II PERÍODO</th><th>III PERÍODO</th><th>IV PERÍODO</th><th>PROMEDIO FINAL</th>
+          </tr></thead>
+          <tbody>
+            ${asigs.length===0?`<tr><td colspan="6" class="empty">Esta aula todavía no tiene asignaturas.</td></tr>`:filasMaterias}
+            <tr class="bol-total">
+              <td>PROMEDIO DE PERÍODO</td>
+              ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(promedioPeriodoEstudiante(est.id, grado, p))}</td>`).join('')}
+              <td class="bol-num bol-verde">${n1(gInfo.valor)}</td>
+            </tr>
+            <tr>
+              <td>INASISTENCIAS POR PERÍODO</td>
+              ${[1,2,3,4,'final'].map(p=>`<td class="bol-num">${campo(dat.inasistencias[p]||'',
+                "setBoletaDato('"+est.id+"','inasistencias','"+p+"',this.value)", '100%', true)}</td>`).join('')}
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="bol-obs">
+          <b>OBSERVACIONES:</b>
+          ${edit
+            ? `<textarea class="bol-obs-txt" rows="${Math.max(3, Math.min(10, Math.ceil((dat.observaciones||'').length/95) + 1))}"
+                 placeholder="Escribe aquí las observaciones sobre el estudiante…"
+                 oninput="this.style.height='auto'; this.style.height=(this.scrollHeight+2)+'px';"
+                 onchange="setBoletaDato('${est.id}','observaciones','',this.value)">${esc(dat.observaciones)}</textarea>`
+            : `<p style="margin:6px 0 0; white-space:pre-wrap;">${esc(dat.observaciones) || '—'}</p>`}
+        </div>
+
+        <div class="boleta-firmas">
+          ${cfg.firmas.map((f,i)=>`
+            <div>
+              <span></span>
+              ${edit
+                ? `<input class="bol-in bol-firma-nom" value="${esc(f.nombre)}" placeholder="Nombre y apellido"
+                     onchange="editarFirma(${i},'nombre',this.value)">
+                   <input class="bol-in bol-firma-cargo" value="${esc(f.cargo)}" placeholder="Cargo"
+                     onchange="editarFirma(${i},'cargo',this.value)">
+                   <button class="icon-btn" onclick="quitarFirma(${i})" title="Quitar firma">×</button>`
+                : `<p class="bol-firma-nom-txt">${esc(f.nombre)}</p><p>${esc(f.cargo)}</p>`}
+            </div>`).join('')}
+        </div>
+        ${edit?`<div class="btn-row"><button class="btn btn-sm" onclick="agregarFirma()">+ Agregar firma</button></div>`:''}
+      </div>
+
+      <div class="boleta-col-lateral">
+        ${bloqueCriterios('CASILLAS PADRES', cfg.casillasPadres, dat.padres, est.id, 'padres', edit)}
+        ${bloqueCriterios('EVALUACIÓN DE CONDUCTA DEL ESTUDIANTE', cfg.conducta, dat.conducta, est.id, 'conducta', edit)}
+
+        <table class="bol-mini">
+          <thead><tr><th colspan="2">NOTA DE CONDUCTA</th></tr></thead>
+          <tbody>
+            ${['I-P','II-P','III-P','IV-P'].map((et,i)=>`
+              <tr><td>${et}</td>
+                <td class="bol-num col-valor">${campo(dat.notaConducta[i+1]||'',
+                  "setBoletaDato('"+est.id+"','notaConducta','"+(i+1)+"',this.value)", '100%', true)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+
+        <table class="bol-mini">
+          <thead><tr><th colspan="${edit?3:2}">ESCALA DE EVALUACIÓN</th></tr></thead>
+          <tbody>
+            ${cfg.escala.map((e,i)=>`
+              <tr>
+                <td>${campo(e.nombre, "editarEscala("+i+",'nombre',this.value)", '100%')}</td>
+                <td class="bol-num col-valor">${campo(e.rango, "editarEscala("+i+",'rango',this.value)", '100%', true)}</td>
+                ${edit?`<td class="col-x"><button class="icon-btn" onclick="quitarEscala(${i})">×</button></td>`:''}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        ${edit?`<div class="btn-row"><button class="btn btn-sm" onclick="agregarEscala()">+ Fila de escala</button></div>`:''}
+      </div>
+    </div>
+    ${edit?`<p class="nota-chica">Los criterios, la escala y las firmas quedan guardados como valor por defecto para las siguientes boletas.</p>`:''}
+  </div>`;
+}
+/* Tabla de criterios con su casilla de letra, ambos editables */
+function bloqueCriterios(titulo, lista, valores, estId, grupo, edit){
+  return `
+  <table class="bol-mini">
+    <thead><tr><th colspan="${edit?3:2}">${esc(titulo)}</th></tr></thead>
+    <tbody>
+      ${lista.map((txt,i)=>`
+        <tr>
+          <td>${edit
+            ? `<input class="bol-in" value="${esc(txt)}" onchange="editarCriterio('${grupo}',${i},this.value)">`
+            : esc(txt)}</td>
+          <td class="bol-num col-valor">${edit
+            ? `<input class="bol-in" style="text-align:center;" value="${esc(valores[i]||'')}"
+                 onchange="setBoletaDato('${estId}','${grupo}','${i}',this.value)">`
+            : esc(valores[i]||'')}</td>
+          ${edit?`<td class="col-x"><button class="icon-btn" onclick="quitarCriterio('${grupo}',${i})">×</button></td>`:''}
+        </tr>`).join('')}
+    </tbody>
+  </table>
+  ${edit?`<div class="btn-row" style="margin:-2px 0 4px;"><button class="btn btn-sm" onclick="agregarCriterio('${grupo}')">+ Agregar criterio</button></div>`:''}`;
+}
+function editarCriterio(grupo, i, valor){
+  const limpio = (valor||'').trim();
+  if(!limpio) return;
+  guardarBoletaCfg(c=>{ const lista = grupo==='padres' ? c.casillasPadres : c.conducta; lista[i] = limpio; });
+  render();
+}
+function agregarCriterio(grupo){
+  guardarBoletaCfg(c=>{ (grupo==='padres' ? c.casillasPadres : c.conducta).push('Nuevo criterio'); });
+  render();
+}
+function quitarCriterio(grupo, i){
+  guardarBoletaCfg(c=>{ (grupo==='padres' ? c.casillasPadres : c.conducta).splice(i,1); });
+  render();
+}
+function editarEscala(i, campo, valor){
+  guardarBoletaCfg(c=>{ if(c.escala[i]) c.escala[i][campo] = (valor||'').trim(); });
+  render();
+}
+function agregarEscala(){
+  guardarBoletaCfg(c=>{ c.escala.push({nombre:'NUEVO NIVEL', rango:'0-0'}); });
+  render();
+}
+function quitarEscala(i){
+  guardarBoletaCfg(c=>{ c.escala.splice(i,1); });
+  render();
+}
+function editarFirma(i, campo, valor){
+  guardarBoletaCfg(c=>{ if(c.firmas[i]) c.firmas[i][campo] = (valor||'').trim(); });
+  render();
+}
+function agregarFirma(){
+  guardarBoletaCfg(c=>{ c.firmas.push({nombre:'', cargo:'Cargo'}); });
+  render();
+}
+function quitarFirma(i){
+  guardarBoletaCfg(c=>{ c.firmas.splice(i,1); });
+  render();
+}
+
+/* Genera las boletas en una ventana de impresión horizontal.
+   Desde el diálogo del navegador se elige "Guardar como PDF". */
+function descargarBoletasPdf(grado, soloEstId){
+  const cfg = boletaCfg();
+  const aj = DB.ajustes || {};
+  let estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
+  if(soloEstId) estudiantes = estudiantes.filter(e=>e.id===soloEstId);
+  if(estudiantes.length===0){ showToast('No hay estudiantes en esta aula.'); return; }
+
+  const asigs = asignaturasDeGrado(grado);
+  const n1 = v => v===null||v===undefined ? '' : v.toFixed(0);
+  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const hoja = (est)=>{
+    const dat = boletaDatos(est.id);
+    const g = studentInfo(est.id, grado);
+    return `
+    <div class="pagina"><div class="hoja">
+      <div class="cab">
+        ${aj.logo?`<img src="${aj.logo}" class="logo">`:''}
+        <div style="flex:1; text-align:center;">
+          <p class="colegio">${q((aj.nombreColegio || 'Centro Escolar').toUpperCase())}</p>
+          <p class="sub">A&Ntilde;O ESCOLAR ${q(aj.anio||'')}</p>
+        </div>
+        ${aj.logo?'<span style="width:68px;"></span>':''}
+      </div>
+      <div class="ident-fila">
+        <div><span class="ident-lbl">Estudiante</span><span class="ident-dato">${q(apellidosDe(est))}, ${q(nombresDe(est))}</span></div>
+        <div style="text-align:right;"><span class="ident-lbl">Grado / aula</span><span class="ident-dato">${q(grado)}</span></div>
+      </div>
+      <div class="cuerpo">
+        <div class="izq">
+          <div class="tbl">
+          <table>
+            <colgroup><col class="mat"><col class="per"><col class="per"><col class="per"><col class="per"><col class="fin"></colgroup>
+            <tr><th>MATERIAS</th><th>I PER&Iacute;ODO</th><th>II PER&Iacute;ODO</th><th>III PER&Iacute;ODO</th><th>IV PER&Iacute;ODO</th><th>PROMEDIO FINAL</th></tr>
+            ${asigs.map(a=>`<tr>
+              <td class="izqtxt">${q(a.nombre.toUpperCase())}</td>
+              ${[1,2,3,4].map(p=>`<td class="c">${n1(periodInfo(est.id,a.id,p,grado).valor)}</td>`).join('')}
+              <td class="c b">${n1(subjectInfo(est.id,a.id,grado).valor)}</td>
+            </tr>`).join('')}
+            <tr class="tot">
+              <td class="izqtxt">PROMEDIO DE PER&Iacute;ODO</td>
+              ${[1,2,3,4].map(p=>`<td class="c">${n1(promedioPeriodoEstudiante(est.id,grado,p))}</td>`).join('')}
+              <td class="c verde">${n1(g.valor)}</td>
+            </tr>
+            <tr>
+              <td class="izqtxt">INASISTENCIAS POR PER&Iacute;ODO</td>
+              ${[1,2,3,4,'final'].map(p=>`<td class="c">${q(dat.inasistencias[p]||'')}</td>`).join('')}
+            </tr>
+          </table>
+          </div>
+          <div class="obs"><b>OBSERVACIONES:</b> ${q(dat.observaciones)}</div>
+          <div class="firmas">
+            ${cfg.firmas.map(f=>`<div><span></span><p class="fn">${q(f.nombre)}</p><p>${q(f.cargo)}</p></div>`).join('')}
+          </div>
+        </div>
+        <div class="der">
+          <div class="bloque" style="flex:${cfg.casillasPadres.length + 1}">
+          <table><tr><th colspan="2">CASILLAS PADRES</th></tr>
+            ${cfg.casillasPadres.map((t,i)=>`<tr><td>${q(t)}</td><td class="c w">${q(dat.padres[i]||'')}</td></tr>`).join('')}
+          </table></div>
+          <div class="bloque" style="flex:${cfg.conducta.length + 1}">
+          <table><tr><th colspan="2">EVALUACI&Oacute;N DE CONDUCTA DEL ESTUDIANTE</th></tr>
+            ${cfg.conducta.map((t,i)=>`<tr><td>${q(t)}</td><td class="c w">${q(dat.conducta[i]||'')}</td></tr>`).join('')}
+          </table></div>
+          <div class="bloque" style="flex:5">
+          <table><tr><th colspan="2">NOTA DE CONDUCTA</th></tr>
+            ${['I-P','II-P','III-P','IV-P'].map((et,i)=>`<tr><td>${et}</td><td class="c w">${q(dat.notaConducta[i+1]||'')}</td></tr>`).join('')}
+          </table></div>
+          <div class="bloque" style="flex:${cfg.escala.length + 1}">
+          <table><tr><th colspan="2">ESCALA DE EVALUACI&Oacute;N</th></tr>
+            ${cfg.escala.map(e=>`<tr><td>${q(e.nombre)}</td><td class="c w">${q(e.rango)}</td></tr>`).join('')}
+          </table></div>
+        </div>
+      </div>
+    </div></div>`;
+  };
+
+  const cierre = '<' + '/script>';
+  /* La hoja es carta horizontal: 279.4 x 215.9 mm, menos 12 mm de margen por lado.
+     La letra y el relleno de las celdas se ajustan a cuántas materias tenga el aula. */
+  const n = asigs.length;
+  const escalaFuente = n > 14 ? '8.5px' : (n > 12 ? '9.5px' : (n > 10 ? '10.5px' : (n > 8 ? '11px' : '12px')));
+  const relleno     = n > 14 ? '1.6px' : (n > 12 ? '2.2px' : (n > 10 ? '3px'    : (n > 8 ? '3.6px' : '4.4px')));
+  /* Carta horizontal (215.9 mm de alto) menos 14 mm de margen arriba y abajo */
+  const altoHoja = '187mm';
+  /* El alto lo reparte el navegador entre las tablas, así nada se corta.
+     La tabla de materias usa celdas de 1 cm exacto siempre que quepan. */
+  const filasTabla = n + 3;                      // materias + encabezado + promedio + inasistencias
+  /* Celdas de 1 cm exacto mientras la tabla quepa; con muchas materias
+     se reparte el espacio para que la boleta siga en una sola página. */
+  /* La tabla de materias mide siempre 8.3 cm: las filas se reparten ese alto,
+     haya pocas o muchas asignaturas. */
+  const estiloFilas = '.tbl{ flex:0 0 auto; } .tbl table{ height:83mm; table-layout:fixed; }';
+  /* El navegador propone el título de la página como nombre del archivo PDF */
+  const unico = estudiantes.length === 1 ? estudiantes[0] : null;
+  const tituloArchivo = unico
+    ? 'BOLETA DE NOTAS ' + apellidosDe(unico).toUpperCase() + ' ' + nombresDe(unico).toUpperCase() + ' ' + grado.toUpperCase()
+    : 'BOLETAS DE NOTAS ' + grado.toUpperCase();
+
+  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
+  '<title>' + q(tituloArchivo) + '</title><style>' +
+  '@page{ size: letter landscape; margin: 14mm; }' +
+  'html,body{ height:100%; }' +
+  '@media screen{' +
+  '  body{ background:#d8d8d8; padding:18px 0; height:auto; }' +
+  '  .pagina{ width:279.4mm; height:215.9mm; padding:14mm; margin:0 auto 18px;' +
+  '    background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.28); }' +
+  '}' +
+  '@media print{ .pagina{ width:auto; height:auto; padding:0; box-shadow:none; }' +
+  '  .pagina{ page-break-after: always; } .pagina:last-child{ page-break-after: auto; } }' +
+  '*{ box-sizing:border-box; }' +
+  'body{ font-family: Arial, Helvetica, sans-serif; font-size:' + escalaFuente + '; color:#000; margin:0; }' +
+  '.hoja{ page-break-inside: avoid; height:' + altoHoja + ';' +
+  ' display:flex; flex-direction:column; overflow:hidden; }' +
+  '.hoja:last-child{ page-break-after: auto; }' +
+  '.cab{ display:flex; align-items:center; gap:10px; padding-bottom:4px; margin-bottom:6px; }' +
+  '.ident-fila{ display:flex; justify-content:space-between; align-items:flex-end;' +
+  ' border-bottom:1px solid #000; padding-bottom:5px; margin-bottom:7px; }' +
+  '.ident-lbl{ font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#666; display:block; }' +
+  '.ident-dato{ font-size:16px; font-weight:bold; }' +
+  '.logo{ width:68px; height:68px; object-fit:contain; }' +
+  '.colegio{ font-size:17px; font-weight:bold; margin:0; letter-spacing:.02em; }' +
+
+  '.sub{ font-size:13px; margin:4px 0 0; font-weight:bold; letter-spacing:.04em; }' +
+  '.ident{ margin-left:auto; text-align:right; }' +
+  '.ident p{ margin:1px 0; font-size:10px; }' +
+  '.cuerpo{ display:flex; gap:10px; align-items:stretch; flex:1; min-height:0; }' +
+  '.izq{ flex:1.55; display:flex; flex-direction:column; min-width:0; }' +
+  '.der{ flex:1; display:flex; flex-direction:column; gap:2.5mm; min-width:0; }' +
+  '.bloque{ display:flex; min-height:0; }' +
+  '.bloque table{ height:100%; }' +
+  '.der tr{ max-height:10mm; }' +
+  '.der td, .der th{ vertical-align:middle; }' +
+  'table{ width:100%; border-collapse:collapse; }' +
+  '.izq table{ margin-bottom:0; }' +
+  estiloFilas +
+  '.tbl td, .tbl th{ vertical-align:middle; }' +
+  'th,td{ border:1px solid #000; padding:' + relleno + ' 5px; line-height:1.25;' +
+  ' word-break:break-word; overflow-wrap:anywhere; }' +
+  '.tbl th{ font-size:.92em; }' +
+  '.tbl col.mat{ width:30%; } .tbl col.per{ width:13%; } .tbl col.fin{ width:18%; }' +
+  'th{ text-align:center; font-weight:bold; }' +
+  '.c{ text-align:center; } .b{ font-weight:bold; } .w{ width:62px; }' +
+  '.tbl table{ table-layout:fixed; }' +
+  '.tbl th:first-child, .tbl td:first-child{ width:30%; }' +
+  '.tbl td:not(:first-child){ white-space:nowrap; }' +
+  '.tbl th{ white-space:normal; }' +
+  '.verde{ color:#0a7a3f; font-weight:bold; }' +
+  '.tot td{ font-weight:bold; }' +
+  '.izqtxt{ text-align:left; }' +
+  '.obs{ border:none; padding:0; margin:10px 0 0; line-height:1.5; text-align:justify;' +
+  ' font-size:11px; max-height:40mm; overflow:hidden; flex:0 1 auto; }' +
+  '.firmas{ display:flex; gap:16px; margin-top:auto; padding-top:12px; flex:0 0 auto; }' +
+  '.firmas > div{ flex:1; text-align:center; }' +
+  '.firmas span{ display:block; border-top:1px solid #000; margin-bottom:3px; }' +
+  '.firmas p{ margin:0; font-size:10px; }' +
+  '.firmas .fn{ font-weight:bold; }' +
+  '</style></head><body>' + estudiantes.map(hoja).join('') +
+  '<script>window.onload=function(){setTimeout(function(){window.print();},350);};' + cierre +
+  '</body></html>';
+
+  const v = window.open('', '_blank');
+  if(!v){ showToast('El navegador bloqueó la ventana emergente. Permítela e intenta de nuevo.'); return; }
+  v.document.write(html);
+  v.document.close();
+  showToast('En el diálogo de impresión elige "Guardar como PDF".');
 }
 
 function renderNoAccess(){
@@ -3264,16 +3977,16 @@ function renderCalificaciones(){
   if(gradosVisibles.length===0){
     return `<div class="page-head"><p class="page-eyebrow">Evaluación</p><h1 class="page-title">Calificaciones</h1><p class="page-desc">No tienes grados ni asignaturas asignadas todavía. Contacta a Dirección o Coordinación académica.</p></div>`;
   }
-  const grado = viewState.califGrado || gradosVisibles[0];
+  const grado = getPref('califGrado', gradosVisibles[0]);
   const asignaturasPosibles = isAdmin(currentUser) || esOrientador(currentUser, grado)
     ? asignaturasDeGrado(grado)
     : asignaturasDeGrado(grado).filter(s=>currentUser.asignaciones.some(a=>a.grado===grado && a.asignaturaId===s.id));
-  const asignatura = viewState.califAsig && asignaturasPosibles.some(s=>s.id===viewState.califAsig) ? viewState.califAsig : (asignaturasPosibles[0] ? asignaturasPosibles[0].id : '');
-  const periodo = viewState.califPeriodo || 1;
+  const asignatura = getPref('califAsig','') && asignaturasPosibles.some(s=>s.id===getPref('califAsig','')) ? getPref('califAsig','') : (asignaturasPosibles[0] ? asignaturasPosibles[0].id : '');
+  const periodo = Number(getPref('califPeriodo',1)) || 1;
   const puedeEditar = asignatura && canEditGrades(currentUser, grado, asignatura);
   const acts = asignatura ? getActividades(grado, asignatura) : [];
 
-  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), viewState.ordenEst || 'apellidos');
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
 
   return `
   <div class="page-head">
@@ -3284,13 +3997,13 @@ function renderCalificaciones(){
   <div class="filters">
     <div class="field">
       <label>Aula</label>
-      <select class="grado-select" onchange="viewState.califGrado=this.value; viewState.califAsig=null; render()">
+      <select class="grado-select" onchange="setPref('califAsig',''); setPref('califGrado', this.value)">
         ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}
       </select>
     </div>
     <div class="field">
       <label>Asignatura</label>
-      <select onchange="viewState.califAsig=this.value; render()">
+      <select onchange="setPref('califAsig', this.value)">
         ${asignaturasPosibles.length===0?'<option value="">Sin asignaturas disponibles</option>':''}
         ${asignaturasPosibles.map(s=>`<option value="${s.id}" ${asignatura===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}
       </select>
@@ -3299,7 +4012,7 @@ function renderCalificaciones(){
 
   ${asignaturasPosibles.length===0 ? `<div class="card"><p class="empty">No tienes asignaturas asignadas en esta aula.</p></div>` : `
   <div class="period-tabs">
-    ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="viewState.califPeriodo=${p}; render()">Período ${p}</div>`).join('')}
+    ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="setPref('califPeriodo', ${p})">Período ${p}</div>`).join('')}
     <button class="btn btn-sm" style="margin-left:auto; align-self:center;"
       onclick="descargarCalificaciones('${esc(grado)}','${asignatura}',${periodo})">Descargar en Excel</button>
   </div>
@@ -3451,7 +4164,7 @@ function descargarCalificaciones(grado, asigId, periodo){
   if(!asig){ showToast('Selecciona una asignatura.'); return; }
   const acts = getActividades(grado, asigId);
   const rubros = rubrosActivos();
-  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), viewState.ordenEst || 'apellidos');
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
 
   const enc = ['N°','Apellidos','Nombres'];
   acts.forEach(a=>enc.push(a.nombre));
@@ -3497,8 +4210,8 @@ function descargarCalificaciones(grado, asigId, periodo){
 function descargarMatriz(grado){
   const asigs = asignaturasVisibles(grado);
   const completo = verGradoCompleto(grado);
-  const vista = viewState.matrizVista || 'periodos';
-  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), viewState.ordenEst || 'apellidos');
+  const vista = getPref('matrizVista','periodos');
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
 
   const enc = ['N°','Apellidos','Nombres'];
   if(vista === 'periodos'){
@@ -3579,11 +4292,11 @@ function renderMatriz(){
   if(gradosVisibles.length===0){
     return `<div class="page-head"><p class="page-eyebrow">Reportes</p><h1 class="page-title">Matriz por aula</h1><p class="page-desc">No tienes aulas visibles todavía.</p></div>`;
   }
-  const grado = viewState.matrizGrado && gradosVisibles.includes(viewState.matrizGrado) ? viewState.matrizGrado : gradosVisibles[0];
-  const vista = viewState.matrizVista || 'periodos';
+  const grado = getPref('matrizGrado','') && gradosVisibles.includes(getPref('matrizGrado','')) ? getPref('matrizGrado','') : gradosVisibles[0];
+  const vista = getPref('matrizVista','periodos');
   const asigs = asignaturasVisibles(grado);
   const completo = verGradoCompleto(grado);
-  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), viewState.ordenEst || 'apellidos');
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
 
   const celda = (valor, completo, extra) => {
     if(valor===null) return `<td class="avg-cell avg-pending">—</td>`;
@@ -3658,22 +4371,22 @@ function renderMatriz(){
   <div class="filters">
     <div class="field">
       <label>Aula</label>
-      <select class="grado-select" onchange="viewState.matrizGrado=this.value; render()">
+      <select class="grado-select" onchange="setPref('matrizGrado', this.value)">
         ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}
       </select>
     </div>
     <div class="field">
       <label>Detalle</label>
-      <select onchange="viewState.matrizVista=this.value; render()">
+      <select onchange="setPref('matrizVista', this.value)">
         <option value="periodos" ${vista==='periodos'?'selected':''}>Períodos y final por materia</option>
         <option value="resumen" ${vista==='resumen'?'selected':''}>Solo promedio final por materia</option>
       </select>
     </div>
     <div class="field">
       <label>Ordenar por</label>
-      <select onchange="viewState.ordenEst=this.value; render()">
-        <option value="apellidos" ${(viewState.ordenEst||'apellidos')==='apellidos'?'selected':''}>Apellidos</option>
-        <option value="nombres" ${viewState.ordenEst==='nombres'?'selected':''}>Nombres</option>
+      <select onchange="setPref('ordenEst', this.value)">
+        <option value="apellidos" ${(getPref('ordenEst','apellidos'))==='apellidos'?'selected':''}>Apellidos</option>
+        <option value="nombres" ${getPref('ordenEst','apellidos')==='nombres'?'selected':''}>Nombres</option>
       </select>
     </div>
   </div>
@@ -3688,6 +4401,7 @@ function renderMatriz(){
 }
 /* ============================= INICIO ============================= */
 (async function init(){
+  cargarPrefs();
   try{
     await loadAll();
     await restaurarSesion();
