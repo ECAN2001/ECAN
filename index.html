@@ -170,6 +170,40 @@
   .bol-firma-nom{ text-align:center; font-weight:600; font-size:12px; }
   .bol-firma-cargo{ text-align:center; font-size:11px; color:var(--muted); }
   .bol-firma-nom-txt{ font-weight:600; font-size:12px; margin:0; }
+  .hj-titulo{ text-align:center; font-style:italic; font-weight:700; font-size:15px; margin:0 0 10px; }
+  .hj-cab2{ display:flex; align-items:stretch; border:1px solid var(--line-strong); margin-bottom:0; }
+  .hj-grado{ background:#FFF3B0; font-weight:700; padding:5px 12px; border-right:1px solid var(--line-strong); }
+  .hj-docente{ flex:1; text-align:center; font-weight:700; letter-spacing:.15em; padding:5px 12px; font-size:12.5px; }
+  .hj-tabla{ width:100%; border-collapse:collapse; font-family:Arial,Helvetica,sans-serif; font-size:11px; }
+  .hj-tabla tr.hj-sel > td{ box-shadow: inset 0 0 0 2px var(--primary); }
+  .hj-tabla th, .hj-tabla td{ border:1px solid var(--line-strong); padding:4px 6px; vertical-align:top; }
+  .hj-tabla th{ background:var(--panel-2); text-align:center; font-size:11px; white-space:normal;
+    font-family:Arial,Helvetica,sans-serif; }
+  .hj-in{ width:100%; padding:3px 5px; font-family:Arial,Helvetica,sans-serif; font-size:11px; border:1px solid transparent;
+    background:transparent; border-radius:4px; }
+  .hj-in:hover{ border-color:var(--line); background:#fff; }
+  .hj-in:focus{ border-color:var(--primary); background:#fff; }
+  .hj-area{ resize:vertical; line-height:1.4; }
+  .hj-enc{ width:100%; border:none; background:transparent; text-align:center; font-size:11px;
+    font-family:Arial,Helvetica,sans-serif;
+    font-weight:700; text-transform:uppercase; color:var(--muted); }
+  .hj-centro{ text-align:center; }
+  .hj-etiqueta{ color:var(--red); font-weight:700; text-align:center; text-transform:uppercase; }
+  .hj-etiqueta-txt{ color:var(--red); font-weight:700; text-transform:uppercase; }
+  .hj-integradora td{ background:#FDF6F4; }
+  .hj-rubrica{ width:100%; border-collapse:collapse; }
+  .hj-rubrica td{ border:1px solid var(--line); padding:2px 4px; font-size:11px; }
+  .hj-rubrica td:first-child{ min-width:170px; }
+  .hj-peso{ width:54px; text-align:center; }
+  .hj-vacio{ width:44px; }
+  .hj-x{ width:26px; }
+  .hj-rub{ padding:0 !important; }
+  .hj-firmas{ display:flex; flex-direction:column; height:100%; min-height:74px; }
+  .hj-firma{ flex:1; display:flex; align-items:center; justify-content:center;
+    font-size:11px; color:var(--muted); text-align:center; }
+  .hj-examenes td{ background:var(--panel-2); font-weight:700; font-size:13px; }
+  .hj-acciones{ white-space:nowrap; }
+  .hj-acciones .icon-btn.sel{ background:var(--primary); color:#fff; }
   .boleta-cab{ display:flex; align-items:center; gap:14px;
     padding-bottom:14px; margin-bottom:16px; }
   .boleta-logo{ width:78px; height:78px; object-fit:contain; }
@@ -202,6 +236,7 @@
   .estado-sel.estado-no{ background:var(--red-light); color:var(--red); }
   .clave-actual{ display:flex; align-items:center; gap:4px; font-family:'JetBrains Mono',monospace;
     font-size:12.5px; color:var(--primary-dark); margin-bottom:5px; }
+  .rep-opciones{ display:flex; flex-wrap:wrap; gap:7px; }
   .check-chip{ display:inline-flex; align-items:center; gap:6px; background:var(--panel-2);
     border:1px solid var(--line); border-radius:8px; padding:6px 11px; font-size:12.5px;
     font-weight:500; color:var(--ink); cursor:pointer; }
@@ -576,7 +611,7 @@ function docActual(){
     calificaciones: DB.calificaciones, config: DB.config, actividades: DB.actividades,
     curriculo: DB.curriculo, tareas: DB.tareas, estados: DB.estados,
     observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros,
-    boletaDatos: DB.boletaDatos
+    boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes
   };
 }
 function adoptarDoc(doc){
@@ -592,6 +627,9 @@ function adoptarDoc(doc){
   DB.observaciones = doc.observaciones || {};
   DB.rubros = doc.rubros || {};
   DB.boletaDatos = doc.boletaDatos || {};
+  DB.hojas = doc.hojas || {};
+  DB.bitacora = doc.bitacora || [];
+  DB.reportes = doc.reportes || [];
   DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
   if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
@@ -654,6 +692,9 @@ async function loadAll(){
   if(!DB.observaciones) DB.observaciones = {};
   if(!DB.rubros) DB.rubros = {};
   if(!DB.boletaDatos) DB.boletaDatos = {};
+  if(!DB.hojas) DB.hojas = {};
+  if(!DB.bitacora) DB.bitacora = [];
+  if(!DB.reportes) DB.reportes = [];
   if(!DB.curriculo) DB.curriculo = {};
   if(!DB.ajustes) DB.ajustes = {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
 }
@@ -931,7 +972,7 @@ function descargarRespaldo(){
     const fNotas = [];
     estVisibles.forEach(e=>{
       asignaturasVisibles(e.grado).forEach(asig=>{
-        const acts = getActividades(e.grado, asig.id);
+        const acts = getActividades(e.grado, asig.id, p);
         for(let p=1;p<=4;p++){
           acts.forEach(a=>{
             const nota = getComp(e.id, asig.id, p, 'act:'+a.id);
@@ -1196,6 +1237,9 @@ function combinarDocs(local, nube){
     observaciones: Object.assign({}, nube.observaciones||{}),
     rubros: Object.assign({}, nube.rubros||{}),
     boletaDatos: Object.assign({}, nube.boletaDatos||{}, local.boletaDatos||{}),
+    hojas: Object.assign({}, nube.hojas||{}, local.hojas||{}),
+    bitacora: (nube.bitacora||[]).concat((local.bitacora||[]).filter(l=>!(nube.bitacora||[]).some(x=>x.ts===l.ts && x.userId===l.userId))).slice(-800),
+    reportes: (nube.reportes||[]).concat((local.reportes||[]).filter(r=>!(nube.reportes||[]).some(x=>x.id===r.id))),
     ajustes: (local.ajustes && local.ajustes.nombreColegio &&
               local.ajustes.nombreColegio !== 'Centro Escolar') ? local.ajustes : (nube.ajustes || local.ajustes)
   };
@@ -1325,6 +1369,9 @@ function seedData(){
   DB.observaciones = {};
   DB.rubros = {};
   DB.boletaDatos = {};
+  DB.hojas = {};
+  DB.bitacora = [];
+  DB.reportes = [];
   DB.curriculo = {};
   DB.ajustes = {nombreColegio:'Centro Escolar', logo:'', anio:String(new Date().getFullYear()),
     fraseSaludo:'recuerda que lo haces increíble', mensajeBienvenida:'', siglas:''};
@@ -1404,9 +1451,11 @@ function saludoNombre(completo){
 const PANELES = [
   {id:'estudiantes',    label:'Estudiantes'},
   {id:'calificaciones', label:'Calificaciones'},
-  {id:'matriz',         label:'Matriz por aula'},
-  {id:'tareas',         label:'Registro de tareas'},
-  {id:'boletas',        label:'Boletas de notas'}
+  {id:'matriz',         label:'Notas por aula'},
+  {id:'tareas',         label:'Registro y alertas de tareas'},
+  {id:'boletas',        label:'Boletas de notas'},
+  {id:'hojas',          label:'Hojas de tareas'},
+  {id:'reportes',       label:'Reportes disciplinarios'}
 ];
 function nivelPanel(u, panelId){
   u = u || currentUser;
@@ -1478,11 +1527,102 @@ function docenteDeAsignatura(grado, asignaturaId){
   return DB.docentes.find(d=>d.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asignaturaId));
 }
 
+/* ============================= HOJA DE TAREAS ============================= */
+/* La hoja de tareas es la fuente de los nombres y fechas: lo que el docente
+   escribe aquí aparece solo en Calificaciones, que ya no se edita a mano. */
+const HOJA_DEF = {
+  encabezados: {fecha:'FECHA', contenidos:'CONTENIDOS', tareas:'TAREAS', rubrica:'Rúbrica',
+                nota:'Nota', firma:'Firma', observaciones:'Observaciones'},
+  rubrica: [{nombre:'Puntualidad', peso:30},
+            {nombre:'Legibilidad de los ejercicios (orden y letra)', peso:10},
+            {nombre:'Contenido', peso:60}],
+  firmas: ['F. Responsable','F. Maestro'],
+  textoExamenes: 'SEMANA DE EXÁMENES',
+  etiquetas: ['INTEGRADORA I','INTEGRADORA II','INTEGRADORA III','INTEGRADORA IV']
+};
+const PERIODO_PALABRA = {1:'PRIMER', 2:'SEGUNDO', 3:'TERCER', 4:'CUARTO'};
+
+function hojaCfg(){
+  const c = (DB.config && DB.config.hojaCfg) || {};
+  return {
+    encabezados: Object.assign({}, HOJA_DEF.encabezados, c.encabezados || {}),
+    rubrica: Array.isArray(c.rubrica) ? c.rubrica : HOJA_DEF.rubrica.map(r=>Object.assign({},r)),
+    firmas: Array.isArray(c.firmas) ? c.firmas : HOJA_DEF.firmas.slice(),
+    textoExamenes: c.textoExamenes !== undefined ? c.textoExamenes : HOJA_DEF.textoExamenes,
+    etiquetas: Array.isArray(c.etiquetas) ? c.etiquetas : HOJA_DEF.etiquetas.slice()
+  };
+}
+function guardarHojaCfg(mutador){
+  const actual = hojaCfg();
+  mutador(actual);
+  commit(doc=>{ doc.config = doc.config || {}; doc.config.hojaCfg = actual; });
+}
+function hojaKey(grado, asigId, periodo){ return grado+'|'+asigId+'|'+periodo; }
+
+/* Hoja inicial: respeta las casillas de actividades que ya existieran */
+function hojaPorDefecto(grado, asigId){
+  const cfg = hojaCfg();
+  const previas = (DB.actividades && DB.actividades[grado+'|'+asigId]) || null;
+  const nombres = previas ? previas.map(a=>a.nombre) : ['','','',''];
+  const mitad = Math.ceil(nombres.length/2);
+  const filas = [];
+  const nuevaTarea = (nombre)=>({tipo:'tarea', fecha:'', contenido:'', tarea:nombre||'',
+    etiqueta:'', rubrica: cfg.rubrica.map(r=>Object.assign({},r)), nota:'', obs:''});
+  const nuevaInteg = (i)=>({tipo:'integradora', fecha:'', contenido:'', tarea:'',
+    etiqueta: cfg.etiquetas[i] || ('INTEGRADORA '+(i+1)), rubrica:[], nota:'', obs:''});
+  nombres.slice(0, mitad).forEach(n=>filas.push(nuevaTarea(n)));
+  filas.push(nuevaInteg(0));
+  nombres.slice(mitad).forEach(n=>filas.push(nuevaTarea(n)));
+  filas.push(nuevaInteg(1));
+  return {filas: filas, examen: {fecha:'', texto: cfg.textoExamenes}};
+}
+function getHoja(grado, asigId, periodo){
+  if(!DB.hojas) DB.hojas = {};
+  const k = hojaKey(grado, asigId, periodo);
+  if(!DB.hojas[k]) DB.hojas[k] = hojaPorDefecto(grado, asigId);
+  return DB.hojas[k];
+}
+function mutarHoja(grado, asigId, periodo, fn){
+  const k = hojaKey(grado, asigId, periodo);
+  const base = JSON.parse(JSON.stringify(getHoja(grado, asigId, periodo)));
+  commit(doc=>{
+    doc.hojas = doc.hojas || {};
+    if(!doc.hojas[k]) doc.hojas[k] = base;
+    fn(doc.hojas[k]);
+  });
+}
+/* Filas de tarea y de integradora, en el orden en que aparecen en la hoja */
+function filasTarea(grado, asigId, periodo){
+  return getHoja(grado, asigId, periodo).filas.filter(f=>f.tipo==='tarea');
+}
+function filasIntegradora(grado, asigId, periodo){
+  return getHoja(grado, asigId, periodo).filas.filter(f=>f.tipo==='integradora');
+}
+/* Nombre que verá Calificaciones para una integradora: etiqueta y, si lo hay, su detalle */
+const ROMANOS = ['I','II','III','IV','V','VI'];
+function etiquetaCorta(key){
+  if(String(key).indexOf('act') === 0) return 'T ' + (Number(String(key).replace('act','')) || 1);
+  const i = ['integradora1','integradora2','integradora3','integradora4'].indexOf(key);
+  if(i >= 0) return 'Int ' + (ROMANOS[i] || (i+1));
+  return null;
+}
+function nombreIntegradoraHoja(fila){
+  const et = (fila.etiqueta||'').trim();
+  const tx = (fila.tarea||'').trim();
+  if(et && tx) return et + ' - ' + tx;
+  return et || tx || '';
+}
+
 /* ============================= ACTIVIDADES (casillas 20%) ============================= */
 function actividadesKey(grado, asigId){ return grado+'|'+asigId; }
 /* SOLO LECTURA: nunca escribe. Las casillas por defecto usan ids fijos, así todos
    los dispositivos coinciden aunque todavía no se hayan guardado. */
-function getActividades(grado, asigId){
+function getActividades(grado, asigId, periodo){
+  if(periodo){
+    // La hoja de tareas manda: sus filas de tarea son las casillas de actividades
+    const filas = filasTarea(grado, asigId, periodo);
+    if(filas.length) return filas.map((f,i)=>({id:'act'+(i+1), nombre: f.tarea || ('Actividad '+(i+1))}));
+  }
   if(!DB.actividades) DB.actividades = {};
   const key = actividadesKey(grado, asigId);
   if(!DB.actividades[key]){
@@ -1538,7 +1678,15 @@ const ESTADOS = {
   tardia:    {nombre:'Entrega tardía', pill:'pill-gold'},
   no:        {nombre:'No entregada', pill:'pill-rojo'}
 };
-function getNombreRubro(grado, asigId, key){
+function getNombreRubro(grado, asigId, key, periodo){
+  if(periodo){
+    const idx = ['integradora1','integradora2','integradora3','integradora4'].indexOf(key);
+    if(idx >= 0){
+      const filas = filasIntegradora(grado, asigId, periodo);
+      const nom = filas[idx] ? nombreIntegradoraHoja(filas[idx]) : '';
+      if(nom) return nom;
+    }
+  }
   const r = (DB.rubros||{})[grado+'|'+asigId+'|'+key];
   if(r) return r;
   const fijo = rubrosActivos().find(x=>x.key===key);
@@ -1555,6 +1703,19 @@ function renameRubro(grado, asigId, key, nombre){
 }
 function claveTarea(grado, asigId, actId, periodo){ return grado+'|'+asigId+'|'+actId+'|'+periodo; }
 function getFechaTarea(grado, asigId, actId, periodo){
+  if(periodo){
+    if(String(actId).indexOf('act') === 0){
+      const i = Number(String(actId).replace('act','')) - 1;
+      const filas = filasTarea(grado, asigId, periodo);
+      if(filas[i] && filas[i].fecha) return filas[i].fecha;
+    }else{
+      const idx = ['integradora1','integradora2','integradora3','integradora4'].indexOf(actId);
+      if(idx >= 0){
+        const filas = filasIntegradora(grado, asigId, periodo);
+        if(filas[idx] && filas[idx].fecha) return filas[idx].fecha;
+      }
+    }
+  }
   const t = DB.tareas[claveTarea(grado, asigId, actId, periodo)];
   return t ? t.fecha : '';
 }
@@ -1601,11 +1762,11 @@ function listaTareas(filtro){
       if(filtro.asigId && asig.id !== filtro.asigId) return;
       if(!isAdmin(currentUser) && !esOrientador(currentUser, est.grado) &&
          !currentUser.asignaciones.some(a=>a.grado===est.grado && a.asignaturaId===asig.id)) return;
-      const acts = getActividades(est.grado, asig.id);
       for(let p=1; p<=4; p++){
         if(filtro.periodo && Number(filtro.periodo) !== p) continue;
+        const acts = getActividades(est.grado, asig.id, p);   // los nombres cambian por período
         const entradas = acts.map(a=>({id:a.id, nombre:a.nombre, comp:'act:'+a.id, tipo:'Actividad'}))
-          .concat(rubrosTarea().map(r=>({id:r.key, nombre:getNombreRubro(est.grado, asig.id, r.key), comp:r.key, tipo:r.nombre})));
+          .concat(rubrosTarea().map(r=>({id:r.key, nombre:getNombreRubro(est.grado, asig.id, r.key, p), comp:r.key, tipo:r.nombre})));
         entradas.forEach(ent=>{
           const estado = getEstado(est.id, asig.id, p, ent.id);
           const fecha = getFechaTarea(est.grado, asig.id, ent.id, p);
@@ -1613,6 +1774,9 @@ function listaTareas(filtro){
           const obs = getObs(est.id, asig.id, p, ent.comp);
           if(!estado && !fecha && nota===undefined && !obs) return;  // aún sin usar
           if(filtro.estado && estado !== filtro.estado) return;
+          if(filtro.semana === 'actual'){ if(lunesDe(fecha) !== semanaEnCurso()) return; }
+          else if(filtro.semana){ if(lunesDe(fecha) !== filtro.semana) return; }
+          if(filtro.dia && fecha !== filtro.dia) return;
           filas.push({fecha, grado:est.grado, materia:asig.nombre, asigId:asig.id,
             estudiante:est.nombre, estId:est.id, tarea:ent.nombre, tipo:ent.tipo, periodo:p,
             estado, nota, obs});
@@ -1628,10 +1792,40 @@ function listaTareas(filtro){
   });
   return filas;
 }
+/* Semana de una fecha: se toma el lunes como inicio */
+function lunesDe(iso){
+  if(!iso) return '';
+  const d = new Date(iso + 'T12:00:00');
+  if(isNaN(d.getTime())) return '';
+  const dia = (d.getDay() + 6) % 7;          // lunes = 0
+  d.setDate(d.getDate() - dia);
+  return d.toISOString().slice(0,10);
+}
+function semanaEnCurso(){ return lunesDe(new Date().toISOString().slice(0,10)); }
+function rotuloSemana(lunes){
+  if(!lunes) return 'Sin fecha';
+  const d = new Date(lunes + 'T12:00:00');
+  const fin = new Date(d); fin.setDate(fin.getDate() + 4);
+  const f = x => x.getDate() + '/' + (x.getMonth()+1);
+  return 'Semana del ' + f(d) + ' al ' + f(fin);
+}
+function fechaCorta(iso){
+  if(!iso) return 'Sin fecha';
+  const d = new Date(iso + 'T12:00:00');
+  if(isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('es', {weekday:'short', day:'2-digit', month:'2-digit'});
+}
+
 /* Alertas: 2 pendientes = amarilla, 3 = naranja, 4 o más = roja */
-function nivelAlerta(cantidad){
+/* 2 pendientes: amarilla. 3 pendientes: naranja solo si son de tres materias
+   distintas; si están concentradas en menos materias, es roja. 4 o más: roja. */
+function nivelAlerta(cantidad, materiasDistintas){
   if(cantidad >= 4) return {nivel:'roja', nombre:'Roja', clase:'alerta-roja'};
-  if(cantidad === 3) return {nivel:'naranja', nombre:'Naranja', clase:'alerta-naranja'};
+  if(cantidad === 3){
+    return (materiasDistintas >= 3)
+      ? {nivel:'naranja', nombre:'Naranja', clase:'alerta-naranja'}
+      : {nivel:'roja', nombre:'Roja', clase:'alerta-roja'};
+  }
   if(cantidad === 2) return {nivel:'amarilla', nombre:'Amarilla', clase:'alerta-amarilla'};
   return null;
 }
@@ -1646,7 +1840,7 @@ function calcularAlertas(filtro){
   const orden = {roja:0, naranja:1, amarilla:2};
   return Object.keys(porEstudiante).map(id=>{
     const g = porEstudiante[id];
-    const al = nivelAlerta(g.filas.length);
+    const al = nivelAlerta(g.filas.length, Object.keys(g.materias).length);
     return al ? Object.assign({}, g, {alerta:al, cantidad:g.filas.length,
       materias:Object.keys(g.materias)}) : null;
   }).filter(Boolean).sort((a,b)=> orden[a.alerta.nivel]-orden[b.alerta.nivel] ||
@@ -1675,7 +1869,7 @@ function notaRubro(estId, asigId, periodo, rubro){
    Devuelve {valor, completo, avance}: el promedio se muestra desde la primera nota,
    repartiendo proporcionalmente entre los rubros ya calificados. */
 function periodInfo(estId, asigId, periodo, grado){
-  const acts = getActividades(grado, asigId);
+  const acts = getActividades(grado, asigId, periodo);
   let suma = 0, pesoUsado = 0, pesoTotal = 0, completo = true;
 
   const pesoAct = pesoDe('actividades');
@@ -1927,6 +2121,7 @@ function renderMensajeBienvenida(){
 async function entrarComo(u){
   selloVisto = '';
   currentUser = u;
+  registrar('Ingreso', 'Entró al sistema');
   currentView = 'panel';
   viewState = {};
   render();
@@ -1953,16 +2148,20 @@ function doLogout(){ currentUser = null; guardarSesion(); render(); }
 const NAV_ITEMS = [
   {id:'panel', label:'Panel principal'},
   {id:'estudiantes', label:'Estudiantes'},
+  {id:'reportes', label:'Reportes disciplinarios'},
+  {id:'hojas', label:'Hojas de tareas'},
+  {id:'calificaciones', label:'Calificaciones'},
+  {id:'tareas', label:'Registro y alertas de tareas'},
+  {id:'matriz', label:'Notas por aula'},
+  {id:'boletas', label:'Boletas'},
   {id:'asignaturas', label:'Asignaturas'},
   {id:'docentes', label:'Docentes'},
-  {id:'calificaciones', label:'Calificaciones'},
-  {id:'matriz', label:'Matriz por aula'},
-  {id:'tareas', label:'Registro de tareas'},
-  {id:'boletas', label:'Boletas de notas'},
+  {id:'bitacora', label:'Bitácora del sistema'},
   {id:'personalizar', label:'Personalizar'},
   {id:'sincronizacion', label:'Sincronización'},
 ];
 function navAllowed(id){
+  if(id==='bitacora') return canManageAcademicData(currentUser);
   if(id==='personalizar') return canManageAcademicData(currentUser);
   if(id==='asignaturas' || id==='docentes') return canManageAcademicData(currentUser);
   if(PANELES.some(p=>p.id===id)) return puedeVerPanel(currentUser, id);
@@ -2017,10 +2216,668 @@ function renderView(){
     case 'matriz': return renderMatriz();
     case 'tareas': return renderTareas();
     case 'boletas': return renderBoletas();
+    case 'reportes': return renderReportes();
+    case 'bitacora': return renderBitacora();
+    case 'hojas': return renderHojas();
     case 'personalizar': return renderPersonalizar();
     case 'sincronizacion': return renderSincronizacion();
     default: return '';
   }
+}
+
+/* ============================= REPORTES DISCIPLINARIOS ============================= */
+const OPC_F1 = {
+  situacion: ['Agresión verbal','Agresión física','No participación','Daño material','Desacato al docente',
+    'Incumplimiento de material','Incumplimiento de trabajo en clase','Participó en una pelea',
+    'Tiene una constante conducta agresiva','Incumplimiento de tareas',
+    'Conducta peligrosa durante el receso','Usó un lenguaje obsceno','Otros'],
+  antecedentes: ['Llamada de atención verbal','Reincidió de 1 a 2 veces',
+    'La titular dialogó con el niño (a)','Compromisos no cumplidos'],
+  acciones: ['Diálogo con el estudiante','Estuvo un tiempo en la dirección de la escuela',
+    'Se llamó a los padres de familia','Otras']
+};
+const OPC_F2 = {
+  situacion: ['Agresión Verbal','Daño a muebles','Incumplimiento de tareas o trabajos','Agresión Física',
+    'Desacato al docente','Conducta constante agresiva','Conducta de riesgo','Uso de lenguaje inapropiado','Otro'],
+  antecedentes: ['Llamada de atención verbal','Reincidió 1 o 2 veces en esta situación',
+    'Diálogo con el alumno','Compromisos no cumplidos','Otro']
+};
+const NIVELES_FALTA = [
+  {id:'leve',      nombre:'Leve',      formato:'F1', pill:'pill-gold',    color:'#B98A2E'},
+  {id:'grave',     nombre:'Grave',     formato:'F2', pill:'pill-naranja', color:'#D9822B'},
+  {id:'muygrave',  nombre:'Muy grave', formato:'F3', pill:'pill-rojo',    color:'#A63D2E'}
+];
+function nivelFalta(id){ return NIVELES_FALTA.find(n=>n.id===id) || NIVELES_FALTA[0]; }
+/* Los reportes son de todo el colegio: cualquier docente puede levantar uno */
+function renderReportes(){
+  if(!puedeVerPanel(currentUser, 'reportes')) return renderNoAccess();
+  const vista = getPref('repVista','nuevo');
+  const nivel = getPref('repNivel','leve');
+  const gradoF = getPref('repGrado','');
+  const estF = getPref('repEst','');
+  const puedeEditar = puedeEditarPanel(currentUser, 'reportes') && !currentUser.soloLectura;
+  const grados = DB.config.grados;            // acceso a todos los grados
+  const alumnos = DB.estudiantes
+    .filter(e=>!gradoF || e.grado===gradoF)
+    .slice().sort((a,b)=>apellidosDe(a).localeCompare(apellidosDe(b),'es'));
+
+  const pestanas = `
+  <div class="period-tabs">
+    ${NIVELES_FALTA.map(n=>`<div class="period-tab ${vista==='nuevo'&&nivel===n.id?'active':''}"
+      onclick="setPref('repVista','nuevo'); setPref('repNivel','${n.id}')">Falta ${esc(n.nombre.toLowerCase())}</div>`).join('')}
+    <div class="period-tab ${vista==='historial'?'active':''}" onclick="setPref('repVista','historial')">Historial</div>
+  </div>`;
+
+  let cuerpo;
+  if(vista === 'historial'){
+    let lista = (DB.reportes||[]).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
+    if(gradoF) lista = lista.filter(r=>r.grado===gradoF);
+    if(estF) lista = lista.filter(r=>r.estId===estF);
+    cuerpo = `
+    <div class="filters">
+      <div class="field"><label>Aula</label>
+        <select onchange="setPref('repEst',''); setPref('repGrado', this.value)">
+          <option value="">Todos los grados</option>
+          ${grados.map(g=>`<option value="${esc(g)}" ${gradoF===g?'selected':''}>${esc(g)}</option>`).join('')}
+        </select></div>
+      <div class="field"><label>Estudiante</label>
+        <select onchange="setPref('repEst', this.value)">
+          <option value="">Todos</option>
+          ${alumnos.map(e=>`<option value="${e.id}" ${estF===e.id?'selected':''}>${esc(apellidosDe(e))}, ${esc(nombresDe(e))}${gradoF?'':' — '+esc(e.grado)}</option>`).join('')}
+        </select></div>
+      <button class="btn btn-primary" onclick="descargarReportes()">Descargar en PDF</button>
+    </div>
+    <div class="card">
+      <p class="card-title">Historial <span class="pill pill-muted">${lista.length} reporte(s)</span></p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:100px;">Fecha</th><th>Estudiante</th><th style="width:110px;">Grado</th>
+          <th style="width:100px;">Falta</th><th>Descripción</th><th>Acciones / acuerdos</th><th style="width:150px;">Reportó</th>${puedeEditar?'<th></th>':''}</tr></thead>
+        <tbody>
+          ${lista.length===0?`<tr><td colspan="8" class="empty">No hay reportes registrados con ese filtro.</td></tr>`:''}
+          ${lista.map(r=>{
+            const n = nivelFalta(r.nivel);
+            return `<tr>
+              <td class="mono">${esc(r.fecha||'')}</td>
+              <td>${esc(r.estudiante)}</td>
+              <td>${esc(r.grado)}</td>
+              <td><span class="pill ${n.pill}">${esc(n.nombre)}</span></td>
+              <td style="font-size:12.5px;">${esc(r.descripcion)}</td>
+              <td style="font-size:12.5px; color:var(--muted);">${esc(r.medida || (r.acciones||[]).join(', ') || r.acuerdosAlumno || '')}</td>
+              <td style="font-size:12px;">${esc(r.docente)}</td>
+              <td class="hj-acciones">
+                <button class="icon-btn" onclick="verReporte('${r.id}')">Ver</button>
+                <button class="icon-btn" onclick="descargarReporte('${r.id}')">PDF</button>
+                ${puedeEditar?`<button class="icon-btn" onclick="eliminarReporte('${r.id}')">Eliminar</button>`:''}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+  }else{
+    const n = nivelFalta(nivel);
+    cuerpo = `
+    <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius); border-left:4px solid ${n.color};">
+      <p class="card-title">Nuevo reporte
+        <span class="pill ${n.pill}">Falta ${esc(n.nombre.toLowerCase())}</span>
+        <span class="pill pill-muted">Formato ${esc(n.formato)}</span></p>
+      ${!puedeEditar?`<div class="note">Tu usuario es de solo consulta: puedes revisar el historial pero no levantar reportes.</div>`:`
+      <div class="grid grid-2">
+        <div class="field"><label>Aula</label>
+          <select id="rep_grado" onchange="setPref('repEst',''); setPref('repGrado', this.value)">
+            <option value="">Selecciona el grado…</option>
+            ${grados.map(g=>`<option value="${esc(g)}" ${gradoF===g?'selected':''}>${esc(g)}</option>`).join('')}
+          </select></div>
+        <div class="field"><label>Estudiante</label>
+          <select id="rep_est" onchange="setPref('repEst', this.value)">
+            <option value="">Selecciona el estudiante…</option>
+            ${alumnos.map(e=>`<option value="${e.id}" ${estF===e.id?'selected':''}>${esc(apellidosDe(e))}, ${esc(nombresDe(e))}${gradoF?'':' — '+esc(e.grado)}</option>`).join('')}
+          </select></div>
+        <div class="field"><label>Fecha del hecho</label>
+          <input type="date" id="rep_fecha" value="${esc(new Date().toISOString().slice(0,10))}"></div>
+        <div class="field"><label>Lugar</label>
+          <input type="text" id="rep_lugar" placeholder="Ej.: aula, recreo, cancha"></div>
+      </div>
+      <div class="field" style="max-width:200px;"><label>Reincidencias del estudiante</label>
+        <input type="text" id="rep_reinc" placeholder="Ej.: 2"></div>
+      ${nivel!=='muygrave' ? `
+      <div class="field"><label>Situación presentada</label>
+        <div class="rep-opciones">${(nivel==='leve'?OPC_F1:OPC_F2).situacion.map((t,i)=>
+          `<label class="check-chip"><input type="checkbox" id="rep_sit_${i}"> ${esc(t)}</label>`).join('')}</div></div>
+      <div class="field"><label>Antecedentes</label>
+        <div class="rep-opciones">${(nivel==='leve'?OPC_F1:OPC_F2).antecedentes.map((t,i)=>
+          `<label class="check-chip"><input type="checkbox" id="rep_ant_${i}"> ${esc(t)}</label>`).join('')}</div></div>` : ''}
+      ${nivel==='leve' ? `
+      <div class="field"><label>Acciones tomadas</label>
+        <div class="rep-opciones">${OPC_F1.acciones.map((t,i)=>
+          `<label class="check-chip"><input type="checkbox" id="rep_acc_${i}"> ${esc(t)}</label>`).join('')}</div></div>` : ''}
+      <div class="field"><label>${nivel==='muygrave'?'Descripción del incidente':'Breve descripción de la incidencia'}</label>
+        <textarea id="rep_desc" rows="4" placeholder="Describe el hecho con precisión y sin juicios de valor."></textarea></div>
+      ${nivel==='grave' ? `
+      <div class="field"><label>Acciones que se tomaron al momento de intervenir</label>
+        <textarea id="rep_medida" rows="3"></textarea></div>` : ''}
+      ${nivel==='leve' ? `
+      <div class="grid grid-2">
+        <div class="field"><label>Acuerdos y/o compromisos del alumno</label><textarea id="rep_acu_alumno" rows="3"></textarea></div>
+        <div class="field"><label>Acuerdos y/o compromisos de los padres</label><textarea id="rep_acu_padres" rows="3"></textarea></div>
+      </div>` : (nivel==='grave' ? `
+      <div class="grid grid-2">
+        <div class="field"><label>Acuerdos: del padre de familia</label><textarea id="rep_acu_padres" rows="3"></textarea></div>
+        <div class="field"><label>Acuerdos: del estudiante</label><textarea id="rep_acu_alumno" rows="3"></textarea></div>
+      </div>` : `
+      <div class="field"><label>Acuerdos</label><textarea id="rep_acu_alumno" rows="4"></textarea></div>`)}
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="guardarReporte()">Guardar reporte</button>
+        <button class="btn" onclick="verReporteAntes()">Vista previa</button>
+        <button class="btn" onclick="descargarReporteFormulario()">Descargar en PDF</button>
+        <button class="btn" onclick="descargarPlantillaReporte()">Plantilla en blanco</button>
+        <button class="btn" onclick="setPref('repVista','historial')">Ver historial</button>
+      </div>
+      <p class="nota-chica">Al guardar, el formulario queda en blanco para el siguiente reporte.</p>`}
+    </div>`;
+  }
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Convivencia escolar</p>
+    <h1 class="page-title">Reportes disciplinarios</h1>
+    <p class="page-desc">Registro de faltas por estudiante. Los docentes pueden reportar a cualquier estudiante del centro escolar.</p>
+  </div>
+  ${pestanas}
+  ${cuerpo}`;
+}
+function guardarReporte(){
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const estId = val('rep_est') || getPref('repEst','');
+  const est = DB.estudiantes.find(e=>e.id===estId);
+  if(!est){ showToast('Selecciona el estudiante.'); return; }
+  const desc = val('rep_desc');
+  if(!desc){ showToast('Describe lo sucedido.'); return; }
+  const nivel = getPref('repNivel','leve');
+  const marcadas = (prefijo, lista) => lista.filter((t,i)=>{
+    const el = document.getElementById(prefijo + i);
+    return el && el.checked;
+  });
+  const opc = nivel==='leve' ? OPC_F1 : (nivel==='grave' ? OPC_F2 : null);
+  const reporte = {
+    id: uid('rep'), ts: new Date().toISOString(), nivel: nivel,
+    estId: est.id, estudiante: apellidosDe(est) + ', ' + nombresDe(est), grado: est.grado,
+    fecha: val('rep_fecha'), lugar: val('rep_lugar'), reincidencias: val('rep_reinc'),
+    situaciones: opc ? marcadas('rep_sit_', opc.situacion) : [],
+    antecedentes: opc ? marcadas('rep_ant_', opc.antecedentes) : [],
+    acciones: nivel==='leve' ? marcadas('rep_acc_', OPC_F1.acciones) : [],
+    descripcion: desc, medida: val('rep_medida'),
+    acuerdosAlumno: val('rep_acu_alumno'), acuerdosPadres: val('rep_acu_padres'),
+    docente: currentUser.nombre, docenteId: currentUser.id
+  };
+  commit(doc=>{ doc.reportes = doc.reportes || []; doc.reportes.push(reporte); });
+  registrar('Reporte disciplinario', 'Falta ' + nivelFalta(nivel).nombre.toLowerCase() + ' — ' + reporte.estudiante);
+  setPref('repEst','');
+  showToast('Reporte guardado. El formulario quedó en blanco.');
+  render();
+}
+function eliminarReporte(id){
+  if(!confirm('¿Eliminar este reporte del historial?')) return;
+  commit(doc=>{
+    const i = (doc.reportes||[]).findIndex(r=>r.id===id);
+    if(i>=0) doc.reportes.splice(i,1);
+  });
+  registrar('Reporte disciplinario', 'Eliminó un reporte');
+  render();
+}
+function cabReporte(r, aj, q, codigo){
+  return `
+  <div class="cabbox">
+    ${aj.logo?`<img src="${aj.logo}" class="logo">`:''}
+    <div class="cabtxt">
+      <p class="reinc">Reincidencias del estudiante: <span class="lin">${r?q(r.reincidencias||''):''}</span><b class="cod">${codigo}</b></p>
+      <p class="dato"><b>Estudiante:</b> <span class="lin ancho">${r?q(r.estudiante):''}</span></p>
+      <p class="dato"><b>Grado:</b> <span class="lin medio">${r?q(r.grado):''}</span></p>
+    </div>
+  </div>`;
+}
+/* Día de la semana de una fecha: 1 = lunes … 5 = viernes */
+function diaSemanaDe(iso){
+  if(!iso) return 0;
+  const d = new Date(iso + 'T12:00:00');
+  if(isNaN(d.getTime())) return 0;
+  const n = d.getDay();
+  return (n >= 1 && n <= 5) ? n : 0;
+}
+function marcaRad(activo){ return activo ? '<span class="rad on"></span>' : '<span class="rad"></span>'; }
+function lineasRep(texto, n, q){
+  const t = q(texto||'');
+  return `<div class="lineas">${t ? '<div class="txt">'+t+'</div>' : ''}${Array.from({length:n}).map(()=>'<div class="ln"></div>').join('')}</div>`;
+}
+function reporteF1(r, aj, q){
+  const sit = r ? (r.situaciones||[]) : [], ant = r ? (r.antecedentes||[]) : [], acc = r ? (r.acciones||[]) : [];
+  const f = (r && r.fecha) ? r.fecha.split('-') : ['','',''];
+  return `
+  <div class="pagina"><div class="hoja">
+    ${cabReporte(r, aj, q, 'F1')}
+    <div class="f1cuerpo">
+      <div class="izq">
+        <p class="tit">SITUACIÓN</p>
+        <table class="lista">${OPC_F1.situacion.map(t=>`<tr><td>${q(t)}</td><td class="rc">${marcaRad(sit.indexOf(t)>=0)}</td></tr>`).join('')}</table>
+        <p class="tit" style="margin-top:6px;">ANTECEDENTES</p>
+        <table class="lista chica">${OPC_F1.antecedentes.map(t=>`<tr><td>${q(t)}</td><td class="rc">${ant.indexOf(t)>=0?'X':'____'}</td></tr>`).join('')}</table>
+      </div>
+      <div class="centro">
+        <p class="tit">BREVE DESCRIPCIÓN DE LA INCIDENCIA</p>
+        <div class="cajadesc">${r?q(r.descripcion):''}</div>
+      </div>
+      <div class="der">
+        <p class="tit">FECHA</p>
+        <table class="fechatab"><tr><th>DIA</th><th>MES</th><th>AÑO</th></tr><tr><td>${q(f[2]||'')}</td><td>${q(f[1]||'')}</td><td>${q(f[0]||'')}</td></tr></table>
+        <table class="fechatab"><tr><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th></tr>
+          <tr>${[1,2,3,4,5].map(d=>`<td class="dia">${diaSemanaDe(r&&r.fecha)===d?'<b>X</b>':''}</td>`).join('')}</tr></table>
+        <p class="tit" style="margin-top:8px;">ACCIONES TOMADAS</p>
+        <table class="lista chica">${OPC_F1.acciones.map(t=>`<tr><td>${q(t)}</td><td class="rc">${marcaRad(acc.indexOf(t)>=0)}</td></tr>`).join('')}</table>
+      </div>
+    </div>
+    <table class="acuerdos">
+      <tr><th>ACUERDOS Y/O COMPROMISOS DEL ALUMNO</th><th>ACUERDOS Y/O COMPROMISOS DE LOS PADRES</th></tr>
+      <tr><td class="alto">${r?q(r.acuerdosAlumno):''}</td><td class="alto">${r?q(r.acuerdosPadres):''}</td></tr>
+    </table>
+    <table class="firmas5">
+      <tr><th>NOMBRE Y FIRMA DEL PADRE DE FAMILIA</th><th>FIRMA DEL ALUMNO (A)</th><th>FIRMA DEL DOCENTE</th><th>FIRMA DEL DIRECTIVO</th><th>SELLO DE LA INSTITUCIÓN</th></tr>
+      <tr><td class="alto2"></td><td class="alto2"></td><td class="alto2">${r?q(r.docente):''}</td><td class="alto2"></td><td class="alto2"></td></tr>
+    </table>
+  </div></div>`;
+}
+function reporteF2(r, aj, q){
+  const sit = r ? (r.situaciones||[]) : [], ant = r ? (r.antecedentes||[]) : [];
+  const col = (lista, m) => `<div class="opcs">${lista.map(t=>`<div class="opc">${marcaRad(m.indexOf(t)>=0)}<span>${q(t)}</span></div>`).join('')}</div>`;
+  return `
+  <div class="pagina"><div class="hoja">
+    ${cabReporte(r, aj, q, 'F2')}
+    <div class="marco">
+      <p class="titm">Situación presentada</p>${col(OPC_F2.situacion, sit)}
+      <p class="titm">Antecedentes</p>${col(OPC_F2.antecedentes, ant)}
+      <p class="titm">Acciones que se tomaron al momento de intervenir</p>${lineasRep(r?r.medida:'', 3, q)}
+      <p class="titm">Descripción breve de la situación</p>${lineasRep(r?r.descripcion:'', 4, q)}
+      <p class="titm">Acuerdos y compromisos</p>
+      <div class="acu"><span class="etiq">Del padre de Familia</span>${lineasRep(r?r.acuerdosPadres:'', 2, q)}</div>
+      <div class="acu"><span class="etiq">Del Estudiante</span>${lineasRep(r?r.acuerdosAlumno:'', 2, q)}</div>
+      <p class="titm">Firmas</p>
+      <div class="firmas2">
+        <div><span class="ln2"></span><p>Docente</p><p class="nom">${r?q(r.docente):''}</p></div>
+        <div><span class="ln2"></span><p>Tutor</p></div>
+      </div>
+    </div>
+  </div></div>`;
+}
+function reporteF3(r, aj, q){
+  return `
+  <div class="pagina"><div class="hoja">
+    ${cabReporte(r, aj, q, 'F3')}
+    <div class="marco">
+      <div class="cajaredonda"><p class="titm">Descripción del incidente</p>${lineasRep(r?r.descripcion:'', 7, q)}</div>
+      <div class="cajaredonda"><p class="titm">Acuerdos</p>${lineasRep(r?r.acuerdosAlumno:'', 8, q)}</div>
+      <p class="titm">Firmas</p>
+      <div class="firmas2">
+        <div><span class="ln2"></span><p>Docente</p><p class="nom">${r?q(r.docente):''}</p></div>
+        <div><span class="ln2"></span><p>Tutor</p></div>
+        <div class="sello"></div>
+      </div>
+    </div>
+  </div></div>`;
+}
+function hojaReporteHtml(r, aj, q, nivelForzado){
+  const nivel = r ? r.nivel : (nivelForzado || 'leve');
+  if(nivel === 'grave') return reporteF2(r, aj, q);
+  if(nivel === 'muygrave') return reporteF3(r, aj, q);
+  return reporteF1(r, aj, q);
+}
+function imprimirReportes(lista, titulo, soloVer){
+  const aj = DB.ajustes || {};
+  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const cierre = '<' + '/script>';
+  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>' + q(titulo) + '</title><style>' +
+  '@page{ size: letter portrait; margin: 14mm; }' +
+  '*{ box-sizing:border-box; }' +
+  'body{ font-family: Arial, Helvetica, sans-serif; font-size:10pt; color:#000; margin:0; }' +
+  '@media screen{ body{ background:#d8d8d8; padding:18px 0; }' +
+  '  .pagina{ width:215.9mm; height:279.4mm; padding:14mm; margin:0 auto 18px; background:#fff;' +
+  '    box-shadow:0 2px 12px rgba(0,0,0,.28); } }' +
+  '@media print{ .pagina{ width:auto; height:auto; padding:0; page-break-after:always; }' +
+  '  .pagina:last-child{ page-break-after:auto; } }' +
+  '.hoja{ position:relative; height:100%; }' +
+  '.cabbox{ border:2px solid #2E5C9A; border-radius:3px; display:flex; align-items:center; gap:10px; padding:6px 10px; margin-bottom:8px; }' +
+  '.logo{ width:46px; height:46px; object-fit:contain; }' +
+  '.cabtxt{ flex:1; }' +
+  '.reinc{ text-align:right; margin:0 0 4px; font-weight:bold; font-size:10pt; }' +
+  '.cod{ margin-left:26px; }' +
+  '.dato{ margin:2px 0; font-size:10pt; }' +
+  '.lin{ display:inline-block; border-bottom:1px solid #000; min-width:120px; padding:0 4px; }' +
+  '.lin.ancho{ min-width:76%; } .lin.medio{ min-width:150px; }' +
+  '.tit{ text-align:center; font-weight:bold; font-size:8.5pt; margin:0 0 3px; text-decoration:underline; }' +
+  '.rad{ display:inline-block; width:9px; height:9px; border:1px solid #000; border-radius:50%; }' +
+  '.rad.on{ background:#000; }' +
+  '.f1cuerpo{ display:flex; gap:6px; align-items:flex-start; margin-bottom:6px; }' +
+  '.f1cuerpo .izq{ width:33%; } .f1cuerpo .centro{ width:40%; } .f1cuerpo .der{ width:27%; }' +
+  '.lista{ width:100%; border-collapse:collapse; }' +
+  '.lista td{ border:1px solid #000; padding:1.5px 4px; font-size:7.5pt; }' +
+  '.lista .rc{ width:26px; text-align:center; }' +
+  '.lista.chica td{ font-size:7pt; }' +
+  '.cajadesc{ border:1px solid #000; height:74mm; padding:5px; white-space:pre-wrap; font-size:8pt; }' +
+  '.fechatab{ width:100%; border-collapse:collapse; margin-bottom:4px; }' +
+  '.fechatab th, .fechatab td{ border:1px solid #000; text-align:center; font-size:7.5pt; padding:2px; height:14px; }' +
+  '.fechatab td.dia b{ font-size:10pt; }' +
+  '.acuerdos{ width:100%; border-collapse:collapse; margin-bottom:6px; }' +
+  '.acuerdos th{ border:1px solid #000; font-size:8pt; padding:3px; }' +
+  '.acuerdos td.alto{ border:1px solid #000; height:26mm; vertical-align:top; padding:4px; white-space:pre-wrap; font-size:8pt; }' +
+  '.firmas5{ width:100%; border-collapse:collapse; }' +
+  '.firmas5 th{ border:1px solid #000; font-size:6.5pt; padding:3px; }' +
+  '.firmas5 td.alto2{ border:1px solid #000; height:26mm; vertical-align:bottom; text-align:center; font-size:7.5pt; padding:3px; }' +
+  '.marco{ border:2px solid #BBD0E8; border-radius:14px; padding:10px 14px; }' +
+  '.titm{ text-align:center; color:#2E5C9A; font-size:11pt; margin:8px 0 5px; font-style:italic; }' +
+  '.opcs{ display:flex; flex-wrap:wrap; }' +
+  '.opc{ width:33.3%; display:flex; align-items:center; gap:5px; font-size:9pt; margin-bottom:3px; }' +
+  '.lineas{ margin-bottom:4px; }' +
+  '.lineas .txt{ font-size:9pt; margin-bottom:2px; white-space:pre-wrap; }' +
+  '.lineas .ln{ border-bottom:1px solid #000; height:14px; }' +
+  '.acu{ display:flex; align-items:flex-start; gap:8px; margin-bottom:4px; }' +
+  '.acu .etiq{ border:1px solid #2E5C9A; padding:3px 8px; font-size:8.5pt; white-space:nowrap; }' +
+  '.acu .lineas{ flex:1; }' +
+  '.firmas2{ display:flex; gap:26px; justify-content:center; align-items:flex-end; margin-top:10px; }' +
+  '.firmas2 > div{ text-align:center; min-width:120px; }' +
+  '.ln2{ display:block; border-top:1px solid #000; margin-bottom:3px; }' +
+  '.firmas2 p{ margin:0; font-size:10pt; }' +
+  '.firmas2 .nom{ font-size:7.5pt; }' +
+  '.sello{ width:60px; height:26px; border-radius:50%; background:#4A7FC1; }' +
+  '.cajaredonda{ border:1px solid #000; border-radius:18px; padding:8px 14px; margin-bottom:10px; }' +
+  '</style></head><body>' +
+  (lista.length ? lista.map(r=>hojaReporteHtml(r, aj, q)).join('')
+                : ['leve','grave','muygrave'].map(n=>hojaReporteHtml(null, aj, q, n)).join('')) +
+  (soloVer ? '' : '<script>window.onload=function(){setTimeout(function(){window.print();},350);};' + cierre) +
+  '</body></html>';
+  const v = window.open('', '_blank');
+  if(!v){ showToast('El navegador bloqueó la ventana emergente. Permítela e intenta de nuevo.'); return; }
+  v.document.write(html);
+  v.document.close();
+  showToast(soloVer ? 'Así se verá el reporte impreso.' : 'En el diálogo de impresión elige "Guardar como PDF".');
+}
+/* Arma un reporte con lo que hay en el formulario, sin guardarlo */
+function reporteDelFormulario(){
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const estId = val('rep_est') || getPref('repEst','');
+  const est = DB.estudiantes.find(e=>e.id===estId);
+  const nivel = getPref('repNivel','leve');
+  const opc = nivel==='leve' ? OPC_F1 : (nivel==='grave' ? OPC_F2 : null);
+  const marcadas = (prefijo, lista) => lista.filter((t,i)=>{
+    const el = document.getElementById(prefijo + i);
+    return el && el.checked;
+  });
+  return {
+    id:'previo', ts:new Date().toISOString(), nivel: nivel,
+    estId: est?est.id:'', estudiante: est ? (apellidosDe(est) + ', ' + nombresDe(est)) : '',
+    grado: est?est.grado:'', fecha: val('rep_fecha'), lugar: val('rep_lugar'),
+    reincidencias: val('rep_reinc'),
+    situaciones: opc ? marcadas('rep_sit_', opc.situacion) : [],
+    antecedentes: opc ? marcadas('rep_ant_', opc.antecedentes) : [],
+    acciones: nivel==='leve' ? marcadas('rep_acc_', OPC_F1.acciones) : [],
+    descripcion: val('rep_desc'), medida: val('rep_medida'),
+    acuerdosAlumno: val('rep_acu_alumno'), acuerdosPadres: val('rep_acu_padres'),
+    docente: currentUser.nombre, docenteId: currentUser.id
+  };
+}
+function verReporteAntes(){
+  const r = reporteDelFormulario();
+  if(!r.estudiante){ showToast('Selecciona el estudiante para ver la vista previa.'); return; }
+  imprimirReportes([r], 'VISTA PREVIA — ' + r.estudiante, true);
+}
+function descargarReporteFormulario(){
+  const r = reporteDelFormulario();
+  if(!r.estudiante){ showToast('Selecciona el estudiante.'); return; }
+  imprimirReportes([r], 'REPORTE ' + nivelFalta(r.nivel).formato + ' ' + r.estudiante.toUpperCase());
+}
+function verReporte(id){
+  const r = (DB.reportes||[]).find(x=>x.id===id);
+  if(!r) return;
+  imprimirReportes([r], 'REPORTE ' + nivelFalta(r.nivel).formato + ' ' + r.estudiante.toUpperCase(), true);
+}
+function descargarReporte(id){
+  const r = (DB.reportes||[]).find(x=>x.id===id);
+  if(!r) return;
+  imprimirReportes([r], 'REPORTE ' + nivelFalta(r.nivel).formato + ' ' + r.estudiante.toUpperCase());
+}
+function descargarReportes(){
+  const gradoF = getPref('repGrado',''), estF = getPref('repEst','');
+  let lista = (DB.reportes||[]).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
+  if(gradoF) lista = lista.filter(r=>r.grado===gradoF);
+  if(estF) lista = lista.filter(r=>r.estId===estF);
+  if(lista.length===0){ showToast('No hay reportes para descargar con ese filtro.'); return; }
+  const est = estF ? DB.estudiantes.find(e=>e.id===estF) : null;
+  const titulo = est
+    ? 'REPORTES DISCIPLINARIOS ' + (apellidosDe(est)+' '+nombresDe(est)).toUpperCase()
+    : 'REPORTES DISCIPLINARIOS ' + (gradoF ? gradoF.toUpperCase() : 'TODOS');
+  imprimirReportes(lista, titulo);
+}
+function descargarPlantillaReporte(){
+  imprimirReportes([], 'PLANTILLAS DE INCIDENCIA F1 F2 F3');
+}
+
+/* ============================= BITÁCORA DEL SISTEMA ============================= */
+/* Deja constancia de quién entró y qué hizo. Se conservan los últimos 800
+   movimientos para que el archivo no crezca sin control. */
+const BITACORA_MAX = 800;
+function registrar(accion, detalle){
+  if(!currentUser) return;
+  const linea = {
+    ts: new Date().toISOString(),
+    userId: currentUser.id,
+    nombre: currentUser.nombre,
+    accion: accion,
+    detalle: detalle || ''
+  };
+  commit(doc=>{
+    doc.bitacora = doc.bitacora || [];
+    doc.bitacora.push(linea);
+    if(doc.bitacora.length > BITACORA_MAX) doc.bitacora.splice(0, doc.bitacora.length - BITACORA_MAX);
+  });
+}
+function fechaLegible(iso){
+  try{
+    const d = new Date(iso);
+    return d.toLocaleDateString('es',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' +
+           d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});
+  }catch(e){ return iso; }
+}
+function renderBitacora(){
+  if(!canManageAcademicData(currentUser)) return renderNoAccess();
+  const todo = (DB.bitacora || []).slice().reverse();
+  const quien = getPref('bitUser','');
+  const accionF = getPref('bitAccion','');
+  const diaF = getPref('bitDia','');
+  const orden = getPref('bitOrden','fecha');          // 'fecha' o 'accion'
+  let filtradas = quien ? todo.filter(l=>l.userId===quien) : todo;
+  if(accionF) filtradas = filtradas.filter(l=>l.accion===accionF);
+  if(diaF) filtradas = filtradas.filter(l=>String(l.ts).slice(0,10)===diaF);
+  if(orden === 'accion'){
+    // agrupa los movimientos del mismo tipo, y dentro de cada grupo del más reciente al más antiguo
+    filtradas = filtradas.slice().sort((a,b)=>
+      a.accion.localeCompare(b.accion,'es') || b.ts.localeCompare(a.ts));
+  }
+  const accionesUsadas = [...new Set((quien ? todo.filter(l=>l.userId===quien) : todo).map(l=>l.accion))].sort();
+  const diasUsados = [...new Set((quien ? todo.filter(l=>l.userId===quien) : todo).map(l=>String(l.ts).slice(0,10)))].sort().reverse();
+  const usuarios = DB.docentes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const resumen = {};
+  todo.forEach(l=>{
+    if(!resumen[l.userId]) resumen[l.userId] = {ingresos:0, acciones:0, ultimo:l.ts};
+    if(l.accion === 'Ingreso') resumen[l.userId].ingresos++;
+    else resumen[l.userId].acciones++;
+    if(l.ts > resumen[l.userId].ultimo) resumen[l.userId].ultimo = l.ts;
+  });
+  const u = quien ? DB.docentes.find(x=>x.id===quien) : null;
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Control interno</p>
+    <h1 class="page-title">Bitácora del sistema</h1>
+    <p class="page-desc">Registro de ingresos y cambios hechos por cada usuario. Puedes filtrar por día y por tipo de acción, o agrupar los movimientos del mismo tipo. Se conservan los últimos ${BITACORA_MAX}.</p>
+  </div>
+  <div class="filters">
+    <div class="field">
+      <label>Usuario</label>
+      <select onchange="setPref('bitUser', this.value)">
+        <option value="">Todos los usuarios</option>
+        ${usuarios.map(x=>`<option value="${x.id}" ${quien===x.id?'selected':''}>${esc(x.nombre)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Acción</label>
+      <select onchange="setPref('bitAccion', this.value)">
+        <option value="">Todas las acciones</option>
+        ${accionesUsadas.map(x=>`<option value="${esc(x)}" ${accionF===x?'selected':''}>${esc(x)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Día</label>
+      <select onchange="setPref('bitDia', this.value)">
+        <option value="">Todos los días</option>
+        ${diasUsados.map(d=>`<option value="${esc(d)}" ${diaF===d?'selected':''}>${esc(fechaCorta(d))}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Ordenar</label>
+      <select onchange="setPref('bitOrden', this.value)">
+        <option value="fecha" ${orden==='fecha'?'selected':''}>Por fecha y hora</option>
+        <option value="accion" ${orden==='accion'?'selected':''}>Agrupado por acción</option>
+      </select>
+    </div>
+    ${(quien||accionF||diaF)?`<button class="btn" onclick="setPref('bitUser',''); setPref('bitAccion',''); setPref('bitDia','')">Quitar filtros</button>`:''}
+  </div>
+
+  ${!quien ? `
+  <div class="card">
+    <p class="card-title">Resumen por usuario</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Usuario</th><th>Perfil</th><th style="width:110px;">Ingresos</th>
+        <th style="width:120px;">Cambios</th><th style="width:170px;">Último movimiento</th><th></th></tr></thead>
+      <tbody>
+        ${usuarios.map(x=>{
+          const r = resumen[x.id];
+          return `<tr>
+            <td>${esc(x.nombre)}</td>
+            <td><span class="badge ${badgeClass(x)}">${esc(domainLabel(x))}</span></td>
+            <td class="mono">${r?r.ingresos:0}</td>
+            <td class="mono">${r?r.acciones:0}</td>
+            <td class="mono">${r?esc(fechaLegible(r.ultimo)):'—'}</td>
+            <td><button class="icon-btn" onclick="setPref('bitUser','${x.id}')">Ver detalle</button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`:''}
+
+  <div class="card">
+    <p class="card-title">
+      ${quien ? 'Movimientos de ' + esc(u?u.nombre:'') : 'Últimos movimientos'}
+      <span class="pill pill-muted">${filtradas.length} registro(s)</span>
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th style="width:170px; cursor:pointer;" onclick="setPref('bitOrden','fecha')">Fecha y hora ${orden==='fecha'?'▾':''}</th>
+        ${quien?'':'<th>Usuario</th>'}
+        <th style="width:190px; cursor:pointer;" onclick="setPref('bitOrden','accion')" title="Agrupar los movimientos del mismo tipo">Acción ${orden==='accion'?'▾':''}</th>
+        <th>Detalle</th></tr></thead>
+      <tbody>
+        ${filtradas.length===0?`<tr><td colspan="4" class="empty">Todavía no hay movimientos registrados.</td></tr>`:''}
+        ${filtradas.slice(0,300).map(l=>`<tr>
+          <td class="mono">${esc(fechaLegible(l.ts))}</td>
+          ${quien?'':`<td>${esc(l.nombre)}</td>`}
+          <td><span class="pill ${l.accion==='Ingreso'?'pill-primary':'pill-muted'}" style="cursor:pointer;"
+            title="Ver solo estos movimientos" onclick="setPref('bitAccion','${esc(l.accion)}')">${esc(l.accion)}</span></td>
+          <td style="font-size:12.5px; color:var(--muted);">${esc(l.detalle)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    ${filtradas.length>300?`<p class="nota-chica">Se muestran los 300 más recientes.</p>`:''}
+  </div>`;
+}
+
+/* ============================= PROMEDIOS DEL PANEL ============================= */
+/* Promedio de los estudiantes de esos grados en esas materias.
+   Solo cuenta lo que ya tiene nota; ignora lo que está en blanco. */
+function promedioDe(grados, asigIds){
+  let suma = 0, n = 0;
+  grados.forEach(g=>{
+    const materias = asignaturasVisibles(g).filter(a=>!asigIds || asigIds.indexOf(a.id) >= 0);
+    DB.estudiantes.filter(e=>e.grado===g).forEach(e=>{
+      materias.forEach(a=>{
+        const v = subjectInfo(e.id, a.id, g).valor;
+        if(v !== null){ suma += v; n++; }
+      });
+    });
+  });
+  return n === 0 ? null : {valor: suma/n, cuantos: n};
+}
+function celdaProm(p){
+  if(!p) return '<span class="empty" style="padding:0;">Sin notas</span>';
+  const v = p.valor;
+  return `<b class="mono ${v>=60?'avg-good':'avg-bad'}" style="font-size:15px;">${v.toFixed(1)}</b>`;
+}
+function renderPromedios(){
+  const grados = misGrados(currentUser);
+  const materias = [];
+  grados.forEach(g=>asignaturasVisibles(g).forEach(a=>{ if(!materias.some(x=>x.id===a.id)) materias.push(a); }));
+  const gSel = getPref('promGrado','');
+  const aSel = getPref('promAsig','');
+  const gradosUsar = gSel ? [gSel] : grados;
+  const asigUsar = aSel ? [aSel] : null;
+  const total = promedioDe(gradosUsar, asigUsar);
+
+  let detalle = '';
+  if(!gSel){
+    detalle = `
+    <table><thead><tr><th>Aula</th><th style="width:120px;">Promedio</th><th style="width:130px;">Notas contadas</th></tr></thead>
+    <tbody>${grados.map(g=>{ const p = promedioDe([g], asigUsar);
+      return `<tr><td>${esc(g)}</td><td>${celdaProm(p)}</td><td class="mono">${p?p.cuantos:0}</td></tr>`; }).join('')}
+    </tbody></table>`;
+  }else{
+    detalle = `
+    <table><thead><tr><th>Materia</th><th style="width:120px;">Promedio</th><th style="width:130px;">Notas contadas</th></tr></thead>
+    <tbody>${asignaturasVisibles(gSel).filter(a=>!asigUsar || asigUsar.indexOf(a.id)>=0).map(a=>{
+      const p = promedioDe([gSel], [a.id]);
+      return `<tr><td>${esc(a.nombre)}</td><td>${celdaProm(p)}</td><td class="mono">${p?p.cuantos:0}</td></tr>`; }).join('')}
+    </tbody></table>`;
+  }
+
+  const rotulo = (gSel?esc(gSel):'Todo el colegio') + ' · ' + (aSel ? esc((materias.find(m=>m.id===aSel)||{}).nombre||'') : 'Todas las materias');
+  return `
+  <div class="card">
+    <p class="card-title">Promedios <span class="pill pill-muted">${esc(rotulo)}</span></p>
+    <div class="filters" style="margin-bottom:14px;">
+      <div class="field">
+        <label>Aula</label>
+        <select onchange="setPref('promGrado', this.value)">
+          <option value="">Todo el colegio</option>
+          ${grados.map(g=>`<option value="${esc(g)}" ${gSel===g?'selected':''}>${esc(g)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Materia</label>
+        <select onchange="setPref('promAsig', this.value)">
+          <option value="">Todas las materias</option>
+          ${materias.map(a=>`<option value="${a.id}" ${aSel===a.id?'selected':''}>${esc(a.nombre)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="stat" style="margin-bottom:14px;">
+      <p class="stat-label">Promedio de la selección</p>
+      <p class="stat-value">${total ? total.valor.toFixed(1) : '—'}</p>
+      <p class="nota-chica" style="margin-top:2px;">${total ? total.cuantos + ' nota(s) de materia contadas' : 'Todavía no hay notas cargadas.'}</p>
+    </div>
+    <div class="table-wrap">${detalle}</div>
+    <p class="nota-chica">Se promedian las materias que ya tienen nota; las que están en blanco no bajan el resultado.</p>
+  </div>`;
 }
 
 /* ============================= PANEL ============================= */
@@ -2061,6 +2918,7 @@ function renderPanel(){
       }).join('')}
     </div>`}
   </div>
+  ${renderPromedios()}
   ${renderTarjetaClave()}
   ${!isAdmin(currentUser) ? `
   <div class="card">
@@ -2217,6 +3075,7 @@ async function saveStudent(){
     const i = doc.estudiantes.findIndex(x=>x.id===item.id);
     if(i>=0) doc.estudiantes[i] = item; else doc.estudiantes.push(item);
   });
+  registrar('Estudiante', (editingId?'Editó a ':'Agregó a ') + nombre + ' (' + grado + ')');
   showToast('Estudiante guardado. Ya es visible para los demás docentes de '+grado+'.');
   closeModal();
 }
@@ -2228,6 +3087,7 @@ async function deleteStudent(id){
     if(i>=0) doc.estudiantes.splice(i,1);
     Object.keys(doc.calificaciones).forEach(k=>{ if(k.startsWith(id+'|')) delete doc.calificaciones[k]; });
   });
+  registrar('Estudiante', 'Eliminó un estudiante');
   showToast('Estudiante eliminado.');
   render();
 }
@@ -2654,6 +3514,7 @@ async function saveTeacher(esAdmin){
     if(alcanceTotal) nuevo.alcanceTotal = true;
     commit(doc=>{ doc.docentes.push(nuevo); });
   }
+  registrar('Usuario', (editingId?'Editó a ':'Creó a ') + nombre);
   showToast('Usuario guardado.');
   closeModal();
 }
@@ -2921,6 +3782,7 @@ function guardarPesos(){
     return;
   }
   aplicarPonderacion(actividades, rubros);
+  registrar('Ponderación', 'Cambió los porcentajes del período');
   showToast('Ponderación guardada. Las notas se recalcularon.');
   render();
 }
@@ -3172,6 +4034,7 @@ function ejecutarCierre(){
   });
   viewState.cierre = null;
   render();
+  registrar('Cierre de año', 'Cerró el año y promovió a los estudiantes');
   showToast('Año cerrado. ' + promovidos + ' promovido(s), ' + egresados + ' egresado(s). Ya puedes trabajar el ' + anioNuevo + '.');
 }
 
@@ -3366,7 +4229,9 @@ function renderTareas(){
     estudiante: getPref('tEst',''),
     estado: getPref('tEstado',''),
     periodo: getPref('tPeriodo',''),
-    asigId: getPref('tAsig','')
+    asigId: getPref('tAsig',''),
+    semana: getPref('tSemana','actual'),
+    dia: getPref('tDia','')
   };
   const estudiantesFiltro = DB.estudiantes
     .filter(e=>gradosVisibles.indexOf(e.grado)>=0)
@@ -3384,6 +4249,14 @@ function renderTareas(){
     });
     return DB.asignaturas.filter(a=>ids.has(a.id));
   })();
+
+  // semanas y días con tareas, para llenar los dos selectores
+  const sinFecha = Object.assign({}, filtro, {semana:'', dia:''});
+  const conFecha = listaTareas(sinFecha).filter(f=>f.fecha);
+  const semanasDisponibles = [...new Set(conFecha.map(f=>lunesDe(f.fecha)))].filter(Boolean).sort().reverse();
+  const diasDisponibles = [...new Set(conFecha
+    .filter(f=>(!filtro.semana || filtro.semana==='actual') ? true : lunesDe(f.fecha)===filtro.semana)
+    .map(f=>f.fecha))].sort().reverse();
 
   const buscador = `
   <div class="filters">
@@ -3406,6 +4279,21 @@ function renderTareas(){
       <select onchange="setPref('tEst', this.value)">
         <option value="">${filtro.grado?'Todos los de '+esc(filtro.grado):'Todos los estudiantes'}</option>
         ${estudiantesFiltro.map(e=>`<option value="${e.id}" ${filtro.estudiante===e.id?'selected':''}>${esc(e.nombre)}${filtro.grado?'':' — '+esc(e.grado)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Semana</label>
+      <select onchange="setPref('tDia',''); setPref('tSemana', this.value)">
+        <option value="actual" ${filtro.semana==='actual'?'selected':''}>Semana en curso</option>
+        <option value="" ${filtro.semana===''?'selected':''}>Mostrar todas</option>
+        ${semanasDisponibles.map(w=>`<option value="${esc(w)}" ${filtro.semana===w?'selected':''}>${esc(rotuloSemana(w))}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Día</label>
+      <select onchange="setPref('tDia', this.value)">
+        <option value="">Mostrar todos</option>
+        ${diasDisponibles.map(d=>`<option value="${esc(d)}" ${filtro.dia===d?'selected':''}>${esc(fechaCorta(d))}</option>`).join('')}
       </select>
     </div>
     ${pestana==='registro'?`
@@ -3441,7 +4329,9 @@ function renderTareas(){
           <th>Nombre de la tarea</th><th>Tipo</th><th>Período</th><th>Nota</th><th>Estado</th><th>Observaciones</th>
         </tr></thead>
         <tbody>
-          ${filas.length===0?`<tr><td colspan="10" class="empty">Aún no hay tareas registradas. Se llenan solas al cargar fechas, notas o estados en Calificaciones.</td></tr>`:''}
+          ${filas.length===0?`<tr><td colspan="10" class="empty">${filtro.semana==='actual'
+            ? 'No hay tareas con fecha en la semana en curso. Cambia el filtro de semana a "Mostrar todas".'
+            : 'Aún no hay tareas registradas. Se llenan solas al poner fechas en la Hoja de tareas.'}</td></tr>`:''}
           ${filas.map(f=>`<tr>
             <td class="mono">${f.fecha?esc(f.fecha):'—'}</td>
             <td>${esc(f.grado)}</td>
@@ -3459,15 +4349,16 @@ function renderTareas(){
       </div>
     </div>`;
   }else{
-    const alertas = calcularAlertas({grado:filtro.grado, estudiante:filtro.estudiante, asigId:filtro.asigId});
+    const alertas = calcularAlertas({grado:filtro.grado, estudiante:filtro.estudiante,
+      asigId:filtro.asigId, semana:filtro.semana, dia:filtro.dia});
     const conteo = {roja:0, naranja:0, amarilla:0};
     alertas.forEach(a=>conteo[a.alerta.nivel]++);
     contenido = `
     ${buscador}
     <div class="grid grid-3" style="margin-bottom:18px;">
       <div class="stat alerta-amarilla"><p class="stat-label">Alerta amarilla · 2 pendientes</p><p class="stat-value">${conteo.amarilla}</p></div>
-      <div class="stat alerta-naranja"><p class="stat-label">Alerta naranja · 3 pendientes</p><p class="stat-value">${conteo.naranja}</p></div>
-      <div class="stat alerta-roja"><p class="stat-label">Alerta roja · 4 o más</p><p class="stat-value">${conteo.roja}</p></div>
+      <div class="stat alerta-naranja"><p class="stat-label">Alerta naranja · 3 en 3 materias</p><p class="stat-value">${conteo.naranja}</p></div>
+      <div class="stat alerta-roja"><p class="stat-label">Alerta roja · 4 o más, o 3 concentradas</p><p class="stat-value">${conteo.roja}</p></div>
     </div>
     ${alertas.length===0?`<div class="card"><p class="empty">Ningún estudiante alcanza el umbral de alerta. Se necesitan al menos 2 tareas marcadas como "No entregada".</p></div>`:''}
     ${alertas.map(a=>`
@@ -3962,6 +4853,396 @@ function descargarBoletasPdf(grado, soloEstId){
   showToast('En el diálogo de impresión elige "Guardar como PDF".');
 }
 
+/* ============================= PANEL: HOJA DE TAREAS ============================= */
+function renderHojas(){
+  if(!puedeVerPanel(currentUser, 'hojas')) return renderNoAccess();
+  const gradosVisibles = misGrados(currentUser);
+  if(gradosVisibles.length===0){
+    return `<div class="page-head"><p class="page-eyebrow">Planificación</p>
+      <h1 class="page-title">Hoja de tareas</h1>
+      <p class="page-desc">No tienes grados ni asignaturas asignadas todavía.</p></div>`;
+  }
+  const ctx = contextoHoja();
+  const grado = ctx.grado, asigId = ctx.asigId, periodo = ctx.periodo, posibles = ctx.posibles;
+  const asig = DB.asignaturas.find(a=>a.id===asigId);
+  const edit = asigId && canEditGrades(currentUser, grado, asigId) && puedeEditarPanel(currentUser,'hojas');
+  const cfg = hojaCfg();
+
+  if(posibles.length===0){
+    return `<div class="page-head"><p class="page-eyebrow">Planificación</p>
+      <h1 class="page-title">Hoja de tareas</h1></div>
+      <div class="card"><p class="empty">No tienes asignaturas asignadas en esta aula.</p></div>`;
+  }
+  const hoja = getHoja(grado, asigId, periodo);
+  const docente = docenteDeAsignatura(grado, asigId);
+
+  const enc = (clave) => edit
+    ? `<input class="hj-enc" value="${esc(cfg.encabezados[clave])}" onchange="editarEncabezadoHoja('${clave}', this.value)">`
+    : esc(cfg.encabezados[clave]);
+
+  const filaHtml = (f, i) => {
+    const sel = viewState.filaSel === i ? ' hj-sel' : '';
+    const clic = edit ? ` onclick="seleccionarFila(${i}, event)" title="Haz clic en un borde de la fila para seleccionarla"` : '';
+    if(f.tipo === 'integradora'){
+      return `<tr class="hj-integradora${sel}"${clic}>
+        <td>${edit?`<input type="date" class="hj-in" value="${esc(f.fecha)}" onchange="editarFilaHoja(${i},'fecha',this.value)">`:esc(f.fecha||'')}</td>
+        <td>${edit?`<textarea class="hj-in hj-area" rows="2" onchange="editarFilaHoja(${i},'contenido',this.value)">${esc(f.contenido)}</textarea>`:esc(f.contenido)}</td>
+        <td colspan="4" class="hj-centro">
+          ${edit
+            ? `<input class="hj-in hj-etiqueta" value="${esc(f.etiqueta)}" placeholder="INTEGRADORA I" onchange="editarFilaHoja(${i},'etiqueta',this.value)">
+               <input class="hj-in hj-centro" value="${esc(f.tarea)}" placeholder="Ej.: Páginas 84 y 85" onchange="editarFilaHoja(${i},'tarea',this.value)">`
+            : `<div class="hj-etiqueta-txt">${esc(f.etiqueta)}</div><div>${esc(f.tarea)}</div>`}
+        </td>
+        <td><div class="hj-firmas">${cfg.firmas.map(x=>`<div class="hj-firma">${esc(x)}</div>`).join('')}</div></td>
+        <td>${edit?`<textarea class="hj-in hj-area" rows="2" onchange="editarFilaHoja(${i},'obs',this.value)">${esc(f.obs)}</textarea>`:esc(f.obs)}</td>
+        ${edit?`<td class="hj-acciones">
+          <button class="icon-btn ${viewState.filaSel===i?'sel':''}" title="Seleccionar esta fila" onclick="seleccionarFila(${i})">◉</button>
+          <button class="icon-btn" title="Cambiar a tarea" onclick="cambiarTipoFila(${i})">⇄</button>
+          <button class="icon-btn" title="Quitar fila" onclick="quitarFilaHoja(${i})">×</button></td>`:''}
+      </tr>`;
+    }
+    return `<tr class="${sel.trim()}"${clic}>
+      <td>${edit?`<input type="date" class="hj-in" value="${esc(f.fecha)}" onchange="editarFilaHoja(${i},'fecha',this.value)">`:esc(f.fecha||'')}</td>
+      <td>${edit?`<textarea class="hj-in hj-area" rows="3" placeholder="Contenidos de la semana" onchange="editarFilaHoja(${i},'contenido',this.value)">${esc(f.contenido)}</textarea>`:esc(f.contenido)}</td>
+      <td>${edit?`<textarea class="hj-in hj-area hj-centro" rows="3" placeholder="Ej.: Páginas 78 y 79" onchange="editarFilaHoja(${i},'tarea',this.value)">${esc(f.tarea)}</textarea>`:esc(f.tarea)}
+        <div class="nota-chica" style="margin:4px 0 0;">Este texto es el nombre de la actividad en Calificaciones.</div></td>
+      <td colspan="2" class="hj-rub">
+        <table class="hj-rubrica">
+          ${(f.rubrica||[]).map((r,j)=>`
+            <tr>
+              <td>${edit?`<input class="hj-in" value="${esc(r.nombre)}" onchange="editarCriterioHoja(${i},${j},'nombre',this.value)">`:esc(r.nombre)}</td>
+              <td class="hj-peso">${edit?`<input class="hj-in hj-centro" value="${esc(r.peso)}" onchange="editarCriterioHoja(${i},${j},'peso',this.value)">`:esc(r.peso)}%</td>
+              <td class="hj-vacio"></td>
+              ${edit?`<td class="hj-x"><button class="icon-btn" onclick="quitarCriterioHoja(${i},${j})">×</button></td>`:''}
+            </tr>`).join('')}
+        </table>
+        ${edit?`<button class="btn btn-sm" style="margin-top:5px;" onclick="agregarCriterioHoja(${i})">+ Criterio</button>`:''}
+      </td>
+      <td>${edit?`<input class="hj-in" placeholder="Fecha:" value="${esc(f.nota)}" onchange="editarFilaHoja(${i},'nota',this.value)">`:esc(f.nota)}</td>
+      <td><div class="hj-firmas">${cfg.firmas.map(x=>`<div class="hj-firma">${esc(x)}</div>`).join('')}</div></td>
+      <td>${edit?`<textarea class="hj-in hj-area" rows="3" onchange="editarFilaHoja(${i},'obs',this.value)">${esc(f.obs)}</textarea>`:esc(f.obs)}</td>
+      ${edit?`<td class="hj-acciones">
+        <button class="icon-btn ${viewState.filaSel===i?'sel':''}" title="Seleccionar esta fila" onclick="seleccionarFila(${i})">◉</button>
+        <button class="icon-btn" title="Cambiar a integradora" onclick="cambiarTipoFila(${i})">⇄</button>
+        <button class="icon-btn" title="Quitar fila" onclick="quitarFilaHoja(${i})">×</button></td>`:''}
+    </tr>`;
+  };
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Planificación</p>
+    <h1 class="page-title">Hoja de tareas</h1>
+    <p class="page-desc">Lo que escribas aquí alimenta Calificaciones: el texto de "${esc(cfg.encabezados.tareas)}" es el nombre de cada actividad y la fecha se copia sola.</p>
+  </div>
+  <div class="filters">
+    <div class="field">
+      <label>Aula</label>
+      <select class="grado-select" onchange="setPref('hojaAsig',''); setPref('hojaGrado', this.value)">
+        ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Asignatura</label>
+      <select onchange="setPref('hojaAsig', this.value)">
+        ${posibles.map(x=>`<option value="${x.id}" ${asigId===x.id?'selected':''}>${esc(x.nombre)}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="imprimirHoja('${esc(grado)}','${asigId}',${periodo},'aula')">Descargar en PDF</button>
+    <button class="btn" onclick="imprimirHoja('${esc(grado)}','${asigId}',${periodo},'todas')">Todas mis aulas en PDF</button>
+  </div>
+
+  <div class="period-tabs">
+    ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="setPref('hojaPeriodo', ${p})">Período ${p}</div>`).join('')}
+  </div>
+
+  <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius);">
+    <p class="hj-titulo">HOJA DE TAREAS ${esc(PERIODO_PALABRA[periodo]||'')} PERIODO ${esc((asig?asig.nombre:'').toUpperCase())}.</p>
+    <div class="hj-cab2">
+      <span class="hj-grado">Grado: ${esc(grado)}</span>
+      <span class="hj-docente">DOCENTE: ${esc(docente ? docente.nombre : (currentUser?currentUser.nombre:''))}</span>
+    </div>
+    <div class="table-wrap">
+    <table class="hj-tabla">
+      <thead><tr>
+        <th style="width:82px;">${enc('fecha')}</th>
+        <th style="width:150px;">${enc('contenidos')}</th>
+        <th style="width:120px;">${enc('tareas')}</th>
+        <th colspan="2" style="min-width:290px;">${enc('rubrica')}</th>
+        <th style="width:80px;">${enc('nota')}</th>
+        <th style="width:96px;">${enc('firma')}</th>
+        <th style="width:130px;">${enc('observaciones')}</th>
+        ${edit?'<th style="width:64px;"></th>':''}
+      </tr></thead>
+      <tbody>
+        ${hoja.filas.map(filaHtml).join('')}
+        <tr class="hj-examenes">
+          <td>${edit?`<input type="date" class="hj-in" value="${esc(hoja.examen.fecha||'')}" onchange="editarExamen('fecha',this.value)">`:esc(hoja.examen.fecha||'')}</td>
+          <td colspan="${edit?8:7}" class="hj-centro">
+            ${edit?`<input class="hj-in hj-centro hj-etiqueta" value="${esc(hoja.examen.texto||'')}" onchange="editarExamen('texto',this.value)">`:esc(hoja.examen.texto||'')}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    ${edit?`<div class="btn-row" style="align-items:center;">
+      <button class="btn btn-sm" onclick="agregarFilaHoja('tarea')">+ Fila de tarea</button>
+      <button class="btn btn-sm" onclick="agregarFilaHoja('integradora')">+ Fila de integradora</button>
+      <span class="nota-chica" style="margin:0 0 0 6px;">
+        ${typeof viewState.filaSel === 'number'
+          ? 'Se insertará debajo de la fila ' + (viewState.filaSel+1) + '. <a href="#" onclick="viewState.filaSel=null; render(); return false;">Quitar selección</a>'
+          : 'Marca una fila con el botón ◉ para insertar debajo de ella; si no, se agrega al final.'}
+      </span>
+    </div>`:''}
+    <p class="nota-chica">Las firmas se configuran una vez y quedan por defecto: ${cfg.firmas.map(f=>esc(f)).join(' · ')}.
+      ${edit?`<button class="btn btn-sm" style="margin-left:8px;" onclick="editarFirmasHoja()">Cambiar firmas</button>`:''}</p>
+  </div>`;
+}
+/* --- edición --- */
+/* Resuelve el aula, la asignatura y el período que se están viendo.
+   La pantalla y las funciones de edición usan esto mismo, para que lo que
+   se escribe se guarde siempre en la hoja que está a la vista. */
+function contextoHoja(){
+  const gradosVisibles = misGrados(currentUser);
+  const pg = getPref('hojaGrado','');
+  const grado = (pg && gradosVisibles.includes(pg)) ? pg : (gradosVisibles[0] || '');
+  const posibles = !grado ? [] : (isAdmin(currentUser) || esOrientador(currentUser, grado)
+    ? asignaturasDeGrado(grado)
+    : asignaturasDeGrado(grado).filter(x=>currentUser.asignaciones.some(a=>a.grado===grado && a.asignaturaId===x.id)));
+  const pa = getPref('hojaAsig','');
+  const asigId = (pa && posibles.some(x=>x.id===pa)) ? pa : (posibles[0] ? posibles[0].id : '');
+  const periodo = Number(getPref('hojaPeriodo',1)) || 1;
+  return {grado, asigId, periodo, posibles, gradosVisibles};
+}
+function hojaActual(){ return contextoHoja(); }
+let ultimoRegistroHoja = '';
+function editarFilaHoja(i, campo, valor){
+  const {grado, asigId, periodo} = hojaActual();
+  const marca = grado + '|' + asigId + '|' + periodo;
+  if(ultimoRegistroHoja !== marca){
+    ultimoRegistroHoja = marca;
+    const nom = (DB.asignaturas.find(a=>a.id===asigId)||{}).nombre || '';
+    registrar('Hoja de tareas', 'Editó la hoja de ' + nom + ' — ' + grado + ' (período ' + periodo + ')');
+  }
+  mutarHoja(grado, asigId, periodo, h=>{ if(h.filas[i]) h.filas[i][campo] = valor; });
+  render();
+}
+function editarCriterioHoja(i, j, campo, valor){
+  const {grado, asigId, periodo} = hojaActual();
+  mutarHoja(grado, asigId, periodo, h=>{
+    if(!h.filas[i] || !h.filas[i].rubrica[j]) return;
+    h.filas[i].rubrica[j][campo] = campo==='peso' ? (parseInt(valor,10)||0) : valor;
+  });
+  render();
+}
+function agregarCriterioHoja(i){
+  const {grado, asigId, periodo} = hojaActual();
+  mutarHoja(grado, asigId, periodo, h=>{
+    if(h.filas[i]){ h.filas[i].rubrica = h.filas[i].rubrica || []; h.filas[i].rubrica.push({nombre:'Nuevo criterio', peso:0}); }
+  });
+  render();
+}
+function quitarCriterioHoja(i, j){
+  const {grado, asigId, periodo} = hojaActual();
+  mutarHoja(grado, asigId, periodo, h=>{ if(h.filas[i]) h.filas[i].rubrica.splice(j,1); });
+  render();
+}
+function seleccionarFila(i, ev){
+  // Si el clic fue sobre un campo editable, no se selecciona la fila:
+  // el docente está escribiendo, no eligiendo dónde insertar.
+  if(ev && ev.target && typeof ev.target.closest === 'function'){
+    if(ev.target.closest('input, textarea, select, button, a')) return;
+  }
+  viewState.filaSel = (viewState.filaSel === i) ? null : i;
+  render();
+}
+function agregarFilaHoja(tipo){
+  const {grado, asigId, periodo} = hojaActual();
+  const cfg = hojaCfg();
+  const donde = (typeof viewState.filaSel === 'number') ? viewState.filaSel : null;
+  mutarHoja(grado, asigId, periodo, h=>{
+    const cuantas = h.filas.filter(f=>f.tipo==='integradora').length;
+    const nueva = tipo==='integradora'
+      ? {tipo:'integradora', fecha:'', contenido:'', tarea:'', etiqueta: cfg.etiquetas[cuantas]||('INTEGRADORA '+(cuantas+1)), rubrica:[], nota:'', obs:''}
+      : {tipo:'tarea', fecha:'', contenido:'', tarea:'', etiqueta:'', rubrica: cfg.rubrica.map(r=>Object.assign({},r)), nota:'', obs:''};
+    if(donde !== null && donde >= 0 && donde < h.filas.length) h.filas.splice(donde + 1, 0, nueva);
+    else h.filas.push(nueva);
+  });
+  viewState.filaSel = (donde !== null) ? donde + 1 : null;
+  render();
+}
+function quitarFilaHoja(i){
+  if(!confirm('¿Quitar esta fila? Si tenía notas cargadas en Calificaciones, se recorrerán las casillas.')) return;
+  const {grado, asigId, periodo} = hojaActual();
+  mutarHoja(grado, asigId, periodo, h=>{ h.filas.splice(i,1); });
+  render();
+}
+function cambiarTipoFila(i){
+  const {grado, asigId, periodo} = hojaActual();
+  const cfg = hojaCfg();
+  mutarHoja(grado, asigId, periodo, h=>{
+    const f = h.filas[i];
+    if(!f) return;
+    if(f.tipo === 'tarea'){
+      const cuantas = h.filas.filter(x=>x.tipo==='integradora').length;
+      f.tipo = 'integradora';
+      f.etiqueta = f.etiqueta || cfg.etiquetas[cuantas] || ('INTEGRADORA '+(cuantas+1));
+      f.rubrica = [];
+    }else{
+      f.tipo = 'tarea';
+      f.rubrica = cfg.rubrica.map(r=>Object.assign({},r));
+    }
+  });
+  render();
+}
+function editarExamen(campo, valor){
+  const {grado, asigId, periodo} = hojaActual();
+  mutarHoja(grado, asigId, periodo, h=>{ h.examen = h.examen || {}; h.examen[campo] = valor; });
+  if(campo === 'texto') guardarHojaCfg(c=>{ c.textoExamenes = valor; });   // queda por defecto
+  render();
+}
+function editarEncabezadoHoja(clave, valor){
+  const limpio = (valor||'').trim();
+  if(!limpio) { render(); return; }
+  guardarHojaCfg(c=>{ c.encabezados[clave] = limpio; });
+  render();
+}
+function editarFirmasHoja(){
+  const cfg = hojaCfg();
+  const v = prompt('Escribe las firmas separadas por punto y coma:', cfg.firmas.join('; '));
+  if(v === null) return;
+  const lista = v.split(';').map(x=>x.trim()).filter(Boolean);
+  if(!lista.length){ showToast('Debe quedar al menos una firma.'); return; }
+  guardarHojaCfg(c=>{ c.firmas = lista; });
+  render();
+}
+
+/* Imprime la hoja de tareas en PDF horizontal, con el logo como marca de agua */
+function imprimirHoja(grado, asigId, periodo, alcance){
+  const cfg = hojaCfg();
+  const aj = DB.ajustes || {};
+  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  let combos = [];
+  if(alcance === 'todas'){
+    misGrados(currentUser).forEach(g=>{
+      const asigs = isAdmin(currentUser) || esOrientador(currentUser, g)
+        ? asignaturasDeGrado(g)
+        : asignaturasDeGrado(g).filter(x=>currentUser.asignaciones.some(a=>a.grado===g && a.asignaturaId===x.id));
+      asigs.forEach(a=>combos.push({grado:g, asig:a}));
+    });
+  }else{
+    const a = DB.asignaturas.find(x=>x.id===asigId);
+    if(a) combos = [{grado:grado, asig:a}];
+  }
+  if(combos.length===0){ showToast('No hay asignaturas para imprimir.'); return; }
+
+  const hojaHtml = (grado, asig)=>{
+    const h = getHoja(grado, asig.id, periodo);
+    const nf = h.filas.length;
+    const largo = h.filas.reduce((t,f)=>t + (f.contenido||'').length + (f.tarea||'').length + (f.obs||'').length, 0);
+    let pt = 8;
+    if(nf > 8 || largo > 900) pt = 7;
+    if(nf > 10 || largo > 1400) pt = 6.2;
+    if(nf > 12 || largo > 2000) pt = 5.6;
+    const doc = docenteDeAsignatura(grado, asig.id);
+    const filas = h.filas.map(f=>{
+      if(f.tipo === 'integradora'){
+        return `<tr>
+          <td class="c neg">${q(f.fecha)}</td>
+          <td>${q(f.contenido)}</td>
+          <td colspan="4" class="c integ">
+            <div class="et">${q(f.etiqueta)}</div><div>${q(f.tarea)}</div>
+          </td>
+          <td>${q(f.nota)}</td>
+          <td class="celda-firma"><div class="celfir">${cfg.firmas.map(x=>'<div class="fir">'+q(x)+'</div>').join('')}</div></td>
+          <td>${q(f.obs)}</td>
+        </tr>`;
+      }
+      const rub = (f.rubrica||[]).map(r=>
+        `<tr><td class="rn">${q(r.nombre)}</td><td class="rp">${q(r.peso)}%</td><td class="rv"></td></tr>`).join('');
+      return `<tr>
+        <td class="c neg">${q(f.fecha)}</td>
+        <td>${q(f.contenido)}</td>
+        <td class="c">${q(f.tarea)}</td>
+        <td colspan="2" class="sinpad"><table class="rub">${rub}</table></td>
+        <td>${q(f.nota)}</td>
+        <td class="celda-firma"><div class="celfir">${cfg.firmas.map(x=>'<div class="fir">'+q(x)+'</div>').join('')}</div></td>
+        <td>${q(f.obs)}</td>
+      </tr>`;
+    }).join('');
+    return `
+    <div class="pagina"><div class="hoja" style="font-size:${pt}pt;">
+      ${aj.logo?`<img src="${aj.logo}" class="marca">`:''}
+      <p class="titulo">HOJA DE TAREAS ${q(PERIODO_PALABRA[periodo]||'')} PERIODO ${q(asig.nombre.toUpperCase())}.</p>
+      <table class="th">
+        <tr><td class="grado">Grado: ${q(grado)}</td>
+            <td class="doc">DOCENTE: ${q(doc ? doc.nombre : '')}</td></tr>
+      </table>
+      <table class="tabla">
+        <tr>
+          <th style="width:7%">${q(cfg.encabezados.fecha)}</th>
+          <th style="width:14%">${q(cfg.encabezados.contenidos)}</th>
+          <th style="width:20%">${q(cfg.encabezados.tareas)}</th>
+          <th colspan="2" style="width:25%">${q(cfg.encabezados.rubrica)}</th>
+          <th style="width:7%">${q(cfg.encabezados.nota)}</th>
+          <th style="width:11%">${q(cfg.encabezados.firma)}</th>
+          <th style="width:16%">${q(cfg.encabezados.observaciones)}</th>
+        </tr>
+        ${filas}
+        <tr><td class="c neg">${q(h.examen.fecha||'')}</td>
+            <td colspan="7" class="c examen">${q(h.examen.texto||'')}</td></tr>
+      </table>
+    </div></div>`;
+  };
+
+  const cierre = '<' + '/script>';
+  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
+  '<title>HOJA DE TAREAS ' + q(PERIODO_PALABRA[periodo]||'') + ' PERIODO ' +
+    q(alcance==='todas' ? 'TODAS MIS AULAS' : (grado + ' ' + (combos[0].asig.nombre))).toUpperCase() + '</title><style>' +
+  '@page{ size: letter landscape; margin: 12mm; }' +
+  '*{ box-sizing:border-box; }' +
+  'body{ font-family: Arial, Helvetica, sans-serif; font-size:8pt; color:#000; margin:0; }' +
+  '@media screen{ body{ background:#d8d8d8; padding:18px 0; }' +
+  '  .pagina{ width:279.4mm; height:215.9mm; padding:12mm; margin:0 auto 18px; background:#fff;' +
+  '    box-shadow:0 2px 12px rgba(0,0,0,.28); } }' +
+  '@media print{ .pagina{ width:auto; height:auto; padding:0; page-break-after:always; }' +
+  '  .pagina:last-child{ page-break-after:auto; } }' +
+  '.hoja{ position:relative; height:100%; overflow:hidden; }' +
+  '.titulo{ font-size:1.45em; }' +
+  '.marca{ position:absolute; top:50%; left:50%; width:120mm; transform:translate(-50%,-50%);' +
+  '  opacity:.10; z-index:0; pointer-events:none; }' +
+  '.titulo{ text-align:center; font-style:italic; font-weight:bold; font-size:12pt; margin:0 0 5px; }' +
+  '.th{ width:100%; border-collapse:collapse; margin-bottom:0; position:relative; z-index:1; }' +
+  '.th td{ border:1px solid #000; padding:2px 6px; }' +
+  '.grado{ width:16%; background:#FFFF00; font-weight:bold; font-size:11pt; }' +
+  '.doc{ text-align:center; font-weight:bold; letter-spacing:.18em; }' +
+  '.tabla{ width:100%; border-collapse:collapse; position:relative; z-index:1; table-layout:fixed; }' +
+  '.tabla td.celda-firma{ padding:0; }' +
+  '.tabla th, .tabla td{ border:1px solid #000; padding:2px 4px; vertical-align:top;' +
+  '  word-break:break-word; overflow-wrap:anywhere; }' +
+  '.tabla th{ text-align:center; font-weight:bold; font-size:8pt; }' +
+  '.c{ text-align:center; } .neg{ font-weight:bold; }' +
+  '.sinpad{ padding:0 !important; }' +
+  '.rub{ width:100%; border-collapse:collapse; }' +
+  '.rub td{ border:1px solid #000; padding:2px 4px; }' +
+  '.rn{ width:60%; } .rp{ width:16%; text-align:center; } .rv{ width:24%; }' +
+  '.integ{ color:#c00000; font-weight:bold; vertical-align:middle; }' +
+  '.integ .et{ text-transform:uppercase; }' +
+  '.examen{ font-weight:bold; font-size:10pt; vertical-align:middle; }' +
+  '.celfir{ display:flex; flex-direction:column; min-height:56px; height:100%; }' +
+  '.fir{ flex:1; display:flex; align-items:center; justify-content:center; text-align:center; }' +
+  '</style></head><body>' +
+  combos.map(c=>hojaHtml(c.grado, c.asig)).join('') +
+  '<script>window.onload=function(){setTimeout(function(){window.print();},350);};' + cierre +
+  '</body></html>';
+
+  const v = window.open('', '_blank');
+  if(!v){ showToast('El navegador bloqueó la ventana emergente. Permítela e intenta de nuevo.'); return; }
+  v.document.write(html);
+  v.document.close();
+  showToast('En el diálogo de impresión elige "Guardar como PDF".');
+}
+
 function renderNoAccess(){
   return `
   <div class="page-head">
@@ -3984,7 +5265,7 @@ function renderCalificaciones(){
   const asignatura = getPref('califAsig','') && asignaturasPosibles.some(s=>s.id===getPref('califAsig','')) ? getPref('califAsig','') : (asignaturasPosibles[0] ? asignaturasPosibles[0].id : '');
   const periodo = Number(getPref('califPeriodo',1)) || 1;
   const puedeEditar = asignatura && canEditGrades(currentUser, grado, asignatura);
-  const acts = asignatura ? getActividades(grado, asignatura) : [];
+  const acts = asignatura ? getActividades(grado, asignatura, periodo) : [];
 
   const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
 
@@ -4014,53 +5295,49 @@ function renderCalificaciones(){
   <div class="period-tabs">
     ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="setPref('califPeriodo', ${p})">Período ${p}</div>`).join('')}
     <button class="btn btn-sm" style="margin-left:auto; align-self:center;"
-      onclick="descargarCalificaciones('${esc(grado)}','${asignatura}',${periodo})">Descargar en Excel</button>
+      onclick="descargarCalificaciones('${esc(grado)}','${asignatura}',${periodo})">Descargar en PDF</button>
   </div>
 
   <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius); margin-top:0;">
-    <p class="card-title">Actividades (${Math.round(pesoDe('actividades')*100)}% del período)${puedeEditar?`<button class="btn btn-sm" onclick="addActividad('${esc(grado)}','${asignatura}')">+ Agregar casilla</button>`:''}</p>
+    <p class="card-title">Actividades (${Math.round(pesoDe('actividades')*100)}% del período)
+      ${puedeVerPanel(currentUser,'hojas')?`<button class="btn btn-sm" onclick="setPref('hojaGrado','${esc(grado)}'); setPref('hojaAsig','${asignatura}'); setPref('hojaPeriodo',${periodo}); goTo('hojas')">Editar en Hoja de tareas</button>`:''}</p>
     <div class="acts-grid">
       ${acts.map(a=>{
         const fecha = getFechaTarea(grado, asignatura, a.id, periodo);
         return `
         <div class="act-chip">
           <div class="act-chip-top">
-            ${puedeEditar
-              ? `<input type="text" value="${esc(a.nombre)}" class="act-nombre" onchange="renameActividad('${esc(grado)}','${asignatura}','${a.id}',this.value); this.blur();">
-                 <button class="icon-btn" style="padding:2px 6px;" title="Eliminar casilla" onclick="removeActividad('${esc(grado)}','${asignatura}','${a.id}')">×</button>`
-              : `<span class="act-nombre" style="padding:3px 2px;">${esc(a.nombre)}</span>`}
+            <span class="pill pill-primary" style="margin-right:6px;">${esc(etiquetaCorta(a.id)||'')}</span>
+            <span class="act-nombre" style="padding:3px 2px;" title="${esc(a.nombre)}">${esc(a.nombre)}</span>
           </div>
           <label class="act-fecha-lbl">Fecha solicitada</label>
-          <input type="date" class="act-fecha" value="${esc(fecha)}" ${puedeEditar?'':'disabled'}
-            onchange="setFechaTarea('${esc(grado)}','${asignatura}','${a.id}',${periodo},this.value)">
+          <input type="date" class="act-fecha" value="${esc(fecha)}" disabled>
         </div>`;
       }).join('')}
       ${acts.length===0?'<span class="empty" style="padding:4px 0;">Sin casillas de actividades — agrega al menos una.</span>':''}
     </div>
-    <p class="nota-chica">La fecha se guarda por período y alimenta el Registro de tareas.</p>
+    <p class="nota-chica">Los nombres y las fechas vienen de la <b>Hoja de tareas</b> de este período; ahí se editan.</p>
   </div>
 
   <div class="card" style="margin-top:-4px;">
-    <p class="card-title">Rubros con fecha de entrega</p>
+    <p class="card-title">Integradoras (${Math.round(rubrosTarea().reduce((t,r)=>t+r.peso,0)*100)}% del período)</p>
     <div class="acts-grid">
       ${rubrosTarea().map(rt=>{
         const k = rt.key;
         const fecha = getFechaTarea(grado, asignatura, k, periodo);
-        const nom = getNombreRubro(grado, asignatura, k);
+        const nom = getNombreRubro(grado, asignatura, k, periodo);
         return `
         <div class="act-chip">
           <div class="act-chip-top">
-            ${puedeEditar
-              ? `<input type="text" value="${esc(nom)}" class="act-nombre" onchange="renameRubro('${esc(grado)}','${asignatura}','${k}',this.value); this.blur();">`
-              : `<span class="act-nombre" style="padding:3px 2px;">${esc(nom)}</span>`}
+            <span class="pill pill-primary" style="margin-right:6px;">${esc(etiquetaCorta(k)||'')}</span>
+            <span class="act-nombre" style="padding:3px 2px;" title="${esc(nom)}">${esc(nom)}</span>
           </div>
           <label class="act-fecha-lbl">Fecha solicitada</label>
-          <input type="date" class="act-fecha" value="${esc(fecha)}" ${puedeEditar?'':'disabled'}
-            onchange="setFechaTarea('${esc(grado)}','${asignatura}','${k}',${periodo},this.value)">
+          <input type="date" class="act-fecha" value="${esc(fecha)}" disabled>
         </div>`;
       }).join('')}
     </div>
-    <p class="nota-chica">Estos rubros se agregan o quitan desde Personalizar → Ponderación del período (solo Dirección).</p>
+    <p class="nota-chica">El nombre y la fecha salen de la <b>Hoja de tareas</b>. Los rubros y sus porcentajes se definen en Personalizar → Ponderación del período.</p>
   </div>
 
   <div class="ledger">
@@ -4069,11 +5346,12 @@ function renderCalificaciones(){
       <thead><tr>
         <th style="width:44px;">N°</th>
         <th>Estudiante</th>
-        ${acts.map(a=>`<th style="width:64px;">${esc(a.nombre)}</th>`).join('')}
+        ${acts.map(a=>`<th style="width:64px;" title="${esc(a.nombre)}">${esc(etiquetaCorta(a.id)||a.nombre)}</th>`).join('')}
         ${rubrosActivos().map(r=>{
-          const nom = esc(getNombreRubro(grado,asignatura,r.key));
-          let th = `<th style="width:80px;">${nom} (${Math.round(r.peso*100)}%)</th>`;
-          if(r.conRecuperacion) th += `<th style="width:80px;">Recuperación<br><span style="font-weight:400;text-transform:none;">de ${nom}</span></th>`;
+          const nom = esc(getNombreRubro(grado,asignatura,r.key,periodo));
+          const corta = etiquetaCorta(r.key);
+          let th = `<th style="width:80px;" title="${nom}">${corta ? esc(corta) : nom} (${Math.round(r.peso*100)}%)</th>`;
+          if(r.conRecuperacion) th += `<th style="width:80px;" title="Recuperación de ${nom}">Recup.<br><span style="font-weight:400;text-transform:none;">${corta?esc(corta):nom}</span></th>`;
           return th;
         }).join('')}
         <th style="width:100px;">Nota período ${periodo}</th>
@@ -4158,52 +5436,90 @@ function renderCalificaciones(){
   `}
   ${renderObsModal()}`;
 }
-/* Descarga exactamente el cuadro que está en pantalla en Calificaciones */
+/* Descarga en PDF el cuadro que está en pantalla, horizontal y con encabezado
+   repetido en cada página. */
 function descargarCalificaciones(grado, asigId, periodo){
   const asig = DB.asignaturas.find(a=>a.id===asigId);
   if(!asig){ showToast('Selecciona una asignatura.'); return; }
-  const acts = getActividades(grado, asigId);
+  const aj = DB.ajustes || {};
+  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const acts = getActividades(grado, asigId, periodo);
   const rubros = rubrosActivos();
   const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
-
-  const enc = ['N°','Apellidos','Nombres'];
-  acts.forEach(a=>enc.push(a.nombre));
-  rubros.forEach(r=>{
-    const nom = getNombreRubro(grado, asigId, r.key);
-    enc.push(nom + ' (' + Math.round(r.peso*100) + '%)');
-    if(r.conRecuperacion) enc.push('Recuperación de ' + nom);
-  });
-  enc.push('Nota período ' + periodo, 'Estado del período', 'Promedio final');
-
   const num = v => (v===undefined || v===null || isNaN(v)) ? '' : v;
+
+  const cols = [];
+  cols.push({t:'N°', w:'4%'}, {t:'Estudiante', w:'20%'});
+  acts.forEach(a=>cols.push({t: etiquetaCorta(a.id) || a.nombre, w:'', sub:a.nombre}));
+  rubros.forEach(r=>{
+    const nom = getNombreRubro(grado, asigId, r.key, periodo);
+    cols.push({t: (etiquetaCorta(r.key) || nom) + ' ' + Math.round(r.peso*100) + '%', w:'', sub:nom});
+    if(r.conRecuperacion) cols.push({t:'Recup.', w:'', sub:'Recuperación de ' + nom});
+  });
+  cols.push({t:'NOTA PER. ' + periodo, w:'7%'}, {t:'PROM. FINAL', w:'7%'});
+
   const filas = estudiantes.map((e,i)=>{
-    const f = [i+1, apellidosDe(e), nombresDe(e)];
-    acts.forEach(a=>f.push(num(getComp(e.id, asigId, periodo, 'act:'+a.id))));
+    const celdas = [i+1, apellidosDe(e) + ', ' + nombresDe(e)];
+    acts.forEach(a=>celdas.push(num(getComp(e.id, asigId, periodo, 'act:'+a.id))));
     rubros.forEach(r=>{
-      f.push(num(getComp(e.id, asigId, periodo, r.key)));
-      if(r.conRecuperacion) f.push(num(getComp(e.id, asigId, periodo, claveRecuperacion(r.key))));
+      celdas.push(num(getComp(e.id, asigId, periodo, r.key)));
+      if(r.conRecuperacion) celdas.push(num(getComp(e.id, asigId, periodo, claveRecuperacion(r.key))));
     });
     const pi = periodInfo(e.id, asigId, periodo, grado);
     const si = subjectInfo(e.id, asigId, grado);
-    f.push(pi.valor===null ? '' : Number(pi.valor.toFixed(1)));
-    f.push(pi.valor===null ? 'Sin notas' : (pi.completo ? 'Completo' : 'Parcial ' + Math.round(pi.avance*100) + '%'));
-    f.push(si.valor===null ? '' : Number(si.valor.toFixed(1)));
-    return f;
+    celdas.push(pi.valor===null ? '' : pi.valor.toFixed(1));
+    celdas.push(si.valor===null ? '' : si.valor.toFixed(1));
+    return celdas;
   });
 
-  const obs = [];
-  estudiantes.forEach(e=>{
-    const comps = acts.map(a=>({k:'act:'+a.id, n:a.nombre}))
-      .concat(rubros.map(r=>({k:r.key, n:getNombreRubro(grado, asigId, r.key)})));
-    comps.forEach(c=>{
-      const t = getObs(e.id, asigId, periodo, c.k);
-      if(t) obs.push([apellidosDe(e)+', '+nombresDe(e), c.n, t]);
-    });
-  });
+  const encabezado = `
+    <tr class="cabpag"><td colspan="${cols.length}">
+      <div class="cab">
+        ${aj.logo?`<img src="${aj.logo}" class="logo">`:''}
+        <div style="flex:1; text-align:center;">
+          <p class="colegio">${q((aj.nombreColegio||'Centro Escolar').toUpperCase())}</p>
+          <p class="sub">AÑO ESCOLAR ${q(aj.anio||'')}</p>
+          <p class="materia">Calificaciones de ${q(asig.nombre)} &middot; ${q(grado)} &middot; Período ${periodo}</p>
+        </div>
+        ${aj.logo?'<span style="width:52px;"></span>':''}
+      </div>
+    </td></tr>
+    <tr>${cols.map(c=>`<th ${c.w?'style="width:'+c.w+'"':''} title="${q(c.sub||c.t)}">${q(c.t)}</th>`).join('')}</tr>`;
 
-  const hojas = [{nombre:'Período '+periodo, encabezados:enc, filas:filas}];
-  if(obs.length) hojas.push({nombre:'Observaciones', encabezados:['Estudiante','Casilla','Observación'], filas:obs});
-  descargarXlsx('Calificaciones ' + grado + ' ' + asig.nombre + ' periodo ' + periodo, hojas);
+  const cierre = '<' + '/script>';
+  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
+  '<title>CALIFICACIONES ' + q((asig.nombre + ' ' + grado + ' PERIODO ' + periodo).toUpperCase()) + '</title><style>' +
+  '@page{ size: letter landscape; margin: 12mm; }' +
+  '*{ box-sizing:border-box; }' +
+  'body{ font-family: Arial, Helvetica, sans-serif; font-size:8.5pt; color:#000; margin:0; }' +
+  '@media screen{ body{ background:#d8d8d8; padding:18px 0; }' +
+  '  .pagina{ width:279.4mm; padding:12mm; margin:0 auto 18px; background:#fff;' +
+  '    box-shadow:0 2px 12px rgba(0,0,0,.28); } }' +
+  '@media print{ .pagina{ width:auto; padding:0; } }' +
+  'table{ width:100%; border-collapse:collapse; }' +
+  'thead{ display:table-header-group; }' +          // el encabezado se repite en cada página
+  'tr{ page-break-inside:avoid; }' +
+  'th, td{ border:1px solid #000; padding:3px 4px; text-align:center; }' +
+  'th{ font-size:7.5pt; }' +
+  'td.nom{ text-align:left; }' +
+  '.cabpag td{ border:none; padding:0 0 6px; }' +
+  '.cab{ display:flex; align-items:center; gap:10px; border-bottom:2px solid #000; padding-bottom:5px; }' +
+  '.logo{ width:52px; height:52px; object-fit:contain; }' +
+  '.colegio{ font-size:14pt; font-weight:bold; margin:0; }' +
+  '.sub{ font-size:9pt; margin:2px 0 0; }' +
+  '.materia{ font-size:11pt; font-weight:bold; margin:3px 0 0; }' +
+  '</style></head><body><div class="pagina">' +
+  '<table><thead>' + encabezado + '</thead><tbody>' +
+  filas.map(f=>'<tr>' + f.map((v,i)=>'<td class="' + (i===1?'nom':'') + '">' + q(v) + '</td>').join('') + '</tr>').join('') +
+  '</tbody></table></div>' +
+  '<script>window.onload=function(){setTimeout(function(){window.print();},350);};' + cierre +
+  '</body></html>';
+
+  const v = window.open('', '_blank');
+  if(!v){ showToast('El navegador bloqueó la ventana emergente. Permítela e intenta de nuevo.'); return; }
+  v.document.write(html);
+  v.document.close();
+  showToast('En el diálogo de impresión elige "Guardar como PDF".');
 }
 
 /* Descarga la matriz tal como se ve en pantalla */
@@ -4245,11 +5561,11 @@ function renderObsModal(){
   const asig = DB.asignaturas.find(a=>a.id===asigId);
   let nombreComp = comp;
   if(comp.indexOf('act:')===0){
-    const acts = getActividades(est.grado, asigId);
+    const acts = getActividades(est.grado, asigId, periodo);
     const a = acts.find(x=>'act:'+x.id===comp);
     nombreComp = a ? a.nombre : 'Actividad';
   }else{
-    nombreComp = getNombreRubro(est.grado, asigId, comp);
+    nombreComp = getNombreRubro(est.grado, asigId, comp, periodo);
   }
   return `
   <div class="modal-bg" onclick="if(event.target===this) cerrarObs()">
@@ -4276,7 +5592,14 @@ function guardarObs(){
   viewState.obs = null;
   render();
 }
+let ultimoRegistroNota = '';
 async function updateComp(estId, asigId, periodo, comp, value){
+  const asigNom = (DB.asignaturas.find(a=>a.id===asigId)||{}).nombre || '';
+  const marca = asigId + '|' + periodo;
+  if(ultimoRegistroNota !== marca){
+    ultimoRegistroNota = marca;
+    registrar('Calificaciones', 'Cargó notas de ' + asigNom + ' (período ' + periodo + ')');
+  }
   const v = value===''? null : Math.max(0, Math.min(100, Number(value)));
   const key = estId+'|'+asigId+'|'+periodo+'|'+comp;
   setComp(estId, asigId, periodo, comp, v); // se refleja en pantalla de inmediato
@@ -4290,7 +5613,7 @@ async function updateComp(estId, asigId, periodo, comp, value){
 function renderMatriz(){
   const gradosVisibles = misGrados(currentUser);
   if(gradosVisibles.length===0){
-    return `<div class="page-head"><p class="page-eyebrow">Reportes</p><h1 class="page-title">Matriz por aula</h1><p class="page-desc">No tienes aulas visibles todavía.</p></div>`;
+    return `<div class="page-head"><p class="page-eyebrow">Reportes</p><h1 class="page-title">Notas por aula</h1><p class="page-desc">No tienes aulas visibles todavía.</p></div>`;
   }
   const grado = getPref('matrizGrado','') && gradosVisibles.includes(getPref('matrizGrado','')) ? getPref('matrizGrado','') : gradosVisibles[0];
   const vista = getPref('matrizVista','periodos');
@@ -4365,7 +5688,7 @@ function renderMatriz(){
   return `
   <div class="page-head">
     <p class="page-eyebrow">Reportes</p>
-    <h1 class="page-title">Matriz de datos por aula</h1>
+    <h1 class="page-title">Notas por aula</h1>
     <p class="page-desc">Notas de cada período por materia y promedio final de cada materia${completo?', además del promedio global del estudiante':''}.</p>
   </div>
   <div class="filters">
