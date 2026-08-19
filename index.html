@@ -611,7 +611,7 @@ function docActual(){
     calificaciones: DB.calificaciones, config: DB.config, actividades: DB.actividades,
     curriculo: DB.curriculo, tareas: DB.tareas, estados: DB.estados,
     observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros,
-    boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes
+    boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes, averias: DB.averias
   };
 }
 function adoptarDoc(doc){
@@ -630,6 +630,7 @@ function adoptarDoc(doc){
   DB.hojas = doc.hojas || {};
   DB.bitacora = doc.bitacora || [];
   DB.reportes = doc.reportes || [];
+  DB.averias = doc.averias || [];
   DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
   if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
@@ -695,6 +696,7 @@ async function loadAll(){
   if(!DB.hojas) DB.hojas = {};
   if(!DB.bitacora) DB.bitacora = [];
   if(!DB.reportes) DB.reportes = [];
+  if(!DB.averias) DB.averias = [];
   if(!DB.curriculo) DB.curriculo = {};
   if(!DB.ajustes) DB.ajustes = {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
 }
@@ -1240,6 +1242,7 @@ function combinarDocs(local, nube){
     hojas: Object.assign({}, nube.hojas||{}, local.hojas||{}),
     bitacora: (nube.bitacora||[]).concat((local.bitacora||[]).filter(l=>!(nube.bitacora||[]).some(x=>x.ts===l.ts && x.userId===l.userId))).slice(-800),
     reportes: (nube.reportes||[]).concat((local.reportes||[]).filter(r=>!(nube.reportes||[]).some(x=>x.id===r.id))),
+    averias: (nube.averias||[]).concat((local.averias||[]).filter(r=>!(nube.averias||[]).some(x=>x.id===r.id))),
     ajustes: (local.ajustes && local.ajustes.nombreColegio &&
               local.ajustes.nombreColegio !== 'Centro Escolar') ? local.ajustes : (nube.ajustes || local.ajustes)
   };
@@ -1372,6 +1375,7 @@ function seedData(){
   DB.hojas = {};
   DB.bitacora = [];
   DB.reportes = [];
+  DB.averias = [];
   DB.curriculo = {};
   DB.ajustes = {nombreColegio:'Centro Escolar', logo:'', anio:String(new Date().getFullYear()),
     fraseSaludo:'recuerda que lo haces increíble', mensajeBienvenida:'', siglas:''};
@@ -1455,7 +1459,8 @@ const PANELES = [
   {id:'tareas',         label:'Registro y alertas de tareas'},
   {id:'boletas',        label:'Boletas de notas'},
   {id:'hojas',          label:'Hojas de tareas'},
-  {id:'reportes',       label:'Reportes disciplinarios'}
+  {id:'reportes',       label:'Reportes disciplinarios',
+   niveles:[{v:'no',t:'Sin acceso'},{v:'ver',t:'Ver con límite'},{v:'vertodo',t:'Ver todos'},{v:'editar',t:'Editar'}]}
 ];
 function nivelPanel(u, panelId){
   u = u || currentUser;
@@ -1467,6 +1472,21 @@ function nivelPanel(u, panelId){
 }
 function puedeVerPanel(u, panelId){ return nivelPanel(u, panelId) !== 'no'; }
 function puedeEditarPanel(u, panelId){ return nivelPanel(u, panelId) === 'editar'; }
+/* Quién puede ver todos los reportes del centro escolar */
+function veTodosReportes(u){
+  u = u || currentUser;
+  if(!u) return false;
+  if(isAdmin(u)) return true;
+  return nivelPanel(u, 'reportes') === 'vertodo';
+}
+/* Reportes que este usuario puede ver: los suyos, los de su grado de
+   orientación, o todos si tiene ese permiso. */
+function reportesVisibles(u){
+  u = u || currentUser;
+  const todos = (DB.reportes || []);
+  if(veTodosReportes(u)) return todos;
+  return todos.filter(r => r.docenteId === u.id || esOrientador(u, r.grado));
+}
 /* Usuarios como Recepción ven todas las aulas, pero sin editar nada */
 function tieneAlcanceTotal(u){ return !!(u && (isAdmin(u) || u.alcanceTotal)); }
 /* Grados de los que este usuario puede emitir boletas */
@@ -2156,6 +2176,7 @@ const NAV_ITEMS = [
   {id:'boletas', label:'Boletas'},
   {id:'asignaturas', label:'Asignaturas'},
   {id:'docentes', label:'Docentes'},
+  {id:'averias', label:'Averías y solicitudes'},
   {id:'bitacora', label:'Bitácora del sistema'},
   {id:'personalizar', label:'Personalizar'},
   {id:'sincronizacion', label:'Sincronización'},
@@ -2217,6 +2238,7 @@ function renderView(){
     case 'tareas': return renderTareas();
     case 'boletas': return renderBoletas();
     case 'reportes': return renderReportes();
+    case 'averias': return renderAverias();
     case 'bitacora': return renderBitacora();
     case 'hojas': return renderHojas();
     case 'personalizar': return renderPersonalizar();
@@ -2270,9 +2292,11 @@ function renderReportes(){
 
   let cuerpo;
   if(vista === 'historial'){
-    let lista = (DB.reportes||[]).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
+    let lista = reportesVisibles(currentUser).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
     if(gradoF) lista = lista.filter(r=>r.grado===gradoF);
     if(estF) lista = lista.filter(r=>r.estId===estF);
+    const busca = (getPref('repNum','')||'').replace(/\D/g,'');
+    if(busca) lista = lista.filter(r=>String(r.numero||'').padStart(3,'0').indexOf(busca)>=0);
     cuerpo = `
     <div class="filters">
       <div class="field"><label>Aula</label>
@@ -2285,32 +2309,68 @@ function renderReportes(){
           <option value="">Todos</option>
           ${alumnos.map(e=>`<option value="${e.id}" ${estF===e.id?'selected':''}>${esc(apellidosDe(e))}, ${esc(nombresDe(e))}${gradoF?'':' — '+esc(e.grado)}</option>`).join('')}
         </select></div>
+      <div class="field"><label>N° de reporte</label>
+        <input type="text" value="${esc(getPref('repNum',''))}" placeholder="Ej.: 007"
+          onchange="setPref('repNum', this.value)"></div>
       <button class="btn btn-primary" onclick="descargarReportes()">Descargar en PDF</button>
     </div>
+    ${!veTodosReportes(currentUser)?`<div class="note">Ves los reportes que tú levantaste y los de tu grado de orientación. Dirección puede ampliarlo desde Personalizar → Paneles de acceso.</div>`:''}
     <div class="card">
       <p class="card-title">Historial <span class="pill pill-muted">${lista.length} reporte(s)</span></p>
       <div class="table-wrap">
       <table>
-        <thead><tr><th style="width:100px;">Fecha</th><th>Estudiante</th><th style="width:110px;">Grado</th>
-          <th style="width:100px;">Falta</th><th>Descripción</th><th>Acciones / acuerdos</th><th style="width:150px;">Reportó</th>${puedeEditar?'<th></th>':''}</tr></thead>
+        <thead><tr><th style="width:62px;">N°</th><th style="width:96px;">Fecha</th><th>Estudiante</th><th style="width:105px;">Grado</th>
+          <th style="width:130px;">Falta</th><th>Descripción</th><th style="width:140px;">Reportó</th>
+          <th style="width:80px;">Visto por</th><th style="width:95px;">Seguim.</th><th style="width:180px;"></th></tr></thead>
         <tbody>
-          ${lista.length===0?`<tr><td colspan="8" class="empty">No hay reportes registrados con ese filtro.</td></tr>`:''}
+          ${lista.length===0?`<tr><td colspan="10" class="empty">No hay reportes que puedas ver con ese filtro.</td></tr>`:''}
           ${lista.map(r=>{
             const n = nivelFalta(r.nivel);
+            const vistas = r.vistas || [], segs = r.seguimientos || [];
+            const abierto = viewState.repAbierto === r.id;
             return `<tr>
+              <td class="mono"><b>${esc(String(r.numero||'').padStart(3,'0'))}</b></td>
               <td class="mono">${esc(r.fecha||'')}</td>
               <td>${esc(r.estudiante)}</td>
               <td>${esc(r.grado)}</td>
-              <td><span class="pill ${n.pill}">${esc(n.nombre)}</span></td>
+              <td><span class="pill ${n.pill}">${esc(n.nombre)}</span> <span class="pill pill-muted">${esc(n.formato)}</span></td>
               <td style="font-size:12.5px;">${esc(r.descripcion)}</td>
-              <td style="font-size:12.5px; color:var(--muted);">${esc(r.medida || (r.acciones||[]).join(', ') || r.acuerdosAlumno || '')}</td>
               <td style="font-size:12px;">${esc(r.docente)}</td>
+              <td><span class="pill ${vistas.length?'pill-blue':'pill-muted'}" title="${esc(vistas.map(v=>v.nombre).join(', ')||'Nadie lo ha abierto')}">${vistas.length}</span></td>
+              <td><span class="pill ${segs.length?'pill-primary':'pill-muted'}">${segs.length}</span></td>
               <td class="hj-acciones">
+                <button class="icon-btn" onclick="alternarDetalleReporte('${r.id}')">${abierto?'Cerrar':'Detalle'}</button>
                 <button class="icon-btn" onclick="verReporte('${r.id}')">Ver</button>
                 <button class="icon-btn" onclick="descargarReporte('${r.id}')">PDF</button>
                 ${puedeEditar?`<button class="icon-btn" onclick="eliminarReporte('${r.id}')">Eliminar</button>`:''}
               </td>
-            </tr>`;
+            </tr>
+            ${abierto?`<tr><td colspan="10" style="background:var(--panel-2);">
+              <div class="grid grid-2" style="gap:18px;">
+                <div>
+                  <p class="card-title" style="margin-bottom:8px;">Seguimiento</p>
+                  ${segs.length===0?'<p class="empty" style="padding:4px 0;">Sin seguimientos todavía.</p>':''}
+                  ${segs.map(sg=>`<div class="assign-list-item" style="display:block;">
+                    <div style="font-size:12.5px;">${esc(sg.texto)}</div>
+                    <div class="nota-chica" style="margin:3px 0 0;">${esc(sg.nombre)} · ${esc(fechaLegible(sg.ts))}</div>
+                  </div>`).join('')}
+                  ${puedeEditar?`<div class="field" style="margin-top:8px;">
+                    <textarea id="seg_${r.id}" rows="2" placeholder="Escribe el seguimiento…"></textarea>
+                    <div class="btn-row"><button class="btn btn-sm btn-primary" onclick="agregarSeguimiento('${r.id}')">Agregar seguimiento</button></div>
+                  </div>`:''}
+                </div>
+                <div>
+                  <p class="card-title" style="margin-bottom:8px;">Visualizado por</p>
+                  ${vistas.length===0?'<p class="empty" style="padding:4px 0;">Nadie ha abierto este reporte.</p>':''}
+                  ${vistas.map(v=>`<div class="assign-list-item">
+                    <span>${esc(v.nombre)}</span>
+                    <span class="nota-chica">${esc(fechaLegible(v.ts))}${v.veces>1?' · '+v.veces+' veces':''}</span>
+                  </div>`).join('')}
+                  ${r.acuerdosAlumno?`<p class="card-title" style="margin:14px 0 6px;">Acuerdos</p>
+                    <p style="font-size:12.5px;">${esc(r.acuerdosAlumno)}</p>`:''}
+                </div>
+              </div>
+            </td></tr>`:''}`;
           }).join('')}
         </tbody>
       </table>
@@ -2359,10 +2419,8 @@ function renderReportes(){
       <div class="field"><label>Acciones que se tomaron al momento de intervenir</label>
         <textarea id="rep_medida" rows="3"></textarea></div>` : ''}
       ${nivel==='leve' ? `
-      <div class="grid grid-2">
-        <div class="field"><label>Acuerdos y/o compromisos del alumno</label><textarea id="rep_acu_alumno" rows="3"></textarea></div>
-        <div class="field"><label>Acuerdos y/o compromisos de los padres</label><textarea id="rep_acu_padres" rows="3"></textarea></div>
-      </div>` : (nivel==='grave' ? `
+      <div class="field"><label>Acuerdos y compromisos del estudiante</label>
+        <textarea id="rep_acu_alumno" rows="3"></textarea></div>` : (nivel==='grave' ? `
       <div class="grid grid-2">
         <div class="field"><label>Acuerdos: del padre de familia</label><textarea id="rep_acu_padres" rows="3"></textarea></div>
         <div class="field"><label>Acuerdos: del estudiante</label><textarea id="rep_acu_alumno" rows="3"></textarea></div>
@@ -2388,6 +2446,43 @@ function renderReportes(){
   ${pestanas}
   ${cuerpo}`;
 }
+/* Número correlativo del centro escolar: 001, 002… sin importar el docente */
+function siguienteCorrelativo(){
+  const nums = (DB.reportes||[]).map(r=>Number(r.numero)||0);
+  return (nums.length ? Math.max.apply(null, nums) : 0) + 1;
+}
+function correlativoTexto(n){ return 'N° ' + String(n).padStart(3,'0'); }
+/* Deja constancia de quién abrió el reporte */
+function registrarVista(id){
+  if(!currentUser) return;
+  commit(doc=>{
+    const r = (doc.reportes||[]).find(x=>x.id===id);
+    if(!r) return;
+    r.vistas = r.vistas || [];
+    const ya = r.vistas.find(v=>v.userId===currentUser.id);
+    if(ya){ ya.ts = new Date().toISOString(); ya.veces = (ya.veces||1) + 1; }
+    else r.vistas.push({userId:currentUser.id, nombre:currentUser.nombre, ts:new Date().toISOString(), veces:1});
+  });
+}
+function agregarSeguimiento(id){
+  const campo = document.getElementById('seg_' + id);
+  const txt = campo ? campo.value.trim() : '';
+  if(!txt){ showToast('Escribe el seguimiento.'); return; }
+  commit(doc=>{
+    const r = (doc.reportes||[]).find(x=>x.id===id);
+    if(!r) return;
+    r.seguimientos = r.seguimientos || [];
+    r.seguimientos.push({ts:new Date().toISOString(), userId:currentUser.id, nombre:currentUser.nombre, texto:txt});
+  });
+  registrar('Reporte disciplinario', 'Agregó seguimiento a un reporte');
+  showToast('Seguimiento agregado.');
+  render();
+}
+function alternarDetalleReporte(id){
+  viewState.repAbierto = (viewState.repAbierto === id) ? null : id;
+  if(viewState.repAbierto) registrarVista(id);
+  render();
+}
 function guardarReporte(){
   const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
   const estId = val('rep_est') || getPref('repEst','');
@@ -2402,7 +2497,8 @@ function guardarReporte(){
   });
   const opc = nivel==='leve' ? OPC_F1 : (nivel==='grave' ? OPC_F2 : null);
   const reporte = {
-    id: uid('rep'), ts: new Date().toISOString(), nivel: nivel,
+    id: uid('rep'), numero: siguienteCorrelativo(), ts: new Date().toISOString(), nivel: nivel,
+    vistas: [], seguimientos: [],
     estId: est.id, estudiante: apellidosDe(est) + ', ' + nombresDe(est), grado: est.grado,
     fecha: val('rep_fecha'), lugar: val('rep_lugar'), reincidencias: val('rep_reinc'),
     situaciones: opc ? marcadas('rep_sit_', opc.situacion) : [],
@@ -2413,7 +2509,7 @@ function guardarReporte(){
     docente: currentUser.nombre, docenteId: currentUser.id
   };
   commit(doc=>{ doc.reportes = doc.reportes || []; doc.reportes.push(reporte); });
-  registrar('Reporte disciplinario', 'Falta ' + nivelFalta(nivel).nombre.toLowerCase() + ' — ' + reporte.estudiante);
+  registrar('Reporte disciplinario', correlativoTexto(reporte.numero) + ' · falta ' + nivelFalta(nivel).nombre.toLowerCase() + ' — ' + reporte.estudiante);
   setPref('repEst','');
   showToast('Reporte guardado. El formulario quedó en blanco.');
   render();
@@ -2432,7 +2528,7 @@ function cabReporte(r, aj, q, codigo){
   <div class="cabbox">
     ${aj.logo?`<img src="${aj.logo}" class="logo">`:''}
     <div class="cabtxt">
-      <p class="reinc">Reincidencias del estudiante: <span class="lin">${r?q(r.reincidencias||''):''}</span><b class="cod">${codigo}</b></p>
+      <p class="reinc">${r&&r.numero?('Reporte '+q(correlativoTexto(r.numero))+' &nbsp;&nbsp;'):''}Reincidencias del estudiante: <span class="lin">${r?q(r.reincidencias||''):''}</span><b class="cod">${codigo}</b></p>
       <p class="dato"><b>Estudiante:</b> <span class="lin ancho">${r?q(r.estudiante):''}</span></p>
       <p class="dato"><b>Grado:</b> <span class="lin medio">${r?q(r.grado):''}</span></p>
     </div>
@@ -2451,8 +2547,20 @@ function lineasRep(texto, n, q){
   const t = q(texto||'');
   return `<div class="lineas">${t ? '<div class="txt">'+t+'</div>' : ''}${Array.from({length:n}).map(()=>'<div class="ln"></div>').join('')}</div>`;
 }
+/* Arial 14 en descripción y acuerdos; si el texto es largo, baja lo justo
+   para que el reporte siga cabiendo en una sola página. */
+function ptTexto(txt, base){
+  const n = String(txt||'').length;
+  if(n <= 220) return base;
+  if(n <= 420) return base - 2;
+  if(n <= 700) return base - 4;
+  if(n <= 1000) return base - 6;
+  return base - 7;
+}
 function reporteF1(r, aj, q){
   const sit = r ? (r.situaciones||[]) : [], ant = r ? (r.antecedentes||[]) : [], acc = r ? (r.acciones||[]) : [];
+  const ptDesc = ptTexto(r?r.descripcion:'', 14);
+  const ptAcu  = ptTexto(r?r.acuerdosAlumno:'', 14);
   const f = (r && r.fecha) ? r.fecha.split('-') : ['','',''];
   return `
   <div class="pagina"><div class="hoja">
@@ -2466,7 +2574,7 @@ function reporteF1(r, aj, q){
       </div>
       <div class="centro">
         <p class="tit">BREVE DESCRIPCIÓN DE LA INCIDENCIA</p>
-        <div class="cajadesc">${r?q(r.descripcion):''}</div>
+        <div class="cajadesc" style="font-size:${ptDesc}pt;">${r?q(r.descripcion):''}</div>
       </div>
       <div class="der">
         <p class="tit">FECHA</p>
@@ -2478,8 +2586,8 @@ function reporteF1(r, aj, q){
       </div>
     </div>
     <table class="acuerdos">
-      <tr><th>ACUERDOS Y/O COMPROMISOS DEL ALUMNO</th><th>ACUERDOS Y/O COMPROMISOS DE LOS PADRES</th></tr>
-      <tr><td class="alto">${r?q(r.acuerdosAlumno):''}</td><td class="alto">${r?q(r.acuerdosPadres):''}</td></tr>
+      <tr><th>ACUERDOS Y COMPROMISOS DEL ESTUDIANTE</th></tr>
+      <tr><td class="alto" style="font-size:${ptAcu}pt;">${r?q(r.acuerdosAlumno):''}</td></tr>
     </table>
     <table class="firmas5">
       <tr><th>NOMBRE Y FIRMA DEL PADRE DE FAMILIA</th><th>FIRMA DEL ALUMNO (A)</th><th>FIRMA DEL DOCENTE</th><th>FIRMA DEL DIRECTIVO</th><th>SELLO DE LA INSTITUCIÓN</th></tr>
@@ -2489,6 +2597,7 @@ function reporteF1(r, aj, q){
 }
 function reporteF2(r, aj, q){
   const sit = r ? (r.situaciones||[]) : [], ant = r ? (r.antecedentes||[]) : [];
+  const ptD = ptTexto(r?r.descripcion:'', 12), ptA = ptTexto(r?r.acuerdosAlumno:'', 12);
   const col = (lista, m) => `<div class="opcs">${lista.map(t=>`<div class="opc">${marcaRad(m.indexOf(t)>=0)}<span>${q(t)}</span></div>`).join('')}</div>`;
   return `
   <div class="pagina"><div class="hoja">
@@ -2497,7 +2606,8 @@ function reporteF2(r, aj, q){
       <p class="titm">Situación presentada</p>${col(OPC_F2.situacion, sit)}
       <p class="titm">Antecedentes</p>${col(OPC_F2.antecedentes, ant)}
       <p class="titm">Acciones que se tomaron al momento de intervenir</p>${lineasRep(r?r.medida:'', 3, q)}
-      <p class="titm">Descripción breve de la situación</p>${lineasRep(r?r.descripcion:'', 4, q)}
+      <p class="titm">Descripción breve de la situación</p>
+      <div style="font-size:${ptD}pt;">${lineasRep(r?r.descripcion:'', 4, q)}</div>
       <p class="titm">Acuerdos y compromisos</p>
       <div class="acu"><span class="etiq">Del padre de Familia</span>${lineasRep(r?r.acuerdosPadres:'', 2, q)}</div>
       <div class="acu"><span class="etiq">Del Estudiante</span>${lineasRep(r?r.acuerdosAlumno:'', 2, q)}</div>
@@ -2510,12 +2620,15 @@ function reporteF2(r, aj, q){
   </div></div>`;
 }
 function reporteF3(r, aj, q){
+  const ptD = ptTexto(r?r.descripcion:'', 14), ptA = ptTexto(r?r.acuerdosAlumno:'', 14);
   return `
   <div class="pagina"><div class="hoja">
     ${cabReporte(r, aj, q, 'F3')}
     <div class="marco">
-      <div class="cajaredonda"><p class="titm">Descripción del incidente</p>${lineasRep(r?r.descripcion:'', 7, q)}</div>
-      <div class="cajaredonda"><p class="titm">Acuerdos</p>${lineasRep(r?r.acuerdosAlumno:'', 8, q)}</div>
+      <div class="cajaredonda"><p class="titm">Descripción del incidente</p>
+        <div style="font-size:${ptD}pt;">${lineasRep(r?r.descripcion:'', 7, q)}</div></div>
+      <div class="cajaredonda"><p class="titm">Acuerdos</p>
+        <div style="font-size:${ptA}pt;">${lineasRep(r?r.acuerdosAlumno:'', 8, q)}</div></div>
       <p class="titm">Firmas</p>
       <div class="firmas2">
         <div><span class="ln2"></span><p>Docente</p><p class="nom">${r?q(r.docente):''}</p></div>
@@ -2562,13 +2675,13 @@ function imprimirReportes(lista, titulo, soloVer){
   '.lista td{ border:1px solid #000; padding:1.5px 4px; font-size:7.5pt; }' +
   '.lista .rc{ width:26px; text-align:center; }' +
   '.lista.chica td{ font-size:7pt; }' +
-  '.cajadesc{ border:1px solid #000; height:74mm; padding:5px; white-space:pre-wrap; font-size:8pt; }' +
+  '.cajadesc{ border:1px solid #000; min-height:74mm; padding:6px; white-space:pre-wrap; line-height:1.3; overflow:hidden; }' +
   '.fechatab{ width:100%; border-collapse:collapse; margin-bottom:4px; }' +
   '.fechatab th, .fechatab td{ border:1px solid #000; text-align:center; font-size:7.5pt; padding:2px; height:14px; }' +
   '.fechatab td.dia b{ font-size:10pt; }' +
   '.acuerdos{ width:100%; border-collapse:collapse; margin-bottom:6px; }' +
   '.acuerdos th{ border:1px solid #000; font-size:8pt; padding:3px; }' +
-  '.acuerdos td.alto{ border:1px solid #000; height:26mm; vertical-align:top; padding:4px; white-space:pre-wrap; font-size:8pt; }' +
+  '.acuerdos td.alto{ border:1px solid #000; min-height:30mm; height:30mm; vertical-align:top; padding:6px; white-space:pre-wrap; line-height:1.3; }' +
   '.firmas5{ width:100%; border-collapse:collapse; }' +
   '.firmas5 th{ border:1px solid #000; font-size:6.5pt; padding:3px; }' +
   '.firmas5 td.alto2{ border:1px solid #000; height:26mm; vertical-align:bottom; text-align:center; font-size:7.5pt; padding:3px; }' +
@@ -2577,7 +2690,7 @@ function imprimirReportes(lista, titulo, soloVer){
   '.opcs{ display:flex; flex-wrap:wrap; }' +
   '.opc{ width:33.3%; display:flex; align-items:center; gap:5px; font-size:9pt; margin-bottom:3px; }' +
   '.lineas{ margin-bottom:4px; }' +
-  '.lineas .txt{ font-size:9pt; margin-bottom:2px; white-space:pre-wrap; }' +
+  '.lineas .txt{ margin-bottom:2px; white-space:pre-wrap; line-height:1.35; }' +
   '.lineas .ln{ border-bottom:1px solid #000; height:14px; }' +
   '.acu{ display:flex; align-items:flex-start; gap:8px; margin-bottom:4px; }' +
   '.acu .etiq{ border:1px solid #2E5C9A; padding:3px 8px; font-size:8.5pt; white-space:nowrap; }' +
@@ -2637,7 +2750,8 @@ function descargarReporteFormulario(){
 function verReporte(id){
   const r = (DB.reportes||[]).find(x=>x.id===id);
   if(!r) return;
-  imprimirReportes([r], 'REPORTE ' + nivelFalta(r.nivel).formato + ' ' + r.estudiante.toUpperCase(), true);
+  registrarVista(id);
+  imprimirReportes([r], 'REPORTE ' + nivelFalta(r.nivel).formato + ' ' + (r.numero?correlativoTexto(r.numero)+' ':'') + r.estudiante.toUpperCase(), true);
 }
 function descargarReporte(id){
   const r = (DB.reportes||[]).find(x=>x.id===id);
@@ -2658,6 +2772,215 @@ function descargarReportes(){
 }
 function descargarPlantillaReporte(){
   imprimirReportes([], 'PLANTILLAS DE INCIDENCIA F1 F2 F3');
+}
+
+/* ============================= AVERÍAS Y SOLICITUDES ============================= */
+const ESTADOS_AVERIA = [
+  {id:'pendiente', nombre:'Pendiente',  pill:'pill-rojo'},
+  {id:'proceso',   nombre:'En proceso', pill:'pill-gold'},
+  {id:'resuelto',  nombre:'Resuelto',   pill:'pill-primary'}
+];
+function estadoAveria(id){ return ESTADOS_AVERIA.find(e=>e.id===id) || ESTADOS_AVERIA[0]; }
+/* Cada quien ve lo que reportó; además, el encargado ve lo que le asignaron
+   y administración ve todo. */
+function averiasVisibles(u){
+  u = u || currentUser;
+  const todas = (DB.averias || []);
+  if(isAdmin(u)) return todas;
+  return todas.filter(a => a.userId === u.id || (a.responsables||[]).indexOf(u.id) >= 0);
+}
+function siguienteAveria(){
+  const n = (DB.averias||[]).map(a=>Number(a.numero)||0);
+  return (n.length ? Math.max.apply(null, n) : 0) + 1;
+}
+function renderAverias(){
+  const vista = getPref('avVista','nueva');
+  const lista = averiasVisibles(currentUser).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
+  const usuarios = DB.docentes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const puedeAsignar = isAdmin(currentUser);
+
+  const nueva = `
+  <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius);">
+    <p class="card-title">Reportar una avería o solicitud</p>
+    <div class="grid grid-2">
+      <div class="field"><label>Asunto</label>
+        <input type="text" id="av_titulo" placeholder="Ej.: no enciende el proyector del aula 3"></div>
+      <div class="field"><label>Lugar</label>
+        <input type="text" id="av_lugar" placeholder="Ej.: aula 3, baño de niñas, cancha"></div>
+    </div>
+    <div class="field"><label>Descripción</label>
+      <textarea id="av_desc" rows="3" placeholder="Describe qué ocurre y desde cuándo."></textarea></div>
+    <div class="grid grid-2">
+      <div class="field"><label>Urgencia</label>
+        <select id="av_urg">
+          <option value="normal">Normal</option>
+          <option value="alta">Alta</option>
+          <option value="baja">Baja</option>
+        </select></div>
+    </div>
+    ${puedeAsignar?`
+    <div class="field">
+      <label>Encargados de resolverlo</label>
+      <div class="rep-opciones">
+        ${usuarios.map((u,i)=>`<label class="check-chip"><input type="checkbox" id="av_resp_${i}"> ${esc(u.nombre)}</label>`).join('')}
+      </div>
+      <p class="nota-chica">Si no marcas a nadie, administración lo asignará después.</p>
+    </div>`:''}
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="guardarAveria()">Enviar reporte</button>
+      <button class="btn" onclick="setPref('avVista','lista')">Ver mis reportes</button>
+    </div>
+  </div>`;
+
+  const detalle = (a) => {
+    const abierto = viewState.avAbierta === a.id;
+    if(!abierto) return '';
+    const resp = (a.responsables||[]).map(id=>(DB.docentes.find(u=>u.id===id)||{}).nombre).filter(Boolean);
+    return `<tr><td colspan="8" style="background:var(--panel-2);">
+      <div class="grid grid-2" style="gap:18px;">
+        <div>
+          <p class="card-title" style="margin-bottom:8px;">Detalle</p>
+          <p style="font-size:12.5px; white-space:pre-wrap;">${esc(a.descripcion||'')}</p>
+          <p class="nota-chica">Lugar: ${esc(a.lugar||'—')} · Urgencia: ${esc(a.urgencia||'normal')}</p>
+          <p class="card-title" style="margin:14px 0 6px;">Encargados</p>
+          ${resp.length? resp.map(n=>`<span class="pill pill-blue" style="margin-right:5px;">${esc(n)}</span>`).join('')
+            : '<span class="empty" style="padding:0;">Todavía sin asignar</span>'}
+          ${puedeAsignar?`<div class="btn-row" style="margin-top:10px;">
+            <button class="btn btn-sm" onclick="asignarAveria('${a.id}')">Cambiar encargados</button>
+          </div>`:''}
+          <p class="card-title" style="margin:14px 0 6px;">Estado</p>
+          ${(isAdmin(currentUser) || (a.responsables||[]).indexOf(currentUser.id)>=0)?`
+            <select style="max-width:200px;" onchange="cambiarEstadoAveria('${a.id}', this.value)">
+              ${ESTADOS_AVERIA.map(e=>`<option value="${e.id}" ${a.estado===e.id?'selected':''}>${esc(e.nombre)}</option>`).join('')}
+            </select>`
+            : `<span class="pill ${estadoAveria(a.estado).pill}">${esc(estadoAveria(a.estado).nombre)}</span>`}
+        </div>
+        <div>
+          <p class="card-title" style="margin-bottom:8px;">Visualizado por</p>
+          ${(a.vistas||[]).length===0?'<p class="empty" style="padding:4px 0;">Nadie lo ha abierto todavía.</p>':''}
+          ${(a.vistas||[]).map(v=>`<div class="assign-list-item">
+            <span>${esc(v.nombre)}</span><span class="nota-chica">${esc(fechaLegible(v.ts))}</span></div>`).join('')}
+          <p class="card-title" style="margin:14px 0 6px;">Seguimiento</p>
+          ${(a.notas||[]).map(n=>`<div class="assign-list-item" style="display:block;">
+            <div style="font-size:12.5px;">${esc(n.texto)}</div>
+            <div class="nota-chica" style="margin:3px 0 0;">${esc(n.nombre)} · ${esc(fechaLegible(n.ts))}</div></div>`).join('')}
+          <div class="field" style="margin-top:8px;">
+            <textarea id="avnota_${a.id}" rows="2" placeholder="Escribe una nota…"></textarea>
+            <div class="btn-row"><button class="btn btn-sm" onclick="agregarNotaAveria('${a.id}')">Agregar nota</button></div>
+          </div>
+        </div>
+      </div>
+    </td></tr>`;
+  };
+
+  const tabla = `
+  <div class="card">
+    <p class="card-title">Reportes <span class="pill pill-muted">${lista.length}</span></p>
+    ${!isAdmin(currentUser)?`<div class="note">Ves los reportes que tú enviaste y los que te asignaron como encargado.</div>`:''}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:62px;">N°</th><th style="width:150px;">Fecha</th><th>Asunto</th>
+        <th style="width:130px;">Lugar</th><th style="width:150px;">Reportó</th>
+        <th style="width:120px;">Estado</th><th style="width:80px;">Visto</th><th style="width:110px;"></th></tr></thead>
+      <tbody>
+        ${lista.length===0?`<tr><td colspan="8" class="empty">No hay reportes de averías todavía.</td></tr>`:''}
+        ${lista.map(a=>`<tr>
+          <td class="mono"><b>${esc(String(a.numero||'').padStart(3,'0'))}</b></td>
+          <td class="mono">${esc(fechaLegible(a.ts))}</td>
+          <td>${esc(a.titulo)}</td>
+          <td>${esc(a.lugar||'')}</td>
+          <td style="font-size:12px;">${esc(a.nombre)}</td>
+          <td><span class="pill ${estadoAveria(a.estado).pill}">${esc(estadoAveria(a.estado).nombre)}</span></td>
+          <td><span class="pill ${(a.vistas||[]).length?'pill-blue':'pill-muted'}">${(a.vistas||[]).length}</span></td>
+          <td><button class="icon-btn" onclick="abrirAveria('${a.id}')">${viewState.avAbierta===a.id?'Cerrar':'Detalle'}</button></td>
+        </tr>${detalle(a)}`).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Mantenimiento</p>
+    <h1 class="page-title">Averías y solicitudes</h1>
+    <p class="page-desc">Reporta desperfectos o pide algo que se necesite. Puedes ver quién lo revisó y en qué estado va.</p>
+  </div>
+  <div class="period-tabs">
+    <div class="period-tab ${vista==='nueva'?'active':''}" onclick="setPref('avVista','nueva')">Nuevo reporte</div>
+    <div class="period-tab ${vista==='lista'?'active':''}" onclick="setPref('avVista','lista')">Mis reportes</div>
+  </div>
+  ${vista==='nueva' ? nueva : tabla}`;
+}
+function guardarAveria(){
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const titulo = val('av_titulo');
+  if(!titulo){ showToast('Escribe el asunto.'); return; }
+  const usuarios = DB.docentes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const responsables = usuarios.filter((u,i)=>{
+    const el = document.getElementById('av_resp_' + i);
+    return el && el.checked;
+  }).map(u=>u.id);
+  const nueva = {
+    id: uid('av'), numero: siguienteAveria(), ts: new Date().toISOString(),
+    userId: currentUser.id, nombre: currentUser.nombre,
+    titulo: titulo, lugar: val('av_lugar'), descripcion: val('av_desc'),
+    urgencia: val('av_urg') || 'normal', responsables: responsables,
+    estado: 'pendiente', vistas: [], notas: []
+  };
+  commit(doc=>{ doc.averias = doc.averias || []; doc.averias.push(nueva); });
+  registrar('Avería o solicitud', 'N° ' + String(nueva.numero).padStart(3,'0') + ' · ' + titulo);
+  showToast('Reporte enviado.');
+  setPref('avVista','lista');
+}
+function abrirAveria(id){
+  viewState.avAbierta = (viewState.avAbierta === id) ? null : id;
+  if(viewState.avAbierta){
+    commit(doc=>{
+      const a = (doc.averias||[]).find(x=>x.id===id);
+      if(!a) return;
+      a.vistas = a.vistas || [];
+      const ya = a.vistas.find(v=>v.userId===currentUser.id);
+      if(ya) ya.ts = new Date().toISOString();
+      else a.vistas.push({userId:currentUser.id, nombre:currentUser.nombre, ts:new Date().toISOString()});
+    });
+  }
+  render();
+}
+function cambiarEstadoAveria(id, estado){
+  commit(doc=>{
+    const a = (doc.averias||[]).find(x=>x.id===id);
+    if(a) a.estado = estado;
+  });
+  registrar('Avería o solicitud', 'Cambió el estado a ' + estadoAveria(estado).nombre);
+  showToast('Estado actualizado.');
+  render();
+}
+function agregarNotaAveria(id){
+  const campo = document.getElementById('avnota_' + id);
+  const txt = campo ? campo.value.trim() : '';
+  if(!txt){ showToast('Escribe la nota.'); return; }
+  commit(doc=>{
+    const a = (doc.averias||[]).find(x=>x.id===id);
+    if(!a) return;
+    a.notas = a.notas || [];
+    a.notas.push({ts:new Date().toISOString(), userId:currentUser.id, nombre:currentUser.nombre, texto:txt});
+  });
+  render();
+}
+function asignarAveria(id){
+  const a = (DB.averias||[]).find(x=>x.id===id);
+  if(!a) return;
+  const actuales = (a.responsables||[]).map(uid=>(DB.docentes.find(u=>u.id===uid)||{}).nombre).filter(Boolean).join('; ');
+  const v = prompt('Escribe los nombres de los encargados separados por punto y coma:', actuales);
+  if(v === null) return;
+  const nombres = v.split(';').map(x=>x.trim().toLowerCase()).filter(Boolean);
+  const ids = DB.docentes.filter(u=>nombres.indexOf(u.nombre.toLowerCase()) >= 0).map(u=>u.id);
+  commit(doc=>{
+    const x = (doc.averias||[]).find(y=>y.id===id);
+    if(x) x.responsables = ids;
+  });
+  showToast(ids.length ? 'Encargados actualizados.' : 'No se reconoció ningún nombre.');
+  render();
 }
 
 /* ============================= BITÁCORA DEL SISTEMA ============================= */
@@ -2982,6 +3305,7 @@ function renderEstudiantes(){
       </select>
     </div>
     <button class="btn" onclick="descargarListado()">Descargar listado</button>
+    <button class="btn" onclick="descargarRotuladores()">Rotuladores</button>
     ${puedeEditar?`<button class="btn btn-primary" onclick="openStudentModal()">Agregar estudiante</button>`:''}
   </div>
 
@@ -3004,6 +3328,106 @@ function renderEstudiantes(){
   ${gradosMostrados.length>1?`<p class="nota-chica" style="text-align:right;">Total en los grados mostrados: <b>${total}</b> estudiante(s).</p>`:''}
   ${renderStudentModal()}`;
 }
+/* ============================= ROTULADORES ============================= */
+/* Cada rotulador lleva el logo del centro escolar a la izquierda y el nombre
+   del estudiante al centro. Seis por página carta vertical, en PNG. */
+function descargarRotuladores(){
+  const filtro = getPref('filtroGrado','');
+  const grados = filtro ? [filtro] : misGrados(currentUser);
+  const lista = [];
+  grados.forEach(g=>{
+    ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===g), getPref('ordenEst','apellidos'))
+      .forEach(e=>lista.push({nombre: (nombresDe(e) + ' ' + apellidosDe(e)).trim(), grado:g}));
+  });
+  if(lista.length === 0){ showToast('No hay estudiantes para rotular.'); return; }
+
+  const aj = DB.ajustes || {};
+  const dibujar = (logoImg)=>{
+    const ESCALA = 2;                       // doble resolución para que imprima nítido
+    const ANCHO = 816 * ESCALA;             // carta vertical a 96 ppp
+    const ALTO  = 1056 * ESCALA;
+    const paginas = [];
+
+    for(let i = 0; i < lista.length; i += 6){
+      const grupo = lista.slice(i, i + 6);
+      const c = document.createElement('canvas');
+      c.width = ANCHO; c.height = ALTO;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, ANCHO, ALTO);
+
+      const margen = 30 * ESCALA;
+      const alto = (ALTO - margen*2) / 6;
+      const anchoCaja = ANCHO - margen*2;
+
+      grupo.forEach((est, j)=>{
+        const y = margen + alto * j;
+        const h = alto - 10 * ESCALA;
+        // marco del rotulador
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2 * ESCALA;
+        ctx.strokeRect(margen, y + 5*ESCALA, anchoCaja, h);
+
+        // logo a la izquierda, dentro del marco
+        let xTexto = margen;
+        let anchoTexto = anchoCaja;
+        if(logoImg){
+          const pad = 8 * ESCALA;
+          const altoLogo = h - pad*2;
+          const rel = logoImg.width && logoImg.height ? (logoImg.width / logoImg.height) : 1;
+          const anchoLogo = altoLogo * rel;
+          ctx.drawImage(logoImg, margen + pad, y + 5*ESCALA + pad, anchoLogo, altoLogo);
+          xTexto = margen + pad*2 + anchoLogo;
+          anchoTexto = anchoCaja - (pad*3 + anchoLogo);
+        }
+
+        // nombre centrado en el espacio que queda
+        ctx.fillStyle = '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        let tam = 48 * ESCALA;
+        const maxAncho = anchoTexto - 20 * ESCALA;
+        do {
+          ctx.font = tam + 'px josephsophia, "Josephsophia", "Segoe Script", "Brush Script MT", cursive';
+          if(ctx.measureText(est.nombre).width <= maxAncho) break;
+          tam -= 2 * ESCALA;
+        } while(tam > 16 * ESCALA);
+        ctx.fillText(est.nombre, xTexto + anchoTexto/2, y + 5*ESCALA + h/2);
+      });
+      paginas.push(c.toDataURL('image/png'));
+    }
+
+    const cierre = '<' + '/script>';
+    const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
+    '<title>ROTULADORES ' + String(filtro || 'TODOS LOS GRADOS').toUpperCase() + '</title><style>' +
+    '@page{ size: letter portrait; margin: 0; }' +
+    '*{ box-sizing:border-box; } body{ margin:0; }' +
+    '@media screen{ body{ background:#d8d8d8; padding:18px 0; }' +
+    '  .pag{ width:215.9mm; margin:0 auto 18px; box-shadow:0 2px 12px rgba(0,0,0,.28); background:#fff; } }' +
+    '@media print{ .pag{ page-break-after:always; } .pag:last-child{ page-break-after:auto; } }' +
+    '.pag img{ width:100%; display:block; }' +
+    '</style></head><body>' +
+    paginas.map(src=>'<div class="pag"><img src="' + src + '"></div>').join('') +
+    '<script>window.onload=function(){setTimeout(function(){window.print();},600);};' + cierre +
+    '</body></html>';
+
+    const v = window.open('', '_blank');
+    if(!v){ showToast('El navegador bloqueó la ventana emergente. Permítela e intenta de nuevo.'); return; }
+    v.document.write(html);
+    v.document.close();
+    showToast(paginas.length + ' página(s) de rotuladores. Elige "Guardar como PDF".');
+  };
+
+  if(aj.logo){
+    const img = new Image();
+    img.onload = ()=>dibujar(img);
+    img.onerror = ()=>{ showToast('No se pudo cargar el logo; se generan sin él.'); dibujar(null); };
+    img.src = aj.logo;
+  }else{
+    dibujar(null);
+  }
+}
+
 function openStudentModal(id){
   editingId = id || null;
   viewState.modalStudent = true;
@@ -3277,9 +3701,8 @@ function renderDocentes(){
               <div class="panel-fila">
                 <span>${esc(p.label)}</span>
                 <select class="panel-sel nivel-${nivelPanel(t,p.id)}" onchange="cambiarPanel('${t.id}','${p.id}',this.value)">
-                  <option value="no" ${nivelPanel(t,p.id)==='no'?'selected':''}>Sin acceso</option>
-                  <option value="ver" ${nivelPanel(t,p.id)==='ver'?'selected':''}>Ver</option>
-                  <option value="editar" ${nivelPanel(t,p.id)==='editar'?'selected':''} ${t.soloLectura?'disabled':''}>Editar</option>
+                  ${(p.niveles||[{v:'no',t:'Sin acceso'},{v:'ver',t:'Ver'},{v:'editar',t:'Editar'}]).map(n=>
+                    `<option value="${n.v}" ${nivelPanel(t,p.id)===n.v?'selected':''} ${(t.soloLectura&&n.v==='editar')?'disabled':''}>${esc(n.t)}</option>`).join('')}
                 </select>
               </div>`).join('')}</td>
             <td>${t.asignaciones.length? `<div class="tag-row">${t.asignaciones.map(a=>{
@@ -3388,10 +3811,9 @@ function renderTeacherModal(){
           ${PANELES.map(p=>`
             <div class="assign-list-item">
               <span style="flex:1;">${esc(p.label)}</span>
-              <select id="t_pan_${p.id}" style="max-width:150px;">
-                <option value="no" ${nivelPanel(t,p.id)==='no'?'selected':''}>Sin acceso</option>
-                <option value="ver" ${nivelPanel(t,p.id)==='ver'?'selected':''}>Ver</option>
-                <option value="editar" ${nivelPanel(t,p.id)==='editar'?'selected':''}>Editar</option>
+              <select id="t_pan_${p.id}" style="max-width:170px;">
+                ${(p.niveles||[{v:'no',t:'Sin acceso'},{v:'ver',t:'Ver'},{v:'editar',t:'Editar'}]).map(n=>
+                  `<option value="${n.v}" ${nivelPanel(t,p.id)===n.v?'selected':''}>${esc(n.t)}</option>`).join('')}
               </select>
             </div>`).join('')}
         </div>
@@ -3620,9 +4042,8 @@ function renderPersonalizar(){
                 <div class="panel-fila">
                   <span>${esc(p.label)}</span>
                   <select class="panel-sel nivel-${nivelPanel(t,p.id)}" onchange="cambiarPanel('${t.id}','${p.id}',this.value)">
-                    <option value="no" ${nivelPanel(t,p.id)==='no'?'selected':''}>Sin acceso</option>
-                    <option value="ver" ${nivelPanel(t,p.id)==='ver'?'selected':''}>Ver</option>
-                    <option value="editar" ${nivelPanel(t,p.id)==='editar'?'selected':''} ${t.soloLectura?'disabled':''}>Editar</option>
+                    ${(p.niveles||[{v:'no',t:'Sin acceso'},{v:'ver',t:'Ver'},{v:'editar',t:'Editar'}]).map(n=>
+                      `<option value="${n.v}" ${nivelPanel(t,p.id)===n.v?'selected':''} ${(t.soloLectura&&n.v==='editar')?'disabled':''}>${esc(n.t)}</option>`).join('')}
                   </select>
                 </div>`).join('') +
                 (t.soloLectura?'<span class="pill pill-muted" style="margin-top:4px;display:inline-block;">Solo consulta</span>':'') +
@@ -5522,32 +5943,78 @@ function descargarCalificaciones(grado, asigId, periodo){
   showToast('En el diálogo de impresión elige "Guardar como PDF".');
 }
 
-/* Descarga la matriz tal como se ve en pantalla */
+/* Descarga en PDF la tabla de notas por aula, horizontal y con encabezado repetido */
 function descargarMatriz(grado){
+  const aj = DB.ajustes || {};
+  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const asigs = asignaturasVisibles(grado);
   const completo = verGradoCompleto(grado);
   const vista = getPref('matrizVista','periodos');
   const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
+  if(estudiantes.length===0){ showToast('No hay estudiantes en esta aula.'); return; }
+  const r1 = v => (v===null||v===undefined) ? '' : v.toFixed(1);
 
-  const enc = ['N°','Apellidos','Nombres'];
+  let cabezas1 = '<th rowspan="2">N°</th><th rowspan="2" class="nom">Estudiante</th>';
+  let cabezas2 = '';
   if(vista === 'periodos'){
-    asigs.forEach(a=>enc.push(a.nombre+' P1', a.nombre+' P2', a.nombre+' P3', a.nombre+' P4', a.nombre+' FINAL'));
+    asigs.forEach(a=>{ cabezas1 += `<th colspan="5" class="mat">${q(a.nombre)}</th>`;
+      cabezas2 += '<th>P1</th><th>P2</th><th>P3</th><th>P4</th><th class="fin">Final</th>'; });
   }else{
-    asigs.forEach(a=>enc.push(a.nombre));
+    asigs.forEach(a=>{ cabezas1 += `<th rowspan="2">${q(a.nombre)}</th>`; });
   }
-  if(completo) enc.push('PROMEDIO GLOBAL');
+  if(completo) cabezas1 += '<th rowspan="2" class="glob">PROMEDIO<br>GLOBAL</th>';
 
-  const r1 = v => (v===null || v===undefined) ? '' : Number(v.toFixed(1));
   const filas = estudiantes.map((e,i)=>{
-    const f = [i+1, apellidosDe(e), nombresDe(e)];
+    let tds = `<td>${i+1}</td><td class="nom">${q(apellidosDe(e))}, ${q(nombresDe(e))}</td>`;
     asigs.forEach(a=>{
-      if(vista === 'periodos') [1,2,3,4].forEach(p=>f.push(r1(periodInfo(e.id, a.id, p, grado).valor)));
-      f.push(r1(subjectInfo(e.id, a.id, grado).valor));
+      if(vista === 'periodos') [1,2,3,4].forEach(p=>{ tds += `<td>${r1(periodInfo(e.id,a.id,p,grado).valor)}</td>`; });
+      tds += `<td class="fin">${r1(subjectInfo(e.id,a.id,grado).valor)}</td>`;
     });
-    if(completo) f.push(r1(studentInfo(e.id, grado).valor));
-    return f;
-  });
-  descargarXlsx('Promedios ' + grado, [{nombre:grado, encabezados:enc, filas:filas}]);
+    if(completo) tds += `<td class="glob">${r1(studentInfo(e.id,grado).valor)}</td>`;
+    return '<tr>' + tds + '</tr>';
+  }).join('');
+
+  const cierre = '<' + '/script>';
+  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
+  '<title>NOTAS POR AULA ' + q(grado.toUpperCase()) + '</title><style>' +
+  '@page{ size: letter landscape; margin: 12mm; }' +
+  '*{ box-sizing:border-box; }' +
+  'body{ font-family: Arial, Helvetica, sans-serif; font-size:8pt; color:#000; margin:0; }' +
+  '@media screen{ body{ background:#d8d8d8; padding:18px 0; }' +
+  '  .pagina{ width:279.4mm; padding:12mm; margin:0 auto 18px; background:#fff;' +
+  '    box-shadow:0 2px 12px rgba(0,0,0,.28); } }' +
+  '@media print{ .pagina{ width:auto; padding:0; } }' +
+  'table{ width:100%; border-collapse:collapse; }' +
+  'thead{ display:table-header-group; }' +
+  'tr{ page-break-inside:avoid; }' +
+  'th, td{ border:1px solid #000; padding:2.5px 4px; text-align:center; }' +
+  'th{ font-size:7pt; } td.nom, th.nom{ text-align:left; }' +
+  'th.mat{ background:#EDEEE6; } td.fin, th.fin{ font-weight:bold; background:#F7F7F1; }' +
+  'td.glob, th.glob{ font-weight:bold; background:#F3E6C9; }' +
+  '.cabpag td{ border:none; padding:0 0 6px; }' +
+  '.cab{ display:flex; align-items:center; gap:10px; border-bottom:2px solid #000; padding-bottom:5px; }' +
+  '.logo{ width:52px; height:52px; object-fit:contain; }' +
+  '.colegio{ font-size:14pt; font-weight:bold; margin:0; }' +
+  '.sub{ font-size:9pt; margin:2px 0 0; }' +
+  '.titu{ font-size:11pt; font-weight:bold; margin:3px 0 0; }' +
+  '</style></head><body><div class="pagina"><table><thead>' +
+  '<tr class="cabpag"><td colspan="60"><div class="cab">' +
+  (aj.logo?'<img src="'+aj.logo+'" class="logo">':'') +
+  '<div style="flex:1; text-align:center;">' +
+  '<p class="colegio">' + q((aj.nombreColegio||'Centro Escolar').toUpperCase()) + '</p>' +
+  '<p class="sub">AÑO ESCOLAR ' + q(aj.anio||'') + '</p>' +
+  '<p class="titu">Notas por aula &middot; ' + q(grado) + '</p></div>' +
+  (aj.logo?'<span style="width:52px;"></span>':'') +
+  '</div></td></tr><tr>' + cabezas1 + '</tr>' + (cabezas2 ? '<tr>' + cabezas2 + '</tr>' : '') +
+  '</thead><tbody>' + filas + '</tbody></table></div>' +
+  '<script>window.onload=function(){setTimeout(function(){window.print();},350);};' + cierre +
+  '</body></html>';
+
+  const v = window.open('', '_blank');
+  if(!v){ showToast('El navegador bloqueó la ventana emergente. Permítela e intenta de nuevo.'); return; }
+  v.document.write(html);
+  v.document.close();
+  showToast('En el diálogo de impresión elige "Guardar como PDF".');
 }
 
 function abrirObs(estId, asigId, periodo, comp){
@@ -5715,7 +6182,7 @@ function renderMatriz(){
   </div>
   <div class="card">
     <p class="card-title">${esc(grado)} <span class="pill pill-muted">${estudiantes.length} estudiante(s)</span>
-      <button class="btn btn-sm" onclick="descargarMatriz('${esc(grado)}')">Descargar en Excel</button>
+      <button class="btn btn-sm" onclick="descargarMatriz('${esc(grado)}')">Descargar en PDF</button>
     </p>
     <div class="table-wrap">${tabla}</div>
     <p class="nota-chica">La marca <b>parcial</b> señala que todavía faltan notas por cargar; el valor mostrado es el promedio de lo calificado hasta ahora.
