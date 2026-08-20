@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Escuela Cristiana Cristo a las Naciones</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#EDEEE6;
@@ -429,6 +429,41 @@ function setPref(clave, valor){
 let editingId = null;
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
+/* Comprime una imagen elegida por el usuario antes de guardarla: se
+   reduce a un ancho máximo razonable y se convierte a JPEG, para que
+   adjuntar fotos no dispare el tamaño de la base de datos compartida. */
+function comprimirImagen(file, maxAncho){
+  maxAncho = maxAncho || 900;
+  return new Promise((resolve, reject)=>{
+    if(!file){ resolve(null); return; }
+    if(!/^image\//.test(file.type)){ reject(new Error('El archivo no es una imagen.')); return; }
+    const lector = new FileReader();
+    lector.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const escala = Math.min(1, maxAncho / img.width);
+        const w = Math.max(1, Math.round(img.width * escala));
+        const h = Math.max(1, Math.round(img.height * escala));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = ()=>reject(new Error('No se pudo leer la imagen.'));
+      img.src = lector.result;
+    };
+    lector.onerror = ()=>reject(new Error('No se pudo leer el archivo.'));
+    lector.readAsDataURL(file);
+  });
+}
+/* Toma el archivo elegido en un <input type="file"> por su id, ya
+   comprimido y listo para guardar (o null si no se eligió ninguno). */
+async function imagenDeInput(inputId, maxAncho){
+  const el = document.getElementById(inputId);
+  const file = el && el.files && el.files[0];
+  if(!file) return null;
+  return comprimirImagen(file, maxAncho);
+}
 
 /* ============================= STORAGE ============================= */
 
@@ -559,6 +594,20 @@ async function registrarEventoNube(usuario, claveHash, accion, detalle){
       {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
        body: JSON.stringify({usuario, clave: claveHash, accion, detalle})}), 10000);
   }catch(e){ console.warn('no se pudo registrar el evento', e); }
+}
+/* Un estudiante reporta un problema de la plataforma: el servidor valida
+   sus credenciales y agrega el reporte, sin que la base completa —con los
+   reportes de los demás— viaje nunca a su dispositivo. */
+async function enviarSoporteEstudiante(usuario, claveHash, titulo, descripcion, imagen){
+  const url = getSyncUrl();
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=soporte',
+    {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
+     body: JSON.stringify({usuario, clave: claveHash, titulo, descripcion, imagen})}), 12000);
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const txt = await r.text();
+  const datos = txt ? JSON.parse(txt) : null;
+  if(!datos || datos.error || datos.sinAutorizacion) throw new Error('No se pudo enviar.');
+  return true;
 }
 /* Arma una base mínima en memoria a partir de lo que devolvió el servidor
    para un estudiante: solo lo suyo, nada de otros estudiantes ni de docentes. */
@@ -1299,6 +1348,7 @@ function doPost(e) {
   try {
     if (accion === 'estudiante') return responder(datosEstudiante(e.postData.contents));
     if (accion === 'evento') return responder(registrarEvento(e.postData.contents));
+    if (accion === 'soporte') return responder(agregarSoporte(e.postData.contents));
     guardarDatos(e.postData.contents);
     return responder('{"ok":true}');
   } finally {
@@ -1377,6 +1427,32 @@ function registrarEvento(cuerpoJson) {
     accion: pedido.accion || '', detalle: pedido.detalle || ''
   });
   if (doc.bitacora.length > 800) doc.bitacora = doc.bitacora.slice(doc.bitacora.length - 800);
+  guardarDatos(JSON.stringify(doc));
+  return '{"ok":true}';
+}
+
+/* Un estudiante reporta un problema de la plataforma: se valida su
+   credencial y se agrega el reporte directamente en el servidor, sin que
+   su navegador reciba ni envíe nunca la base completa. */
+function agregarSoporte(cuerpoJson) {
+  var pedido = JSON.parse(cuerpoJson);
+  var doc = JSON.parse(leerDatos());
+  if (!doc || !doc.estudiantes) return '{"error":true}';
+  var est = null;
+  for (var i = 0; i < doc.estudiantes.length; i++) {
+    var e = doc.estudiantes[i];
+    if (e.usuario === pedido.usuario && e.clave === pedido.clave) { est = e; break; }
+  }
+  if (!est) return '{"error":true}';
+  doc.soporte = doc.soporte || [];
+  var numeros = doc.soporte.map(function(s){ return Number(s.numero) || 0; });
+  var numero = (numeros.length ? Math.max.apply(null, numeros) : 0) + 1;
+  doc.soporte.push({
+    id: 'sop_' + new Date().getTime(), numero: numero, ts: new Date().toISOString(),
+    userId: est.id, nombre: est.nombre, origen: 'estudiante',
+    titulo: pedido.titulo || '', descripcion: pedido.descripcion || '',
+    imagen: pedido.imagen || null, estado: 'pendiente', vistas: [], notas: []
+  });
   guardarDatos(JSON.stringify(doc));
   return '{"ok":true}';
 }
@@ -2546,6 +2622,7 @@ const NAV_ITEMS = [
   {id:'asignaturas', label:'Asignaturas'},
   {id:'docentes', label:'Docentes'},
   {id:'averias', label:'Averías y solicitudes'},
+  {id:'soporte', label:'Soporte de la plataforma'},
   {id:'bitacora', label:'Bitácora del sistema'},
   {id:'personalizar', label:'Personalizar'},
   {id:'sincronizacion', label:'Sincronización'},
@@ -2608,6 +2685,7 @@ function renderView(){
     case 'boletas': return renderBoletas();
     case 'reportes': return renderReportes();
     case 'averias': return renderAverias();
+    case 'soporte': return renderSoporte();
     case 'bitacora': return renderBitacora();
     case 'hojas': return renderHojas();
     case 'personalizar': return renderPersonalizar();
@@ -2643,6 +2721,7 @@ function renderLayoutEstudiante(){
       <div>
         <div class="nav-item ${currentView==='credencial'?'active':''}" onclick="goTo('credencial')"><span class="nav-dot"></span>Credencial</div>
         ${nav.map(n=>`<div class="nav-item ${currentView===n.id?'active':''}" onclick="goTo('${n.id}')"><span class="nav-dot"></span>${esc(n.label)}</div>`).join('')}
+        <div class="nav-item ${currentView==='soporte'?'active':''}" onclick="goTo('soporte')"><span class="nav-dot"></span>Reportar un problema</div>
         <div class="nav-item ${currentView==='sincronizacionEstudiante'?'active':''}" onclick="goTo('sincronizacionEstudiante')"><span class="nav-dot"></span>Sincronización</div>
       </div>
       <div class="sidebar-footer">
@@ -2665,9 +2744,10 @@ function renderLayoutEstudiante(){
 function renderViewEstudiante(){
   const est = currentUser;
   const accesos = est.accesos || accesosPorDefecto();
-  if(currentView !== 'sincronizacionEstudiante' && currentView !== 'credencial' && !accesos[currentView]) return renderSincronizacionEstudiante();
+  if(currentView !== 'sincronizacionEstudiante' && currentView !== 'credencial' && currentView !== 'soporte' && !accesos[currentView]) return renderSincronizacionEstudiante();
   switch(currentView){
     case 'credencial': return renderCredencialEstudiante(est);
+    case 'soporte': return renderSoporteEstudiante(est);
     case 'reportes': return renderReportesEstudiante(est);
     case 'hojas': return renderHojasEstudiante(est);
     case 'calificaciones': return renderCalificacionesEstudiante(est);
@@ -3603,7 +3683,12 @@ const ESTADOS_AVERIA = [
   {id:'proceso',   nombre:'En proceso', pill:'pill-gold'},
   {id:'resuelto',  nombre:'Resuelto',   pill:'pill-primary'}
 ];
+const TIPOS_AVERIA = [
+  {id:'averia',    nombre:'Avería'},
+  {id:'solicitud', nombre:'Solicitud de material'}
+];
 function estadoAveria(id){ return ESTADOS_AVERIA.find(e=>e.id===id) || ESTADOS_AVERIA[0]; }
+function tipoAveria(id){ return TIPOS_AVERIA.find(t=>t.id===id) || TIPOS_AVERIA[0]; }
 /* Cada quien ve lo que reportó; administración ve todo. */
 function averiasVisibles(u){
   u = u || currentUser;
@@ -3625,42 +3710,51 @@ function ordenarAverias(lista){
 }
 function renderAverias(){
   const vista = getPref('avVista','nueva');
-  const lista = ordenarAverias(averiasVisibles(currentUser));
+  const tipoLista = getPref('avTipoLista','');
+  let lista = ordenarAverias(averiasVisibles(currentUser));
+  if(tipoLista) lista = lista.filter(a=>a.tipo===tipoLista);
 
-  const nueva = `
-  <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius);">
-    <p class="card-title">Reportar una avería o solicitud</p>
-    <div class="grid grid-2">
-      <div class="field"><label>Asunto</label>
-        <input type="text" id="av_titulo" placeholder="Ej.: no enciende el proyector del aula 3"></div>
-      <div class="field"><label>Lugar</label>
-        <input type="text" id="av_lugar" placeholder="Ej.: aula 3, baño de niñas, cancha"></div>
-    </div>
-    <div class="field"><label>Descripción</label>
-      <textarea id="av_desc" rows="3" placeholder="Describe qué ocurre y desde cuándo."></textarea></div>
-    <div class="grid grid-2">
-      <div class="field"><label>Urgencia</label>
-        <select id="av_urg">
-          <option value="normal">Normal</option>
-          <option value="alta">Alta</option>
-          <option value="baja">Baja</option>
-        </select></div>
-    </div>
-    <div class="btn-row">
-      <button class="btn btn-primary" onclick="guardarAveria()">Enviar reporte</button>
-      <button class="btn" onclick="setPref('avVista','lista')">Ver mis reportes</button>
-    </div>
-  </div>`;
+  const formulario = (tipo) => {
+    const esSolicitud = tipo === 'solicitud';
+    return `
+    <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius);">
+      <p class="card-title">${esSolicitud ? 'Pedir material' : 'Reportar una avería'}</p>
+      <div class="grid grid-2">
+        <div class="field"><label>${esSolicitud ? '¿Qué necesitas?' : 'Asunto'}</label>
+          <input type="text" id="av_titulo" placeholder="${esSolicitud ? 'Ej.: marcadores de pizarra, papel bond' : 'Ej.: no enciende el proyector del aula 3'}"></div>
+        <div class="field"><label>${esSolicitud ? 'Para qué aula / actividad' : 'Lugar'}</label>
+          <input type="text" id="av_lugar" placeholder="${esSolicitud ? 'Ej.: 4to Grado A' : 'Ej.: aula 3, baño de niñas, cancha'}"></div>
+      </div>
+      <div class="field"><label>${esSolicitud ? 'Detalle' : 'Descripción'}</label>
+        <textarea id="av_desc" rows="3" placeholder="${esSolicitud ? 'Cantidad y para qué se va a usar.' : 'Describe qué ocurre y desde cuándo.'}"></textarea></div>
+      <div class="grid grid-2">
+        <div class="field"><label>Urgencia</label>
+          <select id="av_urg">
+            <option value="normal">Normal</option>
+            <option value="alta">Alta</option>
+            <option value="baja">Baja</option>
+          </select></div>
+        <div class="field"><label>Foto (opcional)</label>
+          <input type="file" id="av_imagen" accept="image/*"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="guardarAveria('${tipo}')">${esSolicitud ? 'Enviar solicitud' : 'Enviar reporte'}</button>
+        <button class="btn" onclick="setPref('avVista','lista')">Ver historial</button>
+      </div>
+    </div>`;
+  };
 
   const detalle = (a) => {
     const abierto = viewState.avAbierta === a.id;
     if(!abierto) return '';
-    return `<tr><td colspan="8" style="background:var(--panel-2);">
+    const esReportante = currentUser && a.userId === currentUser.id;
+    return `<tr><td colspan="9" style="background:var(--panel-2);">
       <div class="grid grid-2" style="gap:18px;">
         <div>
           <p class="card-title" style="margin-bottom:8px;">Detalle</p>
           <p style="font-size:12.5px; white-space:pre-wrap;">${esc(a.descripcion||'')}</p>
           <p class="nota-chica">Lugar: ${esc(a.lugar||'—')} · Urgencia: ${esc(a.urgencia||'normal')}</p>
+          ${a.imagen?`<img src="${a.imagen}" alt="Foto adjunta" style="max-width:100%; border-radius:8px; margin-top:10px; border:1px solid var(--line);">`:''}
           <p class="card-title" style="margin:14px 0 6px;">Estado</p>
           ${isAdmin(currentUser)?`
             <select style="max-width:200px;" onchange="cambiarEstadoAveria('${a.id}', this.value)">
@@ -3674,12 +3768,21 @@ function renderAverias(){
           ${(a.vistas||[]).map(v=>`<div class="assign-list-item">
             <span>${esc(v.nombre)}</span><span class="nota-chica">${esc(fechaLegible(v.ts))}</span></div>`).join('')}
           <p class="card-title" style="margin:14px 0 6px;">Seguimiento</p>
+          ${(a.notas||[]).length===0?'<p class="empty" style="padding:4px 0;">Todavía sin respuestas.</p>':''}
           ${(a.notas||[]).map(n=>`<div class="assign-list-item" style="display:block;">
             <div style="font-size:12.5px;">${esc(n.texto)}</div>
+            ${n.imagen?`<img src="${n.imagen}" alt="Foto adjunta" style="max-width:100%; border-radius:8px; margin-top:6px; border:1px solid var(--line);">`:''}
             <div class="nota-chica" style="margin:3px 0 0;">${esc(n.nombre)} · ${esc(fechaLegible(n.ts))}</div></div>`).join('')}
+          ${esReportante ? `
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn btn-sm" onclick="agregarNotaAveria('${a.id}','Gracias.')">Gracias</button>
+            <button class="btn btn-sm" onclick="agregarNotaAveria('${a.id}','Confirmo que ya se solucionó.')">Ya se solucionó</button>
+            <button class="btn btn-sm btn-danger" onclick="agregarNotaAveria('${a.id}','El problema sigue igual.')">Sigue el problema</button>
+          </div>` : ''}
           <div class="field" style="margin-top:8px;">
-            <textarea id="avnota_${a.id}" rows="2" placeholder="Escribe una nota…"></textarea>
-            <div class="btn-row"><button class="btn btn-sm" onclick="agregarNotaAveria('${a.id}')">Agregar nota</button></div>
+            <textarea id="avnota_${a.id}" rows="2" placeholder="Escribe una respuesta…"></textarea>
+            <input type="file" id="avnotaimg_${a.id}" accept="image/*" style="margin-top:6px;">
+            <div class="btn-row"><button class="btn btn-sm" onclick="agregarNotaAveria('${a.id}')">Agregar respuesta</button></div>
           </div>
         </div>
       </div>
@@ -3688,19 +3791,27 @@ function renderAverias(){
 
   const tabla = `
   <div class="card">
-    <p class="card-title">Reportes <span class="pill pill-muted">${lista.length}</span></p>
-    ${!isAdmin(currentUser)?`<div class="note">Ves los reportes que tú enviaste y los que te asignaron como encargado.</div>`:''}
+    <p class="card-title">Historial <span class="pill pill-muted">${lista.length}</span></p>
+    ${!isAdmin(currentUser)?`<div class="note">Ves los reportes y solicitudes que tú enviaste.</div>`:''}
+    <div class="filters" style="margin-bottom:10px;">
+      <div class="field"><label>Tipo</label>
+        <select onchange="setPref('avTipoLista', this.value)">
+          <option value="">Todos</option>
+          ${TIPOS_AVERIA.map(t=>`<option value="${t.id}" ${tipoLista===t.id?'selected':''}>${esc(t.nombre)}</option>`).join('')}
+        </select></div>
+    </div>
     <div class="table-wrap">
     <table>
-      <thead><tr><th style="width:62px;">N°</th><th style="width:150px;">Fecha</th><th>Asunto</th>
+      <thead><tr><th style="width:62px;">N°</th><th style="width:110px;">Tipo</th><th style="width:140px;">Fecha</th><th>Asunto</th>
         <th style="width:130px;">Lugar</th><th style="width:150px;">Reportó</th>
-        <th style="width:120px;">Estado</th><th style="width:80px;">Visto</th><th style="width:110px;"></th></tr></thead>
+        <th style="width:120px;">Estado</th><th style="width:70px;">Visto</th><th style="width:110px;"></th></tr></thead>
       <tbody>
-        ${lista.length===0?`<tr><td colspan="8" class="empty">No hay reportes de averías todavía.</td></tr>`:''}
+        ${lista.length===0?`<tr><td colspan="9" class="empty">No hay reportes todavía.</td></tr>`:''}
         ${lista.map(a=>`<tr>
           <td class="mono"><b>${esc(String(a.numero||'').padStart(3,'0'))}</b></td>
+          <td><span class="pill ${a.tipo==='solicitud'?'pill-blue':'pill-muted'}">${esc(tipoAveria(a.tipo).nombre)}</span></td>
           <td class="mono">${esc(fechaLegible(a.ts))}</td>
-          <td>${esc(a.titulo)}</td>
+          <td>${esc(a.titulo)}${a.imagen?' 📎':''}</td>
           <td>${esc(a.lugar||'')}</td>
           <td style="font-size:12px;">${esc(a.nombre)}</td>
           <td><span class="pill ${estadoAveria(a.estado).pill}">${esc(estadoAveria(a.estado).nombre)}</span></td>
@@ -3716,28 +3827,32 @@ function renderAverias(){
   <div class="page-head">
     <p class="page-eyebrow">Mantenimiento</p>
     <h1 class="page-title">Averías y solicitudes</h1>
-    <p class="page-desc">Reporta desperfectos o pide algo que se necesite. Puedes ver quién lo revisó y en qué estado va.</p>
+    <p class="page-desc">Reporta desperfectos o pide material. Puedes ver quién lo revisó, adjuntar una foto y responder cuando cambie de estado.</p>
   </div>
   <div class="period-tabs">
-    <div class="period-tab ${vista==='nueva'?'active':''}" onclick="setPref('avVista','nueva')">Nuevo reporte</div>
-    <div class="period-tab ${vista==='lista'?'active':''}" onclick="setPref('avVista','lista')">Mis reportes</div>
+    <div class="period-tab ${vista==='nueva'?'active':''}" onclick="setPref('avVista','nueva')">Nueva avería</div>
+    <div class="period-tab ${vista==='solicitud'?'active':''}" onclick="setPref('avVista','solicitud')">Solicitudes</div>
+    <div class="period-tab ${vista==='lista'?'active':''}" onclick="setPref('avVista','lista')">Historial</div>
   </div>
-  ${vista==='nueva' ? nueva : tabla}`;
+  ${vista==='nueva' ? formulario('averia') : (vista==='solicitud' ? formulario('solicitud') : tabla)}`;
 }
-function guardarAveria(){
+async function guardarAveria(tipo){
   const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
   const titulo = val('av_titulo');
-  if(!titulo){ showToast('Escribe el asunto.'); return; }
+  if(!titulo){ showToast(tipo==='solicitud' ? 'Escribe qué necesitas.' : 'Escribe el asunto.'); return; }
+  let imagen = null;
+  try{ imagen = await imagenDeInput('av_imagen', 1000); }
+  catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
   const nueva = {
     id: uid('av'), numero: siguienteAveria(), ts: new Date().toISOString(),
-    userId: currentUser.id, nombre: currentUser.nombre,
+    userId: currentUser.id, nombre: currentUser.nombre, tipo: tipo || 'averia',
     titulo: titulo, lugar: val('av_lugar'), descripcion: val('av_desc'),
-    urgencia: val('av_urg') || 'normal',
+    urgencia: val('av_urg') || 'normal', imagen: imagen,
     estado: 'pendiente', vistas: [], notas: []
   };
   commit(doc=>{ doc.averias = doc.averias || []; doc.averias.push(nueva); });
   registrar('Avería o solicitud', 'N° ' + String(nueva.numero).padStart(3,'0') + ' · ' + titulo);
-  showToast('Reporte enviado.');
+  showToast(tipo==='solicitud' ? 'Solicitud enviada.' : 'Reporte enviado.');
   setPref('avVista','lista');
 }
 function abrirAveria(id){
@@ -3763,18 +3878,316 @@ function cambiarEstadoAveria(id, estado){
   showToast('Estado actualizado.');
   render();
 }
-function agregarNotaAveria(id){
+async function agregarNotaAveria(id, textoFijo){
   const campo = document.getElementById('avnota_' + id);
-  const txt = campo ? campo.value.trim() : '';
-  if(!txt){ showToast('Escribe la nota.'); return; }
+  const txt = textoFijo || (campo ? campo.value.trim() : '');
+  if(!txt){ showToast('Escribe la respuesta.'); return; }
+  let imagen = null;
+  if(!textoFijo){
+    try{ imagen = await imagenDeInput('avnotaimg_' + id, 1000); }
+    catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
+  }
   commit(doc=>{
     const a = (doc.averias||[]).find(x=>x.id===id);
     if(!a) return;
     a.notas = a.notas || [];
-    a.notas.push({ts:new Date().toISOString(), userId:currentUser.id, nombre:currentUser.nombre, texto:txt});
+    a.notas.push({ts:new Date().toISOString(), userId:currentUser.id, nombre:currentUser.nombre, texto:txt, imagen:imagen});
   });
   render();
 }
+
+/* ============================= SOPORTE DE LA PLATAFORMA =============================
+   Buzón para reportar problemas del propio sistema (no del edificio, eso es
+   Averías). Pueden escribir docentes Y estudiantes; pero solo lo ve la
+   propietaria y los usuarios de acceso total — cada quien más solo ve lo
+   que él mismo envió. */
+function soporteVisible(u){
+  u = u || currentUser;
+  const todo = (DB.soporte || []);
+  if(isAdmin(u)) return todo;
+  return todo.filter(s => s.userId === u.id);
+}
+function siguienteSoporte(){
+  const n = (DB.soporte||[]).map(s=>Number(s.numero)||0);
+  return (n.length ? Math.max.apply(null, n) : 0) + 1;
+}
+function ordenarSoporte(lista){
+  return lista.slice().sort((a,b)=>{
+    const aRes = a.estado === 'resuelto', bRes = b.estado === 'resuelto';
+    if(aRes !== bRes) return aRes ? 1 : -1;
+    return (a.ts||'').localeCompare(b.ts||'');
+  });
+}
+/* Vista para docentes/administración: igual patrón que Averías, usando la
+   base ya cargada de siempre (aquí sí se puede leer y escribir con commit). */
+function renderSoporte(){
+  if(!isAdmin(currentUser)){
+    // Un docente normal solo puede escribir y ver lo que él mismo mandó.
+    return renderSoporteFormularioYPropio();
+  }
+  const vista = getPref('sopVista','lista');
+  const lista = ordenarSoporte(soporteVisible(currentUser));
+
+  const detalle = (s) => {
+    const abierto = viewState.sopAbierto === s.id;
+    if(!abierto) return '';
+    const esReportante = currentUser && s.userId === currentUser.id;
+    return `<tr><td colspan="8" style="background:var(--panel-2);">
+      <div class="grid grid-2" style="gap:18px;">
+        <div>
+          <p class="card-title" style="margin-bottom:8px;">Detalle</p>
+          <p style="font-size:12.5px; white-space:pre-wrap;">${esc(s.descripcion||'')}</p>
+          <p class="nota-chica">Reportó: ${esc(s.nombre)} (${s.origen==='estudiante'?'estudiante':'docente'})</p>
+          ${s.imagen?`<img src="${s.imagen}" alt="Captura adjunta" style="max-width:100%; border-radius:8px; margin-top:10px; border:1px solid var(--line);">`:''}
+          <p class="card-title" style="margin:14px 0 6px;">Estado</p>
+          <select style="max-width:200px;" onchange="cambiarEstadoSoporte('${s.id}', this.value)">
+            ${ESTADOS_AVERIA.map(e=>`<option value="${e.id}" ${s.estado===e.id?'selected':''}>${esc(e.nombre)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <p class="card-title" style="margin-bottom:8px;">Seguimiento</p>
+          ${(s.notas||[]).length===0?'<p class="empty" style="padding:4px 0;">Todavía sin respuestas.</p>':''}
+          ${(s.notas||[]).map(n=>`<div class="assign-list-item" style="display:block;">
+            <div style="font-size:12.5px;">${esc(n.texto)}</div>
+            ${n.imagen?`<img src="${n.imagen}" alt="Foto adjunta" style="max-width:100%; border-radius:8px; margin-top:6px; border:1px solid var(--line);">`:''}
+            <div class="nota-chica" style="margin:3px 0 0;">${esc(n.nombre)} · ${esc(fechaLegible(n.ts))}</div></div>`).join('')}
+          ${esReportante ? `
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}','Gracias.')">Gracias</button>
+            <button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}','Confirmo que ya se solucionó.')">Ya se solucionó</button>
+            <button class="btn btn-sm btn-danger" onclick="agregarNotaSoporte('${s.id}','El problema sigue igual.')">Sigue el problema</button>
+          </div>` : ''}
+          <div class="field" style="margin-top:8px;">
+            <textarea id="sopnota_${s.id}" rows="2" placeholder="Escribe una respuesta…"></textarea>
+            <input type="file" id="sopnotaimg_${s.id}" accept="image/*" style="margin-top:6px;">
+            <div class="btn-row"><button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}')">Agregar respuesta</button></div>
+          </div>
+        </div>
+      </div>
+    </td></tr>`;
+  };
+
+  const tabla = `
+  <div class="card">
+    <p class="card-title">Reportes recibidos <span class="pill pill-muted">${lista.length}</span></p>
+    <div class="note">Solo la propietaria y los usuarios de acceso total ven este listado completo.</div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:62px;">N°</th><th style="width:140px;">Fecha</th><th>Asunto</th>
+        <th style="width:150px;">Reportó</th><th style="width:100px;">Quién</th>
+        <th style="width:120px;">Estado</th><th style="width:110px;"></th></tr></thead>
+      <tbody>
+        ${lista.length===0?`<tr><td colspan="7" class="empty">No hay reportes de la plataforma todavía.</td></tr>`:''}
+        ${lista.map(s=>`<tr>
+          <td class="mono"><b>${esc(String(s.numero||'').padStart(3,'0'))}</b></td>
+          <td class="mono">${esc(fechaLegible(s.ts))}</td>
+          <td>${esc(s.titulo)}${s.imagen?' 📎':''}</td>
+          <td style="font-size:12px;">${esc(s.nombre)}</td>
+          <td><span class="pill ${s.origen==='estudiante'?'pill-blue':'pill-muted'}">${s.origen==='estudiante'?'Estudiante':'Docente'}</span></td>
+          <td><span class="pill ${estadoAveria(s.estado).pill}">${esc(estadoAveria(s.estado).nombre)}</span></td>
+          <td><button class="icon-btn" onclick="abrirSoporte('${s.id}')">${viewState.sopAbierto===s.id?'Cerrar':'Detalle'}</button></td>
+        </tr>${detalle(s)}`).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Soporte</p>
+    <h1 class="page-title">Soporte de la plataforma</h1>
+    <p class="page-desc">Buzón para reportar errores o problemas del sistema. Pueden escribir docentes y estudiantes; solo dirección y la propietaria ven todos los reportes.</p>
+  </div>
+  <div class="period-tabs">
+    <div class="period-tab ${vista==='nueva'?'active':''}" onclick="setPref('sopVista','nueva')">Nuevo reporte</div>
+    <div class="period-tab ${vista==='lista'?'active':''}" onclick="setPref('sopVista','lista')">Todos los reportes</div>
+  </div>
+  ${vista==='nueva' ? renderSoporteFormulario() : tabla}`;
+}
+function renderSoporteFormulario(){
+  return `
+  <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius);">
+    <p class="card-title">Reportar un problema del sistema</p>
+    <div class="field"><label>Asunto</label>
+      <input type="text" id="sop_titulo" placeholder="Ej.: no me deja guardar una nota"></div>
+    <div class="field"><label>Descripción</label>
+      <textarea id="sop_desc" rows="3" placeholder="Describe qué intentabas hacer y qué pasó."></textarea></div>
+    <div class="field"><label>Captura de pantalla (opcional)</label>
+      <input type="file" id="sop_imagen" accept="image/*"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="guardarSoporte()">Enviar reporte</button>
+    </div>
+  </div>`;
+}
+/* Vista compacta para un docente sin acceso total: puede reportar y ver
+   nada más lo que él mismo envió (mismo patrón que Averías). */
+function renderSoporteFormularioYPropio(){
+  const vista = getPref('sopVista','nueva');
+  const lista = ordenarSoporte(soporteVisible(currentUser));
+  const tabla = `
+  <div class="card">
+    <p class="card-title">Mis reportes <span class="pill pill-muted">${lista.length}</span></p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:62px;">N°</th><th style="width:140px;">Fecha</th><th>Asunto</th>
+        <th style="width:120px;">Estado</th><th style="width:110px;"></th></tr></thead>
+      <tbody>
+        ${lista.length===0?`<tr><td colspan="5" class="empty">Todavía no has enviado ningún reporte.</td></tr>`:''}
+        ${lista.map(s=>`<tr>
+          <td class="mono"><b>${esc(String(s.numero||'').padStart(3,'0'))}</b></td>
+          <td class="mono">${esc(fechaLegible(s.ts))}</td>
+          <td>${esc(s.titulo)}${s.imagen?' 📎':''}</td>
+          <td><span class="pill ${estadoAveria(s.estado).pill}">${esc(estadoAveria(s.estado).nombre)}</span></td>
+          <td><button class="icon-btn" onclick="abrirSoporte('${s.id}')">${viewState.sopAbierto===s.id?'Cerrar':'Detalle'}</button></td>
+        </tr>${(()=>{
+          if(viewState.sopAbierto !== s.id) return '';
+          return `<tr><td colspan="5" style="background:var(--panel-2);">
+            <p style="font-size:12.5px; white-space:pre-wrap;">${esc(s.descripcion||'')}</p>
+            ${s.imagen?`<img src="${s.imagen}" alt="Captura adjunta" style="max-width:100%; border-radius:8px; margin:8px 0; border:1px solid var(--line);">`:''}
+            <p class="card-title" style="margin:10px 0 6px;">Seguimiento</p>
+            ${(s.notas||[]).length===0?'<p class="empty" style="padding:4px 0;">Todavía sin respuestas.</p>':''}
+            ${(s.notas||[]).map(n=>`<div class="assign-list-item" style="display:block;">
+              <div style="font-size:12.5px;">${esc(n.texto)}</div>
+              ${n.imagen?`<img src="${n.imagen}" alt="Foto adjunta" style="max-width:100%; border-radius:8px; margin-top:6px; border:1px solid var(--line);">`:''}
+              <div class="nota-chica" style="margin:3px 0 0;">${esc(n.nombre)} · ${esc(fechaLegible(n.ts))}</div></div>`).join('')}
+            <div class="btn-row" style="margin-top:10px;">
+              <button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}','Gracias.')">Gracias</button>
+              <button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}','Confirmo que ya se solucionó.')">Ya se solucionó</button>
+              <button class="btn btn-sm btn-danger" onclick="agregarNotaSoporte('${s.id}','El problema sigue igual.')">Sigue el problema</button>
+            </div>
+            <div class="field" style="margin-top:8px;">
+              <textarea id="sopnota_${s.id}" rows="2" placeholder="Escribe una respuesta…"></textarea>
+              <input type="file" id="sopnotaimg_${s.id}" accept="image/*" style="margin-top:6px;">
+              <div class="btn-row"><button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}')">Agregar respuesta</button></div>
+            </div>
+          </td></tr>`;
+        })()}`).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Soporte</p>
+    <h1 class="page-title">Soporte de la plataforma</h1>
+    <p class="page-desc">Reporta un error o problema del sistema. Solo dirección y la propietaria pueden verlo.</p>
+  </div>
+  <div class="period-tabs">
+    <div class="period-tab ${vista==='nueva'?'active':''}" onclick="setPref('sopVista','nueva')">Nuevo reporte</div>
+    <div class="period-tab ${vista==='lista'?'active':''}" onclick="setPref('sopVista','lista')">Mis reportes</div>
+  </div>
+  ${vista==='nueva' ? renderSoporteFormulario() : tabla}`;
+}
+async function guardarSoporte(){
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const titulo = val('sop_titulo');
+  if(!titulo){ showToast('Escribe el asunto.'); return; }
+  let imagen = null;
+  try{ imagen = await imagenDeInput('sop_imagen', 1000); }
+  catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
+  const nuevo = {
+    id: uid('sop'), numero: siguienteSoporte(), ts: new Date().toISOString(),
+    userId: currentUser.id, nombre: currentUser.nombre, origen: 'docente',
+    titulo: titulo, descripcion: val('sop_desc'), imagen: imagen,
+    estado: 'pendiente', vistas: [], notas: []
+  };
+  commit(doc=>{ doc.soporte = doc.soporte || []; doc.soporte.push(nuevo); });
+  registrar('Soporte de la plataforma', 'N° ' + String(nuevo.numero).padStart(3,'0') + ' · ' + titulo);
+  showToast('Reporte enviado.');
+  setPref('sopVista','lista');
+}
+function abrirSoporte(id){
+  viewState.sopAbierto = (viewState.sopAbierto === id) ? null : id;
+  if(viewState.sopAbierto){
+    commit(doc=>{
+      const s = (doc.soporte||[]).find(x=>x.id===id);
+      if(!s) return;
+      s.vistas = s.vistas || [];
+      const ya = s.vistas.find(v=>v.userId===currentUser.id);
+      if(ya) ya.ts = new Date().toISOString();
+      else s.vistas.push({userId:currentUser.id, nombre:currentUser.nombre, ts:new Date().toISOString()});
+    });
+  }
+  render();
+}
+function cambiarEstadoSoporte(id, estado){
+  commit(doc=>{
+    const s = (doc.soporte||[]).find(x=>x.id===id);
+    if(s) s.estado = estado;
+  });
+  registrar('Soporte de la plataforma', 'Cambió el estado a ' + estadoAveria(estado).nombre);
+  showToast('Estado actualizado.');
+  render();
+}
+async function agregarNotaSoporte(id, textoFijo){
+  const campo = document.getElementById('sopnota_' + id);
+  const txt = textoFijo || (campo ? campo.value.trim() : '');
+  if(!txt){ showToast('Escribe la respuesta.'); return; }
+  let imagen = null;
+  if(!textoFijo){
+    try{ imagen = await imagenDeInput('sopnotaimg_' + id, 1000); }
+    catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
+  }
+  commit(doc=>{
+    const s = (doc.soporte||[]).find(x=>x.id===id);
+    if(!s) return;
+    s.notas = s.notas || [];
+    s.notas.push({ts:new Date().toISOString(), userId:currentUser.id, nombre:currentUser.nombre, texto:txt, imagen:imagen});
+  });
+  render();
+}
+/* --- Vista para estudiantes: solo enviar, sin ver el historial de nadie ---
+   (si el sistema está conectado a un Apps Script propio, se manda con una
+   consulta liviana que nunca trae la base completa; si no hay esa conexión,
+   se usa el mismo camino que los docentes). */
+function renderSoporteEstudiante(est){
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Soporte</p>
+    <h1 class="page-title">Reportar un problema</h1>
+    <p class="page-desc">¿Algo no funciona bien? Contale a tu escuela. Solo dirección puede ver este mensaje.</p>
+  </div>
+  <div class="card" style="max-width:640px;">
+    <div class="field"><label>Asunto</label>
+      <input type="text" id="sop_titulo" placeholder="Ej.: no puedo ver mis calificaciones"></div>
+    <div class="field"><label>Descripción</label>
+      <textarea id="sop_desc" rows="3" placeholder="Describe qué intentabas hacer y qué pasó."></textarea></div>
+    <div class="field"><label>Captura de pantalla (opcional)</label>
+      <input type="file" id="sop_imagen" accept="image/*"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="guardarSoporteEstudiante()">Enviar reporte</button>
+    </div>
+  </div>`;
+}
+async function guardarSoporteEstudiante(){
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const titulo = val('sop_titulo');
+  if(!titulo){ showToast('Escribe el asunto.'); return; }
+  let imagen = null;
+  try{ imagen = await imagenDeInput('sop_imagen', 1000); }
+  catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
+  showToast('Enviando…');
+  try{
+    if(motor === 'nube' && sesionEstudianteCred){
+      await enviarSoporteEstudiante(sesionEstudianteCred.usuario, sesionEstudianteCred.claveHash, titulo, val('sop_desc'), imagen);
+    }else{
+      const nuevo = {
+        id: uid('sop'), numero: siguienteSoporte(), ts: new Date().toISOString(),
+        userId: currentUser.id, nombre: currentUser.nombre, origen: 'estudiante',
+        titulo: titulo, descripcion: val('sop_desc'), imagen: imagen,
+        estado: 'pendiente', vistas: [], notas: []
+      };
+      commit(doc=>{ doc.soporte = doc.soporte || []; doc.soporte.push(nuevo); });
+    }
+    showToast('Reporte enviado. Gracias.');
+    const t1 = document.getElementById('sop_titulo'); if(t1) t1.value = '';
+    const t2 = document.getElementById('sop_desc'); if(t2) t2.value = '';
+  }catch(e){
+    console.error(e);
+    showToast('No se pudo enviar. Intenta de nuevo.');
+  }
+}
+
 /* ============================= BITÁCORA DEL SISTEMA ============================= */
 /* Deja constancia de quién entró y qué hizo. Se conservan los últimos 800
    movimientos para que el archivo no crezca sin control. */
@@ -4336,7 +4749,7 @@ async function descargarCredenciales(){
 /* ============================= ROTULADORES ============================= */
 /* Cada rotulador lleva el logo del centro escolar a la izquierda y el nombre
    del estudiante al centro. Seis por página carta vertical, en PNG. */
-function descargarRotuladores(){
+async function descargarRotuladores(){
   const filtro = getPref('filtroGrado','');
   const grados = filtro ? [filtro] : misGrados(currentUser);
   const lista = [];
@@ -4345,6 +4758,16 @@ function descargarRotuladores(){
       .forEach(e=>lista.push({nombre: (nombresDe(e) + ' ' + apellidosDe(e)).trim(), grado:g}));
   });
   if(lista.length === 0){ showToast('No hay estudiantes para rotular.'); return; }
+
+  // La letra decorativa debe quedar IDÉNTICA sin importar el dispositivo del
+  // docente: se espera a que la fuente termine de cargar antes de dibujar
+  // (si no, el navegador dibuja con otra letra sin avisar) y se convierte a
+  // imagen, así el PDF final ya no depende de qué fuentes tenga instaladas
+  // quien lo abra después.
+  try{
+    await document.fonts.load('48px "Dancing Script"');
+    await document.fonts.ready;
+  }catch(e){ console.warn('no se pudo confirmar la carga de la fuente', e); }
 
   const aj = DB.ajustes || {};
   const dibujar = (logoImg)=>{
@@ -4393,7 +4816,7 @@ function descargarRotuladores(){
         let tam = 48 * ESCALA;
         const maxAncho = anchoTexto - 20 * ESCALA;
         do {
-          ctx.font = tam + 'px josephsophia, "Josephsophia", "Segoe Script", "Brush Script MT", cursive';
+          ctx.font = tam + 'px "Dancing Script", cursive';
           if(ctx.measureText(est.nombre).width <= maxAncho) break;
           tam -= 2 * ESCALA;
         } while(tam > 16 * ESCALA);
