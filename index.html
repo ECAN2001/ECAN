@@ -368,6 +368,8 @@
 <script>
 /* ============================= ESTADO ============================= */
 let DB = { estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{} };
+let baseCompletaCargada = false;         // true una vez que se descargó la base completa (solo docentes/admin)
+let sesionEstudianteCred = null;         // {usuario, claveHash} en memoria, para reautenticar sin pedir de nuevo
 /* Ponderación fija de cada período de evaluación */
 const RUBROS_DEF = [
   {key:'integradora1', nombre:'Integradora 1', peso:0.15, tarea:true},
@@ -483,16 +485,31 @@ function setSyncUrl(u){
 /* Versión de esta copia del sistema. El Apps Script del centro escolar
    puede exigir una versión mínima y así dejar fuera las copias viejas. */
 const VERSION_APP = 5;
+/* Token compartido con el Apps Script del centro escolar: sin esto, nadie
+   puede leer ni escribir el archivo de datos aunque conozca la URL.
+   No es un secreto perfecto (está en este mismo código, visible para quien
+   lo busque), pero bloquea a quien solo tenga la URL suelta sin más. */
+const TOKEN_SYNC = 'd4ae7102ac20122b55670a6b41aa3cae46e73138';
 let versionRechazada = false;
 
+async function nubePing(){
+  const url = getSyncUrl();
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=ping' + '&t=' + Date.now(),
+    {method:'GET', redirect:'follow'}), 8000);
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  return true;
+}
 async function nubeLeer(){
   const url = getSyncUrl();
-  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&t=' + Date.now(),
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&t=' + Date.now(),
     {method:'GET', redirect:'follow'}), 12000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
   if(!txt || txt.trim()==='' || txt.trim()==='null') return null;
   const doc = JSON.parse(txt);
+  if(doc && doc.sinAutorizacion){           // el Apps Script no reconoció el token
+    throw new Error('sin autorización — revisa que el código del Apps Script esté actualizado');
+  }
   if(doc && doc.versionObsoleta){          // el centro escolar desactivó esta copia
     versionRechazada = true;
     throw new Error('version');
@@ -503,15 +520,68 @@ async function nubeLeer(){
 async function nubeEscribir(valor){
   const url = getSyncUrl();
   // text/plain evita la petición previa de CORS, que Apps Script no responde
-  const r = await conLimite(fetch(url + '?v=' + VERSION_APP, {method:'POST', redirect:'follow',
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC, {method:'POST', redirect:'follow',
     headers:{'Content-Type':'text/plain;charset=utf-8'}, body: valor}), 15000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const resp = await r.text();
+  if(resp && resp.indexOf('sinAutorizacion') >= 0){
+    throw new Error('sin autorización — revisa que el código del Apps Script esté actualizado');
+  }
   if(resp && resp.indexOf('versionObsoleta') >= 0){
     versionRechazada = true;
     throw new Error('version');
   }
   return true;
+}
+/* Pide al Apps Script SOLO los datos de un estudiante (las suyas y las de su
+   grado): el servidor filtra antes de responder, así que la base completa
+   —con las notas y reportes de todos los demás— nunca llega a este navegador. */
+async function nubeLeerEstudiante(usuario, claveHash){
+  const url = getSyncUrl();
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=estudiante',
+    {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
+     body: JSON.stringify({usuario, clave: claveHash})}), 12000);
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const txt = await r.text();
+  if(!txt) return null;
+  const datos = JSON.parse(txt);
+  if(datos && datos.sinAutorizacion) throw new Error('sin autorización — revisa el código del Apps Script');
+  if(!datos || datos.error) return null;
+  return datos;
+}
+/* Registro liviano (bitácora) para sesiones de estudiante: el servidor valida
+   sus credenciales y agrega una línea, sin que el estudiante reciba ni envíe
+   nunca la base completa. */
+async function registrarEventoNube(usuario, claveHash, accion, detalle){
+  try{
+    const url = getSyncUrl();
+    await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=evento',
+      {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
+       body: JSON.stringify({usuario, clave: claveHash, accion, detalle})}), 10000);
+  }catch(e){ console.warn('no se pudo registrar el evento', e); }
+}
+/* Arma una base mínima en memoria a partir de lo que devolvió el servidor
+   para un estudiante: solo lo suyo, nada de otros estudiantes ni de docentes. */
+function adoptarDocEstudiante(datos){
+  DB = {
+    estudiantes: [datos.estudiante],
+    asignaturas: datos.asignaturas || [],
+    docentes: [],
+    curriculo: datos.curriculo || {},
+    config: datos.config || {grados:[], periodos:4},
+    ajustes: datos.ajustes || {},
+    calificaciones: datos.calificaciones || {},
+    estados: datos.estados || {},
+    observaciones: datos.observaciones || {},
+    hojas: datos.hojas || {},
+    actividades: datos.actividades || {},
+    tareas: datos.tareas || {},
+    rubros: datos.rubros || {},
+    reportes: datos.reportes || [],
+    boletaDatos: datos.boletaDatos || {},
+    averias: [],
+    bitacora: []
+  };
 }
 function renderVersionObsoleta(){
   return `
@@ -531,7 +601,7 @@ function renderVersionObsoleta(){
 async function detectarMotor(){
   if(getSyncUrl()){
     try{
-      await nubeLeer();               // basta con que responda
+      await nubePing();               // liviano: no descarga la base completa, solo confirma que responde
       motor = 'nube';
       return;
     }catch(e){ console.warn('sincronización en la nube no disponible', e); }
@@ -559,7 +629,7 @@ async function detectarMotor(){
 async function intentarPromocion(){
   if(motor === 'compartido' || motor === 'nube') return false;
   if(getSyncUrl()){
-    try{ await nubeLeer(); motor='nube'; iniciarSync(); setSyncStatus('ok'); if(currentUser) render(); return true; }catch(e){}
+    try{ await nubePing(); motor='nube'; iniciarSync(); setSyncStatus('ok'); if(currentUser) render(); return true; }catch(e){}
   }
   if(!(typeof window !== 'undefined' && window.storage && typeof window.storage.get === 'function')) return false;
   try{
@@ -707,6 +777,7 @@ async function loadAll(){
   if(!DB.ajustes) DB.ajustes = {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   asegurarPropietaria();
   asegurarUsuariosDocentes();
+  baseCompletaCargada = true;
 }
 /* Garantiza que exista la cuenta de la propietaria de la plataforma.
    Se crea una sola vez, con una contraseña provisional que debe cambiarse
@@ -780,10 +851,25 @@ async function flush(){
 }
 /* Reintento manual desde el indicador */
 async function reintentarGuardado(){
+  if(sesionEstudiante){ await actualizarDatosEstudiante(); return; }
   intentosFallidos = 0;
   await intentarPromocion();
   if(pendientes.length>0){ programarGuardado(0); showToast('Reintentando…'); }
   else pullCambios(false);
+}
+/* Actualización periódica y manual para sesiones de estudiante: repite la
+   misma consulta filtrada al servidor, nunca la base completa. */
+async function actualizarDatosEstudiante(){
+  if(!sesionEstudiante || motor !== 'nube' || !sesionEstudianteCred) return;
+  try{
+    const datos = await nubeLeerEstudiante(sesionEstudianteCred.usuario, sesionEstudianteCred.claveHash);
+    if(datos && datos.estudiante){
+      adoptarDocEstudiante(datos);
+      currentUser = DB.estudiantes[0];
+      setSyncStatus('ok');
+      render();
+    }
+  }catch(e){ console.warn('no se pudieron actualizar los datos del estudiante', e); }
 }
 
 /* ============================= RESPALDO ============================= */
@@ -1085,21 +1171,46 @@ function descargarRespaldo(){
 
 /* ============================= SESIÓN ============================= */
 async function guardarSesion(){
-  try{ await escribirCrudo('sesion', JSON.stringify({userId: currentUser?currentUser.id:null, esEstudiante: sesionEstudiante, view: currentView}), false); }catch(e){}
+  try{
+    const datos = {userId: currentUser?currentUser.id:null, esEstudiante: sesionEstudiante, view: currentView};
+    if(sesionEstudiante && sesionEstudianteCred){
+      // Se guarda en este dispositivo (nunca compartido) para poder reanudar
+      // la sesión sin descargar la base completa ni volver a pedir la clave.
+      datos.usuarioEst = sesionEstudianteCred.usuario;
+      datos.claveEst = sesionEstudianteCred.claveHash;
+    }
+    await escribirCrudo('sesion', JSON.stringify(datos), false);
+  }catch(e){}
 }
 async function restaurarSesion(){
   try{
     const v = await leerCrudo('sesion', false);
     if(!v) return;
     const s = JSON.parse(v);
-    if(s && s.userId){
-      if(s.esEstudiante){
-        const e = DB.estudiantes.find(x=>x.id===s.userId);
-        if(e){ currentUser = e; sesionEstudiante = true; currentView = s.view || 'sincronizacionEstudiante'; if(!e.accesos) e.accesos = accesosPorDefecto(); }
-      }else{
-        const u = DB.docentes.find(t=>t.id===s.userId);
-        if(u){ currentUser = u; sesionEstudiante = false; currentView = s.view || 'panel'; }
+    if(!s || !s.userId) return;
+    if(s.esEstudiante){
+      if(motor === 'nube' && s.usuarioEst && s.claveEst){
+        try{
+          const datos = await nubeLeerEstudiante(s.usuarioEst, s.claveEst);
+          if(datos && datos.estudiante){
+            adoptarDocEstudiante(datos);
+            currentUser = DB.estudiantes[0];
+            sesionEstudiante = true;
+            sesionEstudianteCred = {usuario: s.usuarioEst, claveHash: s.claveEst};
+            currentView = s.view || 'sincronizacionEstudiante';
+            return;
+          }
+        }catch(e){ console.warn('no se pudo reanudar sesión de estudiante', e); }
+        return;   // credenciales guardadas ya no válidas: se queda en el login
       }
+      // Sin Apps Script propio no hay filtrado en el servidor: recurre a la base completa
+      if(!baseCompletaCargada) await loadAll();
+      const e = DB.estudiantes.find(x=>x.id===s.userId);
+      if(e){ currentUser = e; sesionEstudiante = true; currentView = s.view || 'sincronizacionEstudiante'; if(!e.accesos) e.accesos = accesosPorDefecto(); }
+    }else{
+      if(!baseCompletaCargada) await loadAll();
+      const u = DB.docentes.find(t=>t.id===s.userId);
+      if(u){ currentUser = u; sesionEstudiante = false; currentView = s.view || 'panel'; }
     }
   }catch(e){}
 }
@@ -1146,8 +1257,9 @@ async function pullCambios(silencioso){
 function iniciarSync(){
   if(syncTimer) clearInterval(syncTimer);
   if(motor !== 'compartido' && motor !== 'nube') return;
-  syncTimer = setInterval(()=>{ if(currentUser && !document.hidden) pullCambios(true); }, 15000);
-  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && currentUser) pullCambios(true); });
+  const refrescar = ()=>{ if(sesionEstudiante) actualizarDatosEstudiante(); else pullCambios(true); };
+  syncTimer = setInterval(()=>{ if(currentUser && !document.hidden) refrescar(); }, 15000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && currentUser) refrescar(); });
 }
 function renderSyncIndicator(){
   const hora = lastSync ? lastSync.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'}) : '—';
@@ -1171,19 +1283,102 @@ function renderSincronizacion(){
     memoria: ['Sin guardado', 'Este navegador bloquea el almacenamiento. Descarga un respaldo antes de cerrar.', 'pill-muted']
   };
   const [etiqueta, detalle, pill] = estados[motor] || estados.local;
-  const codigo = `function doGet(e) {
+  const codigo = `var TOKEN = '${TOKEN_SYNC}';
+
+function doGet(e) {
+  if (!e || e.parameter.tok !== TOKEN) return responder('{"sinAutorizacion":true}');
+  if (e.parameter.accion === 'ping') return responder('{"ok":true}');
   return responder(leerDatos());
 }
 
 function doPost(e) {
+  if (!e || e.parameter.tok !== TOKEN) return responder('{"sinAutorizacion":true}');
+  var accion = e.parameter.accion || 'guardar';
   var bloqueo = LockService.getScriptLock();
   bloqueo.waitLock(20000);
   try {
+    if (accion === 'estudiante') return responder(datosEstudiante(e.postData.contents));
+    if (accion === 'evento') return responder(registrarEvento(e.postData.contents));
     guardarDatos(e.postData.contents);
     return responder('{"ok":true}');
   } finally {
     bloqueo.releaseLock();
   }
+}
+
+/* Entrega SOLO lo que le corresponde a un estudiante: sus propias notas,
+   sus propios reportes y las hojas de tareas de su grado. Nunca la lista
+   de docentes ni los datos de los demás estudiantes. */
+function datosEstudiante(cuerpoJson) {
+  var pedido = JSON.parse(cuerpoJson);
+  var doc = JSON.parse(leerDatos());
+  if (!doc || !doc.estudiantes) return JSON.stringify({error: true});
+
+  var est = null;
+  for (var i = 0; i < doc.estudiantes.length; i++) {
+    var e = doc.estudiantes[i];
+    if (e.usuario === pedido.usuario && e.clave === pedido.clave) { est = e; break; }
+  }
+  if (!est) return JSON.stringify({error: true});
+
+  var idsAsig = {};
+  ((doc.curriculo && doc.curriculo[est.grado]) || []).forEach(function(id){ idsAsig[id] = true; });
+  (doc.docentes || []).forEach(function(d){
+    (d.asignaciones || []).forEach(function(a){ if (a.grado === est.grado) idsAsig[a.asignaturaId] = true; });
+  });
+  var asignaturas = (doc.asignaturas || []).filter(function(a){ return idsAsig[a.id]; });
+  var curriculoFiltrado = {};
+  curriculoFiltrado[est.grado] = Object.keys(idsAsig);
+
+  var prefijoEst = est.id + '|';
+  var prefijoGrado = est.grado + '|';
+  function porPrefijo(obj, prefijo) {
+    var salida = {};
+    Object.keys(obj || {}).forEach(function(k){ if (k.indexOf(prefijo) === 0) salida[k] = obj[k]; });
+    return salida;
+  }
+
+  var boletaDatos = {};
+  if (doc.boletaDatos && doc.boletaDatos[est.id]) boletaDatos[est.id] = doc.boletaDatos[est.id];
+
+  return JSON.stringify({
+    estudiante: est,
+    asignaturas: asignaturas,
+    curriculo: curriculoFiltrado,
+    config: doc.config || {},
+    ajustes: doc.ajustes || {},
+    calificaciones: porPrefijo(doc.calificaciones, prefijoEst),
+    estados: porPrefijo(doc.estados, prefijoEst),
+    observaciones: porPrefijo(doc.observaciones, prefijoEst),
+    hojas: porPrefijo(doc.hojas, prefijoGrado),
+    actividades: porPrefijo(doc.actividades, prefijoGrado),
+    tareas: porPrefijo(doc.tareas, prefijoGrado),
+    rubros: porPrefijo(doc.rubros, prefijoGrado),
+    reportes: (doc.reportes || []).filter(function(r){ return r.estId === est.id; }),
+    boletaDatos: boletaDatos
+  });
+}
+
+/* Agrega una línea a la bitácora sin que el estudiante reciba ni envíe
+   nunca la base completa: el servidor valida sus credenciales acá mismo. */
+function registrarEvento(cuerpoJson) {
+  var pedido = JSON.parse(cuerpoJson);
+  var doc = JSON.parse(leerDatos());
+  if (!doc || !doc.estudiantes) return '{"error":true}';
+  var est = null;
+  for (var i = 0; i < doc.estudiantes.length; i++) {
+    var e = doc.estudiantes[i];
+    if (e.usuario === pedido.usuario && e.clave === pedido.clave) { est = e; break; }
+  }
+  if (!est) return '{"error":true}';
+  doc.bitacora = doc.bitacora || [];
+  doc.bitacora.push({
+    ts: new Date().toISOString(), userId: est.id, nombre: est.nombre,
+    accion: pedido.accion || '', detalle: pedido.detalle || ''
+  });
+  if (doc.bitacora.length > 800) doc.bitacora = doc.bitacora.slice(doc.bitacora.length - 800);
+  guardarDatos(JSON.stringify(doc));
+  return '{"ok":true}';
 }
 
 function archivo() {
@@ -2134,7 +2329,8 @@ function renderLogin(){
     </div>
   </div>`;
 }
-function entrarComoDocenteLogin(){
+async function entrarComoDocenteLogin(){
+  if(!baseCompletaCargada) await loadAll();
   const crudo = ((document.getElementById('doc_usuario_input')||{}).value || '').trim();
   const usuario = normalizarUsuario(crudo);
   const clave = (document.getElementById('doc_clave_input')||{}).value || '';
@@ -2156,32 +2352,68 @@ function entrarComoDocenteLogin(){
   viewState.errorLoginDocente = '';
   entrarComo(u);
 }
-function entrarComoEstudianteLogin(){
+async function entrarComoEstudianteLogin(){
   const usuario = normalizarUsuario((document.getElementById('est_usuario_input')||{}).value || '');
   const clave = (document.getElementById('est_clave_input')||{}).value || '';
+  if(!usuario || !clave){
+    viewState.errorLoginEstudiante = 'Usuario o contraseña incorrectos.';
+    render();
+    return;
+  }
+  const claveHash = hashClave(clave);
+  if(motor === 'nube'){
+    // El servidor filtra: a este navegador solo llegan los datos de este estudiante.
+    viewState.errorLoginEstudiante = '';
+    showToast('Ingresando…');
+    try{
+      const datos = await nubeLeerEstudiante(usuario, claveHash);
+      if(!datos || !datos.estudiante){
+        viewState.errorLoginEstudiante = 'Usuario o contraseña incorrectos.';
+        render();
+        setTimeout(()=>{ const c = document.getElementById('est_clave_input'); if(c) c.focus(); }, 60);
+        return;
+      }
+      adoptarDocEstudiante(datos);
+      await entrarComoEstudiante(DB.estudiantes[0], {usuario, claveHash});
+    }catch(e){
+      console.error(e);
+      viewState.errorLoginEstudiante = 'No se pudo conectar con la escuela. Intenta de nuevo.';
+      render();
+    }
+    return;
+  }
+  // Sin un Apps Script propio conectado no hay forma de filtrar en el servidor;
+  // se recurre a la base completa, como en versiones anteriores.
+  if(!baseCompletaCargada) await loadAll();
   const est = DB.estudiantes.find(e=>e.usuario === usuario);
-  if(!usuario || !clave || !est || hashClave(clave) !== est.clave){
+  if(!est || hashClave(clave) !== est.clave){
     viewState.errorLoginEstudiante = 'Usuario o contraseña incorrectos.';
     render();
     setTimeout(()=>{ const c = document.getElementById('est_clave_input'); if(c) c.focus(); }, 60);
     return;
   }
   viewState.errorLoginEstudiante = '';
-  entrarComoEstudiante(est);
+  await entrarComoEstudiante(est);
 }
-async function entrarComoEstudiante(est){
+async function entrarComoEstudiante(est, credEst){
   selloVisto = '';
   currentUser = est;
   sesionEstudiante = true;
+  sesionEstudianteCred = credEst || null;
   _credencialEstudianteUrl = null;   // por si el equipo lo usó antes otro estudiante
   if(!est.accesos) est.accesos = accesosPorDefecto();
-  registrar('Ingreso', 'Entró al sistema (estudiante)');
   const primero = PANELES_ESTUDIANTE.find(p=>est.accesos[p.id]);
   currentView = primero ? primero.id : 'sincronizacionEstudiante';
   viewState = {};
   render();
+  if(credEst && motor === 'nube'){
+    // Registro liviano: el servidor agrega la línea sin recibir la base completa.
+    registrarEventoNube(credEst.usuario, credEst.claveHash, 'Ingreso', 'Entró al sistema (estudiante)');
+  }else{
+    registrar('Ingreso', 'Entró al sistema (estudiante)');
+    await pullCambios(true);
+  }
   guardarSesion();
-  await pullCambios(true);
 }
 /* Entrada discreta para la propietaria de la plataforma: 5 clics sobre el
    título en menos de 2 segundos abren el acceso. No aparece en ningún
@@ -2198,7 +2430,8 @@ function tocarTitulo(){
     setTimeout(()=>{ const c = document.getElementById('clave_prop_input'); if(c) c.focus(); }, 60);
   }
 }
-function entrarPropietaria(){
+async function entrarPropietaria(){
+  if(!baseCompletaCargada) await loadAll();
   const propietaria = DB.docentes.find(t=>t.tipo==='propietaria' || t.tipo==='propietario');
   const val = (document.getElementById('clave_prop_input')||{}).value || '';
   if(!propietaria || !val || hashClave(val) !== propietaria.clave){
@@ -2288,7 +2521,7 @@ async function entrarComo(u){
   guardarSesion();
   await pullCambios(true);
 }
-function doLogout(){ currentUser = null; sesionEstudiante = false; _credencialEstudianteUrl = null; guardarSesion(); render(); }
+function doLogout(){ currentUser = null; sesionEstudiante = false; sesionEstudianteCred = null; _credencialEstudianteUrl = null; guardarSesion(); render(); }
 
 const NAV_ITEMS = [
   {id:'panel', label:'Panel principal'},
@@ -2503,7 +2736,7 @@ function renderSincronizacionEstudiante(){
   </div>
   <div class="card">
     <p class="card-title">Estado <span class="pill ${pill}">${etiqueta}</span></p>
-    <div class="btn-row"><button class="btn btn-primary" onclick="pullCambios(false)">Actualizar mis datos</button></div>
+    <div class="btn-row"><button class="btn btn-primary" onclick="actualizarDatosEstudiante()">Actualizar mis datos</button></div>
   </div>
   ${disponibles.length===0
     ? `<div class="card"><p class="empty">Todavía no tienes ningún panel habilitado. Consulta con tu escuela.</p></div>`
@@ -2609,20 +2842,6 @@ function renderCalificacionesEstudiante(est){
     return cabecera + `<div class="card"><p class="empty">Tu aula todavía no tiene asignaturas.</p></div>`;
   }
 
-  const cell = (comp) => {
-    const val = getComp(est.id, asignatura, periodo, comp);
-    const deficiente = val!==undefined && val<60;
-    const obs = getObs(est.id, asignatura, periodo, comp);
-    return `<div class="celda-nota">
-      <span class="mono ${deficiente?'deficiente':''}" style="${deficiente?'color:var(--red);':''}">${val!==undefined?val:'—'}</span>
-      ${obs?`<span class="obs-btn con-obs" title="${esc(obs)}" style="cursor:default;">✎</span>`:''}
-    </div>`;
-  };
-  const estadoPill = (idTarea) => {
-    const estado = getEstado(est.id, asignatura, periodo, idTarea);
-    return estado ? `<span class="pill ${ESTADOS[estado].pill}">${ESTADOS[estado].nombre}</span>` : '<span class="mono">—</span>';
-  };
-
   // Comentarios del docente de este período, para mostrarlos de forma visible
   // (no solo al pasar el mouse sobre el lápiz).
   const comentarios = [];
@@ -2640,8 +2859,6 @@ function renderCalificacionesEstudiante(est){
     }
   });
 
-  const pInfo = periodInfo(est.id, asignatura, periodo, est.grado);
-  const pScore = pInfo.valor;
   const sInfo = subjectInfo(est.id, asignatura, est.grado);
   const final = sInfo.valor;
 
@@ -2689,44 +2906,32 @@ function renderCalificacionesEstudiante(est){
     </div>
   </div>
 
-  <div class="ledger">
+  <div class="card" style="margin-top:-4px;">
+    <p class="card-title">Mis promedios</p>
     <div class="table-wrap">
-    <table class="ledger-table">
-      <thead><tr>
-        ${acts.map(a=>`<th style="width:84px;" title="${esc(a.nombre)}">${esc(etiquetaCorta(a.id)||a.nombre)}</th>`).join('')}
-        ${rubrosActivos().map(r=>{
-          const nom = esc(getNombreRubro(est.grado,asignatura,r.key,periodo));
-          const corta = etiquetaCorta(r.key);
-          let th = `<th style="width:80px;" title="${nom}">${corta ? esc(corta) : nom} (${Math.round(r.peso*100)}%)</th>`;
-          if(r.conRecuperacion) th += `<th style="width:80px;" title="Recuperación de ${nom}">Recup.<br><span style="font-weight:400;text-transform:none;">${corta?esc(corta):nom}</span></th>`;
-          return th;
-        }).join('')}
-        <th style="width:100px;">Nota período ${periodo}</th>
-        <th style="width:110px;">Promedio final</th>
-      </tr></thead>
+    <table>
+      <thead><tr><th>I período</th><th>II período</th><th>III período</th><th>IV período</th><th>Promedio final</th></tr></thead>
       <tbody>
         <tr>
-          ${acts.map(a=>`<td>${cell('act:'+a.id)}${estadoPill(a.id)}</td>`).join('')}
-          ${rubrosActivos().map(r=>{
-            let td = `<td>${cell(r.key)}${r.tarea?estadoPill(r.key):''}</td>`;
-            if(r.conRecuperacion) td += `<td>${cell(claveRecuperacion(r.key))}</td>`;
-            return td;
+          ${[1,2,3,4].map(p=>{
+            const info = periodInfo(est.id, asignatura, p, est.grado);
+            const v = info.valor;
+            return `<td class="avg-cell ${v===null?'avg-pending':(v>=60?'avg-good':'avg-bad')}"
+                title="${info.completo?'Nota definitiva del período':(v===null?'Todavía sin notas':'Promedio con lo calificado hasta ahora ('+Math.round(info.avance*100)+'% del período)')}">
+              ${v===null?'Pendiente':v.toFixed(1)}
+              ${v!==null && !info.completo?`<span class="marca-parcial">parcial ${Math.round(info.avance*100)}%</span>`:''}
+            </td>`;
           }).join('')}
-          <td class="avg-cell ${pScore===null?'avg-pending':(pScore>=60?'avg-good':'avg-bad')}"
-              title="${pInfo.completo?'Nota definitiva del período':'Promedio con lo calificado hasta ahora ('+Math.round(pInfo.avance*100)+'% del período)'}">
-            ${pScore===null?'Pendiente':pScore.toFixed(1)}
-            ${pScore!==null && !pInfo.completo?`<span class="marca-parcial">parcial ${Math.round(pInfo.avance*100)}%</span>`:''}
-          </td>
           <td class="avg-cell ${final===null?'avg-pending':(final>=60?'avg-good':'avg-bad')}">
-            ${final===null?'Pendiente':final.toFixed(1)}
+            <b>${final===null?'Pendiente':final.toFixed(1)}</b>
             ${final!==null && !sInfo.completo?`<span class="marca-parcial">${sInfo.periodos} de 4 per.</span>`:''}
           </td>
         </tr>
       </tbody>
     </table>
     </div>
+    <div class="note" style="margin-top:12px;">El promedio se calcula desde la primera nota que se carga, repartiendo proporcionalmente entre lo ya calificado; la etiqueta <b>parcial</b> indica que aún faltan notas por cargar.</div>
   </div>
-  <div class="note" style="margin-top:12px;">El promedio se calcula desde la primera nota que se cargue, repartiendo proporcionalmente entre lo ya calificado; la etiqueta <b>parcial</b> indica que aún faltan notas. En los rubros con recuperación se toma automáticamente la nota más alta.</div>
   ${comentarios.length ? `
   <div class="card" style="margin-top:12px;">
     <p class="card-title">Comentarios del docente</p>
@@ -3033,7 +3238,7 @@ function siguienteCorrelativo(){
 function correlativoTexto(n){ return 'N° ' + String(n).padStart(3,'0'); }
 /* Deja constancia de quién abrió el reporte */
 function registrarVista(id){
-  if(!currentUser) return;
+  if(!currentUser || sesionEstudiante) return;   // los estudiantes solo tienen su propia base parcial: nunca escriben sobre ella
   commit(doc=>{
     const r = (doc.reportes||[]).find(x=>x.id===id);
     if(!r) return;
@@ -3886,7 +4091,7 @@ function renderEstudiantes(){
     </div>
     <button class="btn" onclick="descargarListado()">Descargar listado</button>
     <button class="btn" onclick="descargarRotuladores()">Rotuladores</button>
-    ${puedeEditar?`<button class="btn" onclick="descargarCredenciales()">Descargar usuarios y contraseñas</button>`:''}
+    ${puedeDescargarCredenciales(currentUser)?`<button class="btn" onclick="descargarCredenciales()">Descargar usuarios y contraseñas</button>`:''}
     ${puedeEditar?`<button class="btn" onclick="viewState.modalAccesos=true; render();">Accesos</button>`:''}
     ${puedeEditar?`<button class="btn btn-primary" onclick="openStudentModal()">Agregar estudiante</button>`:''}
   </div>
@@ -4071,6 +4276,7 @@ function asegurarCredencialEstudiante(e){
   return cambio;
 }
 async function descargarCredenciales(){
+  if(!puedeDescargarCredenciales(currentUser)){ showToast('No tienes permiso para descargar credenciales.'); return; }
   const filtro = getPref('filtroGrado','');
   const gradosVisibles = misGrados(currentUser);
   const gradosMostrados = filtro ? [filtro] : gradosVisibles;
@@ -5403,6 +5609,14 @@ function puedeGestionarEstudiantes(u){
   if(!u || u.soloLectura) return false;
   if(!puedeEditarPanel(u, 'estudiantes')) return false;
   return isAdmin(u) || u.permisoEstudiantes === true;
+}
+/* El docente orientador de un grado puede descargar las credenciales de SU
+   grado aunque no tenga permiso completo para agregar/editar estudiantes. */
+function puedeDescargarCredenciales(u){
+  u = u || currentUser;
+  if(!u || u.soloLectura) return false;
+  if(!puedeVerPanel(u, 'estudiantes')) return false;
+  return puedeGestionarEstudiantes(u) || orientacionesDe(u).length > 0;
 }
 function definirClave(id){
   const t0 = DB.docentes.find(x=>x.id===id);
@@ -7071,7 +7285,7 @@ function renderMatriz(){
 (async function init(){
   cargarPrefs();
   try{
-    await loadAll();
+    await detectarMotor();
     await restaurarSesion();
     setSyncStatus('ok');
   }catch(e){ console.error('init', e); }
