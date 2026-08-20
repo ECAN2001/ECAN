@@ -2329,7 +2329,17 @@ function renderLogin(){
     </div>
   </div>`;
 }
+/* Si hay un Apps Script configurado pero por algún motivo transitorio la
+   conexión no se estableció (por ejemplo, justo al abrir la página), se
+   reintenta antes de decidir cómo entrar — así nunca se cae por error al
+   camino de "base completa" solo por mala suerte de tiempos. */
+async function asegurarMotorNube(){
+  if(motor !== 'nube' && getSyncUrl()){
+    try{ await detectarMotor(); }catch(e){}
+  }
+}
 async function entrarComoDocenteLogin(){
+  await asegurarMotorNube();
   if(!baseCompletaCargada) await loadAll();
   const crudo = ((document.getElementById('doc_usuario_input')||{}).value || '').trim();
   const usuario = normalizarUsuario(crudo);
@@ -2360,6 +2370,7 @@ async function entrarComoEstudianteLogin(){
     render();
     return;
   }
+  await asegurarMotorNube();
   const claveHash = hashClave(clave);
   if(motor === 'nube'){
     // El servidor filtra: a este navegador solo llegan los datos de este estudiante.
