@@ -4472,15 +4472,19 @@ function renderEstudiantes(){
   const gradosVisibles = misGrados(currentUser);
   const puedeEditar = puedeGestionarEstudiantes(currentUser);
   const gradosMostrados = filtro ? [filtro] : gradosVisibles;
-  const total = DB.estudiantes.filter(e=>gradosMostrados.indexOf(e.grado)>=0).length;
+  const idsMostrados = DB.estudiantes.filter(e=>gradosMostrados.indexOf(e.grado)>=0).map(e=>e.id);
+  const total = idsMostrados.length;
+  const seleccion = viewState.seleccionEst || {};
+  const cuantosSeleccionados = idsMostrados.filter(id=>seleccion[id]).length;
 
   const filasDe = (g) => {
     const lista = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===g), orden);
     if(lista.length===0){
-      return `<tr><td colspan="${puedeEditar?5:4}" class="empty">Sin estudiantes en ${esc(g)}.</td></tr>`;
+      return `<tr><td colspan="${puedeEditar?6:4}" class="empty">Sin estudiantes en ${esc(g)}.</td></tr>`;
     }
     return lista.map((e,i)=>`
       <tr>
+        ${puedeEditar?`<td><input type="checkbox" ${seleccion[e.id]?'checked':''} onchange="toggleSeleccionEst('${e.id}', this.checked)"></td>`:''}
         <td class="mono num-est">${i+1}</td>
         <td>${esc(apellidosDe(e))}</td>
         <td>${esc(nombresDe(e))}</td>
@@ -4517,8 +4521,21 @@ function renderEstudiantes(){
     <button class="btn" onclick="descargarRotuladores()">Rotuladores</button>
     ${puedeDescargarCredenciales(currentUser)?`<button class="btn" onclick="descargarCredenciales()">Descargar usuarios y contraseñas</button>`:''}
     ${puedeEditar?`<button class="btn" onclick="viewState.modalAccesos=true; render();">Accesos</button>`:''}
+    ${puedeEditar?`<button class="btn" onclick="viewState.modalImportar={paso:1}; render();">Pegar lista</button>`:''}
     ${puedeEditar?`<button class="btn btn-primary" onclick="openStudentModal()">Agregar estudiante</button>`:''}
   </div>
+
+  ${puedeEditar && total>0 ? `
+  <div class="filters" style="align-items:center;">
+    <label class="check-chip"><input type="checkbox" ${total>0 && cuantosSeleccionados===total?'checked':''}
+      onchange="toggleSeleccionTodosMostrados(this.checked)"> Seleccionar todos los mostrados (${total})</label>
+    ${cuantosSeleccionados>0?`
+      <span class="pill pill-blue">${cuantosSeleccionados} seleccionado(s)</span>
+      <button class="btn btn-danger" onclick="eliminarSeleccionEst()">Eliminar seleccionados</button>
+      <button class="btn" onclick="viewState.seleccionEst={}; render();">Cancelar selección</button>
+    `:''}
+    <button class="btn btn-danger" onclick="eliminarTodosMostrados()">Eliminar todos los mostrados</button>
+  </div>` : ''}
 
   ${gradosMostrados.length===0?`<div class="card"><p class="empty">No tienes grados asignados.</p></div>`:''}
   ${gradosMostrados.map(g=>{
@@ -4529,6 +4546,7 @@ function renderEstudiantes(){
       <div class="table-wrap">
       <table>
         <thead><tr>
+          ${puedeEditar?`<th style="width:30px;"></th>`:''}
           <th style="width:48px;">N°</th><th>Apellidos</th><th>Nombres</th><th>Grado</th>${puedeEditar?'<th></th>':''}
         </tr></thead>
         <tbody>${filasDe(g)}</tbody>
@@ -4538,7 +4556,63 @@ function renderEstudiantes(){
   }).join('')}
   ${gradosMostrados.length>1?`<p class="nota-chica" style="text-align:right;">Total en los grados mostrados: <b>${total}</b> estudiante(s).</p>`:''}
   ${renderStudentModal()}
-  ${renderAccesosModal(gradosMostrados)}`;
+  ${renderAccesosModal(gradosMostrados)}
+  ${renderImportarModal()}`;
+}
+function toggleSeleccionEst(id, marcado){
+  viewState.seleccionEst = viewState.seleccionEst || {};
+  if(marcado) viewState.seleccionEst[id] = true;
+  else delete viewState.seleccionEst[id];
+  render();
+}
+function toggleSeleccionTodosMostrados(marcado){
+  const filtro = getPref('filtroGrado','');
+  const gradosMostrados = filtro ? [filtro] : misGrados(currentUser);
+  const idsMostrados = DB.estudiantes.filter(e=>gradosMostrados.indexOf(e.grado)>=0).map(e=>e.id);
+  viewState.seleccionEst = viewState.seleccionEst || {};
+  idsMostrados.forEach(id=>{
+    if(marcado) viewState.seleccionEst[id] = true;
+    else delete viewState.seleccionEst[id];
+  });
+  render();
+}
+function eliminarSeleccionEst(){
+  if(!puedeGestionarEstudiantes(currentUser)){ showToast('No tienes permiso para eliminar estudiantes.'); return; }
+  const ids = Object.keys(viewState.seleccionEst || {}).filter(id=>viewState.seleccionEst[id]);
+  if(ids.length===0){ showToast('No hay ningún estudiante seleccionado.'); return; }
+  if(!confirm(`¿Eliminar ${ids.length} estudiante(s) seleccionado(s)? También se borrarán sus calificaciones. Esta acción no se puede deshacer.`)) return;
+  commit(doc=>{
+    for(let i=doc.estudiantes.length-1; i>=0; i--){
+      if(ids.indexOf(doc.estudiantes[i].id)>=0) doc.estudiantes.splice(i,1);
+    }
+    ids.forEach(id=>{
+      Object.keys(doc.calificaciones).forEach(k=>{ if(k.startsWith(id+'|')) delete doc.calificaciones[k]; });
+    });
+  });
+  registrar('Estudiante', `Eliminó ${ids.length} estudiante(s) en bloque`);
+  showToast(`${ids.length} estudiante(s) eliminado(s).`);
+  viewState.seleccionEst = {};
+  render();
+}
+function eliminarTodosMostrados(){
+  if(!puedeGestionarEstudiantes(currentUser)){ showToast('No tienes permiso para eliminar estudiantes.'); return; }
+  const filtro = getPref('filtroGrado','');
+  const gradosMostrados = filtro ? [filtro] : misGrados(currentUser);
+  const ids = DB.estudiantes.filter(e=>gradosMostrados.indexOf(e.grado)>=0).map(e=>e.id);
+  if(ids.length===0){ showToast('No hay estudiantes en lo que se está mostrando.'); return; }
+  if(!confirm(`¿Eliminar TODOS los ${ids.length} estudiante(s) que se están mostrando (${gradosMostrados.join(', ')})? También se borrarán sus calificaciones. Esta acción no se puede deshacer.`)) return;
+  commit(doc=>{
+    for(let i=doc.estudiantes.length-1; i>=0; i--){
+      if(ids.indexOf(doc.estudiantes[i].id)>=0) doc.estudiantes.splice(i,1);
+    }
+    ids.forEach(id=>{
+      Object.keys(doc.calificaciones).forEach(k=>{ if(k.startsWith(id+'|')) delete doc.calificaciones[k]; });
+    });
+  });
+  registrar('Estudiante', `Eliminó TODOS (${ids.length}) los estudiantes de ${gradosMostrados.join(', ')}`);
+  showToast(`${ids.length} estudiante(s) eliminado(s).`);
+  viewState.seleccionEst = {};
+  render();
 }
 /* Modal masivo: aplica el mismo set de accesos a TODOS los estudiantes que
    están en pantalla en este momento (según el filtro de grado activo). */
@@ -4581,6 +4655,163 @@ function aplicarAccesosMasivo(){
   showToast('Accesos actualizados.');
   render();
 }
+
+/* ============================= IMPORTAR ESTUDIANTES DESDE UNA LISTA PEGADA ============================= */
+function normalizarComparacion(txt){
+  return String(txt||'').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,' ');
+}
+/* Cada línea trae siempre 2 apellidos; el resto son nombres (pueden ser 1 o más). */
+function partirLineaEstudiante(linea, orden){
+  const palabras = String(linea||'').trim().split(/\s+/).filter(Boolean);
+  if(palabras.length < 3) return null;
+  if(orden === 'apellidos'){
+    return { apellidos: palabras.slice(0,2).join(' '), nombres: palabras.slice(2).join(' ') };
+  }
+  return { apellidos: palabras.slice(-2).join(' '), nombres: palabras.slice(0,-2).join(' ') };
+}
+function analizarImportacion(){
+  const texto = (document.getElementById('imp_texto')||{}).value || '';
+  const orden = (document.querySelector('input[name="imp_orden"]:checked')||{}).value || 'apellidos';
+  const grado = (document.getElementById('imp_grado')||{}).value;
+  if(!grado){ showToast('Elige el grado donde se agregarán.'); return; }
+  const lineas = texto.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(lineas.length===0){ showToast('Pega al menos un nombre.'); return; }
+
+  const existentesDelGrado = DB.estudiantes.filter(e=>e.grado===grado);
+  const filas = lineas.map(linea=>{
+    const partido = partirLineaEstudiante(linea, orden);
+    if(!partido) return {original:linea, error:'No se reconocen al menos 2 apellidos y 1 nombre.'};
+    const comp = normalizarComparacion(partido.apellidos + ' ' + partido.nombres);
+    const existente = existentesDelGrado.find(e=>normalizarComparacion(apellidosDe(e)+' '+nombresDe(e))===comp);
+    return {
+      original: linea, nombres: partido.nombres, apellidos: partido.apellidos,
+      duplicadoId: existente ? existente.id : null,
+      accion: existente ? 'mantener' : 'nuevo'
+    };
+  });
+  viewState.modalImportar = {paso:2, grado, orden, filas};
+  render();
+}
+function cambiarAccionImportar(i, accion){
+  if(!viewState.modalImportar || !viewState.modalImportar.filas[i]) return;
+  viewState.modalImportar.filas[i].accion = accion;
+  render();
+}
+function confirmarImportacion(){
+  const info = viewState.modalImportar;
+  if(!info || !info.filas) return;
+  const grado = info.grado;
+  const validas = info.filas.filter(f=>!f.error);
+  let agregados = 0, reemplazados = 0, mantenidos = 0;
+  commit(doc=>{
+    validas.forEach(f=>{
+      if(f.accion === 'nuevo'){
+        const item = {id:uid('est'), nombres:f.nombres, apellidos:f.apellidos,
+          nombre: nombreCompleto(f.nombres, f.apellidos), grado, accesos: accesosPorDefecto()};
+        item.usuario = generarUsuarioEstudiante(f.nombres, f.apellidos, item.id);
+        const txt = generarClaveEstudiante(item.id);
+        item.clave = hashClave(txt);
+        item.claveTexto = txt;
+        doc.estudiantes.push(item);
+        agregados++;
+      }else if(f.accion === 'reemplazar' && f.duplicadoId){
+        const e = doc.estudiantes.find(x=>x.id===f.duplicadoId);
+        if(e){
+          e.nombres = f.nombres; e.apellidos = f.apellidos;
+          e.nombre = nombreCompleto(f.nombres, f.apellidos);
+          reemplazados++;
+        }
+      }else{
+        mantenidos++;
+      }
+    });
+  });
+  registrar('Estudiante', `Importó una lista en ${grado}: ${agregados} nuevo(s), ${reemplazados} reemplazado(s), ${mantenidos} sin cambios.`);
+  showToast(`${agregados} agregado(s), ${reemplazados} reemplazado(s), ${mantenidos} sin cambios.`);
+  viewState.modalImportar = null;
+  render();
+}
+function renderImportarModal(){
+  const info = viewState.modalImportar;
+  if(!info) return '';
+  const cerrar = `viewState.modalImportar=null; render();`;
+  const gradosVisibles = misGrados(currentUser);
+  const filtro = getPref('filtroGrado','');
+
+  if(info.paso === 1){
+    return `
+    <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
+      <div class="modal">
+        <button class="modal-close" onclick="${cerrar}">×</button>
+        <h3 class="modal-title">Pegar lista de estudiantes</h3>
+        <p class="nota-chica" style="margin-top:-6px;">Un estudiante por línea. Cada línea debe traer siempre 2 apellidos; el resto se toma como nombres.</p>
+        <div class="field"><label>Grado / aula</label>
+          <select id="imp_grado">
+            ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${(filtro||gradosVisibles[0])===g?'selected':''}>${esc(g)}</option>`).join('')}
+          </select></div>
+        <div class="field">
+          <label>¿Cómo está ordenada la lista que vas a pegar?</label>
+          <div class="tag-row">
+            <label class="check-chip"><input type="radio" name="imp_orden" value="apellidos" checked> Apellidos primero (2), luego nombres</label>
+            <label class="check-chip"><input type="radio" name="imp_orden" value="nombres"> Nombres primero, apellidos (2) al final</label>
+          </div>
+        </div>
+        <div class="field"><label>Lista</label>
+          <textarea id="imp_texto" rows="10" placeholder="Gamez Fuentes Jacob Arthur
+Jacobo Solis Fernando Andrés
+Manzano González Karine Monserrat"></textarea></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="analizarImportacion()">Analizar lista</button>
+          <button class="btn" onclick="${cerrar}">Cancelar</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Paso 2: revisión antes de confirmar
+  const filas = info.filas;
+  const nuevos = filas.filter(f=>!f.error && f.accion==='nuevo').length;
+  const dups = filas.filter(f=>!f.error && f.duplicadoId).length;
+  const errores = filas.filter(f=>f.error).length;
+  return `
+  <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
+    <div class="modal" style="max-width:720px;">
+      <button class="modal-close" onclick="${cerrar}">×</button>
+      <h3 class="modal-title">Revisar antes de agregar — ${esc(info.grado)}</h3>
+      <p class="nota-chica" style="margin-top:-6px;">${nuevos} nuevo(s) · ${dups} ya existían · ${errores} con error</p>
+      <div class="table-wrap" style="max-height:360px; overflow-y:auto;">
+      <table>
+        <thead><tr><th>Línea pegada</th><th>Apellidos</th><th>Nombres</th><th style="width:230px;">Acción</th></tr></thead>
+        <tbody>
+          ${filas.map((f,i)=>{
+            if(f.error) return `<tr><td colspan="4" style="color:var(--red); font-size:12px;">${esc(f.original)} — ${esc(f.error)}</td></tr>`;
+            if(!f.duplicadoId) return `<tr>
+              <td style="font-size:12px;">${esc(f.original)}</td>
+              <td>${esc(f.apellidos)}</td><td>${esc(f.nombres)}</td>
+              <td><span class="pill pill-primary">Nuevo</span></td></tr>`;
+            return `<tr>
+              <td style="font-size:12px;">${esc(f.original)}</td>
+              <td>${esc(f.apellidos)}</td><td>${esc(f.nombres)}</td>
+              <td>
+                <select onchange="cambiarAccionImportar(${i}, this.value)">
+                  <option value="mantener" ${f.accion==='mantener'?'selected':''}>Ya existe — mantener el actual</option>
+                  <option value="reemplazar" ${f.accion==='reemplazar'?'selected':''}>Reemplazar (conserva notas)</option>
+                </select>
+              </td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-primary" onclick="confirmarImportacion()">Confirmar</button>
+        <button class="btn" onclick="viewState.modalImportar={paso:1}; render();">Volver</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 /* ============================= CREDENCIALES DE ACCESO (ESTUDIANTES) =============================
    Plantilla oficial de la credencial ECAN, en base64, para que el archivo siga siendo un solo
    HTML autocontenido. Las coordenadas de USUARIO y CONTRASEÑA fueron calibradas sobre esta imagen. */
