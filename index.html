@@ -79,7 +79,9 @@
   .sidebar{
     width:230px; background:var(--panel); border-right:1px solid var(--line); flex-shrink:0;
     display:flex; flex-direction:column; padding:22px 0;
+    position:sticky; top:0; height:100vh; overflow:hidden;
   }
+  .nav-list{ flex:1 1 auto; overflow-y:auto; min-height:0; }
   .brand{ padding:0 20px 20px; border-bottom:1px solid var(--line); margin-bottom:14px;}
   .brand-title{ font-size:19px; margin:0; line-height:1.15;}
   .brand-sub{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-top:4px;}
@@ -90,7 +92,7 @@
   .nav-item:hover{ background:var(--panel-2); opacity:1; }
   .nav-item.active{ border-left-color:var(--primary); background:var(--primary-light); opacity:1; color:var(--primary-dark); font-weight:600;}
   .nav-dot{ width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.5; flex-shrink:0;}
-  .sidebar-footer{ margin-top:auto; padding:14px 20px 0; border-top:1px solid var(--line); }
+  .sidebar-footer{ margin-top:auto; padding:14px 20px 0; border-top:1px solid var(--line); flex-shrink:0; }
   .who{ display:flex; align-items:center; gap:10px; margin-bottom:10px;}
   .who .user-name{ font-size:13px; }
   .who .user-role{ font-size:11px; }
@@ -874,8 +876,15 @@ async function flush(){
     const base = remoto || docActual();
     lote.forEach(m=>{ try{ m(base); }catch(e){ console.error('reaplicar', e); } });
     await escribirDoc(base);
+    // Mientras se leía/guardaba (dos idas y vueltas a la nube), el usuario
+    // pudo haber hecho más cambios (por ejemplo, borrar otra nota). Esos
+    // cambios ya quedaron en pendientes pero todavía no en "base": hay que
+    // volver a aplicarlos antes de adoptar, si no, adoptarDoc los borraría
+    // de la pantalla un instante aunque sigan pendientes de guardar.
+    const nuevosDurante = pendientes.slice(lote.length);
+    nuevosDurante.forEach(m=>{ try{ m(base); }catch(e){ console.error('reaplicar', e); } });
     adoptarDoc(base);
-    pendientes = pendientes.slice(lote.length);
+    pendientes = nuevosDurante;
     intentosFallidos = 0;
     exito = true;
   }catch(e){
@@ -1285,6 +1294,10 @@ async function pullCambios(silencioso){
   if(pendientes.length>0 || guardando) return false;
   const doc = await leerDoc();
   if(!doc){ setSyncStatus('error'); return false; }
+  // Puede que, mientras se esperaba la respuesta, el usuario haya hecho un
+  // cambio propio (quedó en camino a guardarse): en ese caso no hay que
+  // pisarlo con lo que se acaba de traer del servidor.
+  if(pendientes.length>0 || guardando) return false;
   const cambio = JSON.stringify(docActual()) !== JSON.stringify(doc);
   if(cambio){
     adoptarDoc(doc);
@@ -2645,7 +2658,7 @@ function renderLayout(){
         <p class="brand-title display">${esc((DB.ajustes&&DB.ajustes.nombreColegio) || 'Centro Escolar')}</p>
         <p class="brand-sub">Año escolar ${esc((DB.ajustes&&DB.ajustes.anio) || String(new Date().getFullYear()))}</p>
       </div>
-      <div>
+      <div class="nav-list">
         ${nav.map(n=>`<div class="nav-item ${currentView===n.id?'active':''}" onclick="goTo('${n.id}')"><span class="nav-dot"></span>${esc(n.label)}</div>`).join('')}
       </div>
       <div class="sidebar-footer">
@@ -2718,7 +2731,7 @@ function renderLayoutEstudiante(){
         <p class="brand-title display">${esc((DB.ajustes&&DB.ajustes.nombreColegio) || 'Centro Escolar')}</p>
         <p class="brand-sub">Año escolar ${esc((DB.ajustes&&DB.ajustes.anio) || String(new Date().getFullYear()))}</p>
       </div>
-      <div>
+      <div class="nav-list">
         <div class="nav-item ${currentView==='credencial'?'active':''}" onclick="goTo('credencial')"><span class="nav-dot"></span>Credencial</div>
         ${nav.map(n=>`<div class="nav-item ${currentView===n.id?'active':''}" onclick="goTo('${n.id}')"><span class="nav-dot"></span>${esc(n.label)}</div>`).join('')}
         <div class="nav-item ${currentView==='soporte'?'active':''}" onclick="goTo('soporte')"><span class="nav-dot"></span>Reportar un problema</div>
