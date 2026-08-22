@@ -92,6 +92,9 @@
   .nav-item:hover{ background:var(--panel-2); opacity:1; }
   .nav-item.active{ border-left-color:var(--primary); background:var(--primary-light); opacity:1; color:var(--primary-dark); font-weight:600;}
   .nav-dot{ width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.5; flex-shrink:0;}
+  .nav-badge{ margin-left:auto; background:var(--red); color:#fff; font-size:10.5px; font-weight:700;
+    border-radius:999px; min-width:18px; height:18px; display:flex; align-items:center; justify-content:center;
+    padding:0 5px; line-height:1; }
   .sidebar-footer{ margin-top:auto; padding:14px 20px 0; border-top:1px solid var(--line); flex-shrink:0; }
   .who{ display:flex; align-items:center; gap:10px; margin-bottom:10px;}
   .who .user-name{ font-size:13px; }
@@ -369,7 +372,7 @@
 
 <script>
 /* ============================= ESTADO ============================= */
-let DB = { estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{} };
+let DB = { estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{}, soporte:[], mensajes:[] };
 let baseCompletaCargada = false;         // true una vez que se descargó la base completa (solo docentes/admin)
 let sesionEstudianteCred = null;         // {usuario, claveHash} en memoria, para reautenticar sin pedir de nuevo
 /* Ponderación fija de cada período de evaluación */
@@ -611,6 +614,25 @@ async function enviarSoporteEstudiante(usuario, claveHash, titulo, descripcion, 
   if(!datos || datos.error || datos.sinAutorizacion) throw new Error('No se pudo enviar.');
   return true;
 }
+async function enviarMensajeNube(usuario, claveHash, paraId, paraNombre, texto, imagen){
+  const url = getSyncUrl();
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=mensaje',
+    {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
+     body: JSON.stringify({usuario, clave: claveHash, paraId, paraNombre, texto, imagen})}), 12000);
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const txt = await r.text();
+  const datos = txt ? JSON.parse(txt) : null;
+  if(!datos || datos.error || datos.sinAutorizacion) throw new Error('No se pudo enviar.');
+  return true;
+}
+async function marcarMensajesLeidosNube(usuario, claveHash, deId){
+  try{
+    const url = getSyncUrl();
+    await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=leerMensajes',
+      {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
+       body: JSON.stringify({usuario, clave: claveHash, deId})}), 10000);
+  }catch(e){ console.warn('no se pudo marcar como leído', e); }
+}
 /* Arma una base mínima en memoria a partir de lo que devolvió el servidor
    para un estudiante: solo lo suyo, nada de otros estudiantes ni de docentes. */
 function adoptarDocEstudiante(datos){
@@ -630,6 +652,8 @@ function adoptarDocEstudiante(datos){
     rubros: datos.rubros || {},
     reportes: datos.reportes || [],
     boletaDatos: datos.boletaDatos || {},
+    mensajes: datos.mensajes || [],
+    soporte: [],
     averias: [],
     bitacora: []
   };
@@ -733,7 +757,8 @@ function docActual(){
     calificaciones: DB.calificaciones, config: DB.config, actividades: DB.actividades,
     curriculo: DB.curriculo, tareas: DB.tareas, estados: DB.estados,
     observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros,
-    boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes, averias: DB.averias
+    boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes, averias: DB.averias,
+    soporte: DB.soporte, mensajes: DB.mensajes
   };
 }
 function adoptarDoc(doc){
@@ -753,6 +778,8 @@ function adoptarDoc(doc){
   DB.bitacora = doc.bitacora || [];
   DB.reportes = doc.reportes || [];
   DB.averias = doc.averias || [];
+  DB.soporte = doc.soporte || [];
+  DB.mensajes = doc.mensajes || [];
   DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
   if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
@@ -819,6 +846,8 @@ async function loadAll(){
   if(!DB.bitacora) DB.bitacora = [];
   if(!DB.reportes) DB.reportes = [];
   if(!DB.averias) DB.averias = [];
+  if(!DB.soporte) DB.soporte = [];
+  if(!DB.mensajes) DB.mensajes = [];
   if(DB.config.correlativoReportes === undefined){
     // Compatibilidad con datos ya existentes: arranca del número más alto ya usado.
     const nums = DB.reportes.map(r=>Number(r.numero)||0);
@@ -1362,6 +1391,8 @@ function doPost(e) {
     if (accion === 'estudiante') return responder(datosEstudiante(e.postData.contents));
     if (accion === 'evento') return responder(registrarEvento(e.postData.contents));
     if (accion === 'soporte') return responder(agregarSoporte(e.postData.contents));
+    if (accion === 'mensaje') return responder(enviarMensajeEstudiante(e.postData.contents));
+    if (accion === 'leerMensajes') return responder(marcarMensajesLeidos(e.postData.contents));
     guardarDatos(e.postData.contents);
     return responder('{"ok":true}');
   } finally {
@@ -1369,19 +1400,24 @@ function doPost(e) {
   }
 }
 
+/* Busca al estudiante dueño de estas credenciales dentro del documento
+   completo. Se usa en todas las acciones que un estudiante puede pedir. */
+function buscarEstudiante(doc, pedido) {
+  if (!doc || !doc.estudiantes) return null;
+  for (var i = 0; i < doc.estudiantes.length; i++) {
+    var e = doc.estudiantes[i];
+    if (e.usuario === pedido.usuario && e.clave === pedido.clave) return e;
+  }
+  return null;
+}
+
 /* Entrega SOLO lo que le corresponde a un estudiante: sus propias notas,
-   sus propios reportes y las hojas de tareas de su grado. Nunca la lista
-   de docentes ni los datos de los demás estudiantes. */
+   sus propios reportes, sus propios mensajes, y las hojas de tareas de su
+   grado. Nunca la lista de docentes ni los datos de los demás estudiantes. */
 function datosEstudiante(cuerpoJson) {
   var pedido = JSON.parse(cuerpoJson);
   var doc = JSON.parse(leerDatos());
-  if (!doc || !doc.estudiantes) return JSON.stringify({error: true});
-
-  var est = null;
-  for (var i = 0; i < doc.estudiantes.length; i++) {
-    var e = doc.estudiantes[i];
-    if (e.usuario === pedido.usuario && e.clave === pedido.clave) { est = e; break; }
-  }
+  var est = buscarEstudiante(doc, pedido);
   if (!est) return JSON.stringify({error: true});
 
   var idsAsig = {};
@@ -1404,6 +1440,10 @@ function datosEstudiante(cuerpoJson) {
   var boletaDatos = {};
   if (doc.boletaDatos && doc.boletaDatos[est.id]) boletaDatos[est.id] = doc.boletaDatos[est.id];
 
+  var mensajes = (doc.mensajes || []).filter(function(m){
+    return m.deId === est.id || m.paraId === est.id;
+  });
+
   return JSON.stringify({
     estudiante: est,
     asignaturas: asignaturas,
@@ -1418,7 +1458,8 @@ function datosEstudiante(cuerpoJson) {
     tareas: porPrefijo(doc.tareas, prefijoGrado),
     rubros: porPrefijo(doc.rubros, prefijoGrado),
     reportes: (doc.reportes || []).filter(function(r){ return r.estId === est.id; }),
-    boletaDatos: boletaDatos
+    boletaDatos: boletaDatos,
+    mensajes: mensajes
   });
 }
 
@@ -1427,12 +1468,7 @@ function datosEstudiante(cuerpoJson) {
 function registrarEvento(cuerpoJson) {
   var pedido = JSON.parse(cuerpoJson);
   var doc = JSON.parse(leerDatos());
-  if (!doc || !doc.estudiantes) return '{"error":true}';
-  var est = null;
-  for (var i = 0; i < doc.estudiantes.length; i++) {
-    var e = doc.estudiantes[i];
-    if (e.usuario === pedido.usuario && e.clave === pedido.clave) { est = e; break; }
-  }
+  var est = buscarEstudiante(doc, pedido);
   if (!est) return '{"error":true}';
   doc.bitacora = doc.bitacora || [];
   doc.bitacora.push({
@@ -1450,12 +1486,7 @@ function registrarEvento(cuerpoJson) {
 function agregarSoporte(cuerpoJson) {
   var pedido = JSON.parse(cuerpoJson);
   var doc = JSON.parse(leerDatos());
-  if (!doc || !doc.estudiantes) return '{"error":true}';
-  var est = null;
-  for (var i = 0; i < doc.estudiantes.length; i++) {
-    var e = doc.estudiantes[i];
-    if (e.usuario === pedido.usuario && e.clave === pedido.clave) { est = e; break; }
-  }
+  var est = buscarEstudiante(doc, pedido);
   if (!est) return '{"error":true}';
   doc.soporte = doc.soporte || [];
   var numeros = doc.soporte.map(function(s){ return Number(s.numero) || 0; });
@@ -1465,6 +1496,38 @@ function agregarSoporte(cuerpoJson) {
     userId: est.id, nombre: est.nombre, origen: 'estudiante',
     titulo: pedido.titulo || '', descripcion: pedido.descripcion || '',
     imagen: pedido.imagen || null, estado: 'pendiente', vistas: [], notas: []
+  });
+  guardarDatos(JSON.stringify(doc));
+  return '{"ok":true}';
+}
+
+/* Un estudiante envía un mensaje (normalmente, respondiendo a alguien que
+   ya le escribió). Se valida su credencial en el servidor. */
+function enviarMensajeEstudiante(cuerpoJson) {
+  var pedido = JSON.parse(cuerpoJson);
+  var doc = JSON.parse(leerDatos());
+  var est = buscarEstudiante(doc, pedido);
+  if (!est) return '{"error":true}';
+  doc.mensajes = doc.mensajes || [];
+  doc.mensajes.push({
+    id: 'msg_' + new Date().getTime(), ts: new Date().toISOString(),
+    deId: est.id, deNombre: est.nombre, deTipo: 'estudiante',
+    paraId: pedido.paraId || '', paraNombre: pedido.paraNombre || '', paraTipo: 'docente',
+    texto: pedido.texto || '', imagen: pedido.imagen || null, leido: false
+  });
+  guardarDatos(JSON.stringify(doc));
+  return '{"ok":true}';
+}
+
+/* Marca como leídos los mensajes que un estudiante recibió de una persona
+   en particular (al abrir esa conversación). */
+function marcarMensajesLeidos(cuerpoJson) {
+  var pedido = JSON.parse(cuerpoJson);
+  var doc = JSON.parse(leerDatos());
+  var est = buscarEstudiante(doc, pedido);
+  if (!est) return '{"error":true}';
+  (doc.mensajes || []).forEach(function(m){
+    if (m.paraId === est.id && m.deId === pedido.deId) m.leido = true;
   });
   guardarDatos(JSON.stringify(doc));
   return '{"ok":true}';
@@ -2635,6 +2698,7 @@ const NAV_ITEMS = [
   {id:'asignaturas', label:'Asignaturas'},
   {id:'docentes', label:'Docentes'},
   {id:'averias', label:'Averías y solicitudes'},
+  {id:'mensajes', label:'Mensajes'},
   {id:'soporte', label:'Soporte de la plataforma'},
   {id:'bitacora', label:'Bitácora del sistema'},
   {id:'personalizar', label:'Personalizar'},
@@ -2659,7 +2723,10 @@ function renderLayout(){
         <p class="brand-sub">Año escolar ${esc((DB.ajustes&&DB.ajustes.anio) || String(new Date().getFullYear()))}</p>
       </div>
       <div class="nav-list">
-        ${nav.map(n=>`<div class="nav-item ${currentView===n.id?'active':''}" onclick="goTo('${n.id}')"><span class="nav-dot"></span>${esc(n.label)}</div>`).join('')}
+        ${nav.map(n=>{
+          const contador = n.id==='mensajes' ? contarMensajesNoLeidos(currentUser.id) : 0;
+          return `<div class="nav-item ${currentView===n.id?'active':''}" onclick="goTo('${n.id}')"><span class="nav-dot"></span>${esc(n.label)}${contador>0?`<span class="nav-badge">${contador>99?'99+':contador}</span>`:''}</div>`;
+        }).join('')}
       </div>
       <div class="sidebar-footer">
         <div class="who">
@@ -2699,6 +2766,7 @@ function renderView(){
     case 'reportes': return renderReportes();
     case 'averias': return renderAverias();
     case 'soporte': return renderSoporte();
+    case 'mensajes': return renderMensajes();
     case 'bitacora': return renderBitacora();
     case 'hojas': return renderHojas();
     case 'personalizar': return renderPersonalizar();
@@ -2718,6 +2786,7 @@ const NAV_ESTUDIANTE = [
   {id:'calificaciones', label:'Mis calificaciones'},
   {id:'alertas',        label:'Mis alertas de tareas'},
   {id:'boletas',        label:'Mi boleta'},
+  {id:'mensajes',       label:'Mensajes'},
 ];
 function renderLayoutEstudiante(){
   const est = currentUser;
@@ -2733,7 +2802,12 @@ function renderLayoutEstudiante(){
       </div>
       <div class="nav-list">
         <div class="nav-item ${currentView==='credencial'?'active':''}" onclick="goTo('credencial')"><span class="nav-dot"></span>Credencial</div>
-        ${nav.map(n=>`<div class="nav-item ${currentView===n.id?'active':''}" onclick="goTo('${n.id}')"><span class="nav-dot"></span>${esc(n.label)}</div>`).join('')}
+        ${nav.map(n=>{
+          let contador = 0;
+          if(n.id==='alertas') contador = contarAlertasEstudiante(est);
+          else if(n.id==='mensajes') contador = contarMensajesNoLeidos(est.id);
+          return `<div class="nav-item ${currentView===n.id?'active':''}" onclick="goTo('${n.id}')"><span class="nav-dot"></span>${esc(n.label)}${contador>0?`<span class="nav-badge">${contador>99?'99+':contador}</span>`:''}</div>`;
+        }).join('')}
         <div class="nav-item ${currentView==='soporte'?'active':''}" onclick="goTo('soporte')"><span class="nav-dot"></span>Reportar un problema</div>
         <div class="nav-item ${currentView==='sincronizacionEstudiante'?'active':''}" onclick="goTo('sincronizacionEstudiante')"><span class="nav-dot"></span>Sincronización</div>
       </div>
@@ -2761,6 +2835,7 @@ function renderViewEstudiante(){
   switch(currentView){
     case 'credencial': return renderCredencialEstudiante(est);
     case 'soporte': return renderSoporteEstudiante(est);
+    case 'mensajes': return renderMensajesEstudiante(est);
     case 'reportes': return renderReportesEstudiante(est);
     case 'hojas': return renderHojasEstudiante(est);
     case 'calificaciones': return renderCalificacionesEstudiante(est);
@@ -3047,6 +3122,16 @@ function renderCalificacionesEstudiante(est){
   </div>` : ''}`;
 }
 /* --- Alertas de tareas: solo las suyas --- */
+function contarAlertasEstudiante(est){
+  let n = 0;
+  asignaturasDeGrado(est.grado).forEach(asig=>{
+    for(let p=1; p<=4; p++){
+      const ids = getActividades(est.grado, asig.id, p).map(a=>a.id).concat(rubrosTarea().map(r=>r.key));
+      ids.forEach(id=>{ if(getEstado(est.id, asig.id, p, id) === 'no') n++; });
+    }
+  });
+  return n;
+}
 function renderAlertasEstudiante(est){
   const asigs = asignaturasDeGrado(est.grado);
   const pendientes = [];
@@ -4201,6 +4286,265 @@ async function guardarSoporteEstudiante(){
   }
 }
 
+/* ============================= MENSAJES ============================= */
+/* Conversaciones entre docentes/administración, y entre docentes/administración
+   y estudiantes. Cada mensaje es 1 a 1; se agrupan por la otra persona. */
+function conversacionesDe(userId){
+  const propios = (DB.mensajes||[]).filter(m=>m.deId===userId || m.paraId===userId);
+  const grupos = {};
+  propios.forEach(m=>{
+    const otroId = m.deId===userId ? m.paraId : m.deId;
+    const otroNombre = m.deId===userId ? m.paraNombre : m.deNombre;
+    if(!grupos[otroId]) grupos[otroId] = {otroId, otroNombre, mensajes:[]};
+    grupos[otroId].mensajes.push(m);
+  });
+  const lista = Object.keys(grupos).map(k=>grupos[k]);
+  lista.forEach(g=>g.mensajes.sort((a,b)=>(a.ts||'').localeCompare(b.ts||'')));
+  lista.sort((a,b)=>{
+    const ua = a.mensajes[a.mensajes.length-1].ts || '';
+    const ub = b.mensajes[b.mensajes.length-1].ts || '';
+    return ub.localeCompare(ua);
+  });
+  return lista;
+}
+function contarMensajesNoLeidos(userId){
+  return (DB.mensajes||[]).filter(m=>m.paraId===userId && !m.leido).length;
+}
+function hiloMensajesHtml(seleccionada, yoId){
+  if(!seleccionada) return '<p class="empty">Elige una conversación de la lista.</p>';
+  return `
+  <div style="display:flex; flex-direction:column; gap:10px; max-height:420px; overflow-y:auto; padding:4px;">
+    ${seleccionada.mensajes.map(m=>`
+      <div style="align-self:${m.deId===yoId?'flex-end':'flex-start'}; max-width:78%;">
+        <div class="card" style="padding:10px 12px; margin:0; background:${m.deId===yoId?'var(--primary-light)':'var(--panel-2)'};">
+          <div style="font-size:12.5px; white-space:pre-wrap;">${esc(m.texto)}</div>
+          ${m.imagen?`<img src="${m.imagen}" alt="Imagen adjunta" style="max-width:100%; border-radius:8px; margin-top:6px;">`:''}
+        </div>
+        <p class="nota-chica" style="text-align:${m.deId===yoId?'right':'left'}; margin:2px 4px;">${esc(fechaLegible(m.ts))}</p>
+      </div>`).join('')}
+  </div>`;
+}
+
+/* --- Docentes / administración: acceso completo, usa commit() normal --- */
+function renderMensajes(){
+  const yo = currentUser;
+  const conv = conversacionesDe(yo.id);
+  const otroSel = viewState.mensajeConv;
+  const seleccionada = otroSel ? conv.find(c=>c.otroId===otroSel) : null;
+
+  const listaConv = conv.length===0 ? '<p class="empty">Todavía no tienes conversaciones.</p>' : conv.map(c=>{
+    const ultimo = c.mensajes[c.mensajes.length-1];
+    const noLeidos = c.mensajes.filter(m=>m.paraId===yo.id && !m.leido).length;
+    return `<div class="assign-list-item" style="display:block; cursor:pointer; ${otroSel===c.otroId?'background:var(--panel-2);':''}" onclick="abrirConversacionMensajes('${c.otroId}')">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <b style="font-size:13px;">${esc(c.otroNombre)}</b>
+        ${noLeidos>0?`<span class="nav-badge" style="margin-left:8px;">${noLeidos}</span>`:''}
+      </div>
+      <div class="nota-chica" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(ultimo.texto||'(imagen)')}</div>
+    </div>`;
+  }).join('');
+
+  const hilo = seleccionada ? hiloMensajesHtml(seleccionada, yo.id) + `
+    <div class="field" style="margin-top:10px;">
+      <textarea id="msg_reply_texto" rows="2" placeholder="Escribe una respuesta…"></textarea>
+      <input type="file" id="msg_reply_imagen" accept="image/*" style="margin-top:6px;">
+      <div class="btn-row"><button class="btn btn-primary" onclick="responderMensaje()">Enviar</button></div>
+    </div>` : '<p class="empty">Elige una conversación, o inicia una nueva.</p>';
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Comunicación</p>
+    <h1 class="page-title">Mensajes</h1>
+    <p class="page-desc">Escribe con otros docentes, con administración, o con tus estudiantes.</p>
+  </div>
+  <div class="filters">
+    <button class="btn btn-primary" onclick="viewState.mensajeNuevo=true; viewState.mensajeConv=null; render();">Nuevo mensaje</button>
+  </div>
+  ${viewState.mensajeNuevo ? renderComponerMensaje() : `
+  <div class="grid grid-2" style="gap:16px; align-items:start;">
+    <div class="card">${listaConv}</div>
+    <div class="card">${hilo}</div>
+  </div>`}`;
+}
+function renderComponerMensaje(){
+  const tipo = viewState.msgDestinoTipo || 'docente';
+  const gradosVisibles = misGrados(currentUser);
+  const gradoSel = viewState.msgGrado || (gradosVisibles[0]||'');
+  const docentesPosibles = DB.docentes.filter(t=>t.id!==currentUser.id && !esPropietario(t))
+    .slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const estudiantesPosibles = gradoSel ? ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===gradoSel), 'apellidos') : [];
+  return `
+  <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius);">
+    <p class="card-title">Nuevo mensaje</p>
+    <div class="field">
+      <div class="tag-row">
+        <label class="check-chip"><input type="radio" name="msg_destino_tipo" value="docente" ${tipo==='docente'?'checked':''}
+          onchange="viewState.msgDestinoTipo='docente'; render();"> A un docente o administrativo</label>
+        <label class="check-chip"><input type="radio" name="msg_destino_tipo" value="estudiante" ${tipo==='estudiante'?'checked':''}
+          onchange="viewState.msgDestinoTipo='estudiante'; render();"> A un estudiante</label>
+      </div>
+    </div>
+    ${tipo==='docente' ? `
+    <div class="field"><label>¿A quién?</label>
+      <select id="msg_docente_id">
+        ${docentesPosibles.length===0?'<option value="">No hay nadie más registrado</option>':''}
+        ${docentesPosibles.map(t=>`<option value="${t.id}">${esc(t.nombre)}</option>`).join('')}
+      </select></div>
+    ` : `
+    <div class="grid grid-2">
+      <div class="field"><label>Grado</label>
+        <select onchange="viewState.msgGrado=this.value; render();">
+          ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${gradoSel===g?'selected':''}>${esc(g)}</option>`).join('')}
+        </select></div>
+      <div class="field"><label>Estudiante</label>
+        <select id="msg_estudiante_id">
+          ${estudiantesPosibles.length===0?'<option value="">Sin estudiantes en este grado</option>':''}
+          ${estudiantesPosibles.map(e=>`<option value="${e.id}">${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</option>`).join('')}
+        </select></div>
+    </div>`}
+    <div class="field"><label>Mensaje</label>
+      <textarea id="msg_texto" rows="3" placeholder="Escribe tu mensaje…"></textarea></div>
+    <div class="field"><label>Imagen (opcional)</label>
+      <input type="file" id="msg_imagen" accept="image/*"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="enviarMensajeDocente()">Enviar</button>
+      <button class="btn" onclick="viewState.mensajeNuevo=false; render();">Cancelar</button>
+    </div>
+  </div>`;
+}
+function abrirConversacionMensajes(otroId){
+  viewState.mensajeConv = otroId;
+  viewState.mensajeNuevo = false;
+  commit(doc=>{
+    (doc.mensajes||[]).forEach(m=>{ if(m.paraId===currentUser.id && m.deId===otroId) m.leido = true; });
+  });
+  render();
+}
+async function enviarMensajeDocente(){
+  const tipo = viewState.msgDestinoTipo || 'docente';
+  let paraId, paraNombre, paraTipo;
+  if(tipo === 'docente'){
+    paraId = (document.getElementById('msg_docente_id')||{}).value;
+    const t = DB.docentes.find(x=>x.id===paraId);
+    if(!t){ showToast('Elige a quién le vas a escribir.'); return; }
+    paraNombre = t.nombre; paraTipo = 'docente';
+  }else{
+    paraId = (document.getElementById('msg_estudiante_id')||{}).value;
+    const e = DB.estudiantes.find(x=>x.id===paraId);
+    if(!e){ showToast('Elige a quién le vas a escribir.'); return; }
+    paraNombre = nombreCompleto(e.nombres, e.apellidos); paraTipo = 'estudiante';
+  }
+  const texto = ((document.getElementById('msg_texto')||{}).value || '').trim();
+  if(!texto){ showToast('Escribe un mensaje.'); return; }
+  let imagen = null;
+  try{ imagen = await imagenDeInput('msg_imagen', 1000); }
+  catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
+  const nuevo = {id:uid('msg'), ts:new Date().toISOString(), deId:currentUser.id, deNombre:currentUser.nombre,
+    deTipo: isAdmin(currentUser)?'admin':'docente', paraId, paraNombre, paraTipo, texto, imagen, leido:false};
+  commit(doc=>{ doc.mensajes = doc.mensajes || []; doc.mensajes.push(nuevo); });
+  registrar('Mensajes', 'Envió un mensaje a ' + paraNombre);
+  viewState.mensajeNuevo = false;
+  viewState.mensajeConv = paraId;
+  showToast('Mensaje enviado.');
+  render();
+}
+async function responderMensaje(){
+  const otroId = viewState.mensajeConv;
+  if(!otroId) return;
+  const conv = conversacionesDe(currentUser.id).find(c=>c.otroId===otroId);
+  const ultimo = conv ? conv.mensajes[conv.mensajes.length-1] : null;
+  const paraNombre = ultimo ? (ultimo.deId===otroId ? ultimo.deNombre : ultimo.paraNombre) : '';
+  const paraTipo = ultimo ? (ultimo.deId===otroId ? ultimo.deTipo : ultimo.paraTipo) : 'docente';
+  const texto = ((document.getElementById('msg_reply_texto')||{}).value || '').trim();
+  if(!texto){ showToast('Escribe un mensaje.'); return; }
+  let imagen = null;
+  try{ imagen = await imagenDeInput('msg_reply_imagen', 1000); }
+  catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
+  const nuevo = {id:uid('msg'), ts:new Date().toISOString(), deId:currentUser.id, deNombre:currentUser.nombre,
+    deTipo: isAdmin(currentUser)?'admin':'docente', paraId:otroId, paraNombre, paraTipo, texto, imagen, leido:false};
+  commit(doc=>{ doc.mensajes = doc.mensajes || []; doc.mensajes.push(nuevo); });
+  render();
+}
+
+/* --- Estudiante: solo puede responder dentro de conversaciones que ya
+   existen (no tiene un directorio de docentes para escribirle a cualquiera). */
+function renderMensajesEstudiante(est){
+  const conv = conversacionesDe(est.id);
+  const otroSel = viewState.mensajeConv || (conv[0] ? conv[0].otroId : null);
+  const seleccionada = otroSel ? conv.find(c=>c.otroId===otroSel) : null;
+
+  const listaConv = conv.length===0 ? '<p class="empty">Todavía nadie te ha escrito.</p>' : conv.map(c=>{
+    const ultimo = c.mensajes[c.mensajes.length-1];
+    const noLeidos = c.mensajes.filter(m=>m.paraId===est.id && !m.leido).length;
+    return `<div class="assign-list-item" style="display:block; cursor:pointer; ${otroSel===c.otroId?'background:var(--panel-2);':''}" onclick="abrirConversacionMensajesEstudiante('${c.otroId}')">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <b style="font-size:13px;">${esc(c.otroNombre)}</b>
+        ${noLeidos>0?`<span class="nav-badge" style="margin-left:8px;">${noLeidos}</span>`:''}
+      </div>
+      <div class="nota-chica" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(ultimo.texto||'(imagen)')}</div>
+    </div>`;
+  }).join('');
+
+  const hilo = seleccionada ? hiloMensajesHtml(seleccionada, est.id) + `
+    <div class="field" style="margin-top:10px;">
+      <textarea id="msg_reply_texto" rows="2" placeholder="Escribe una respuesta…"></textarea>
+      <input type="file" id="msg_reply_imagen" accept="image/*" style="margin-top:6px;">
+      <div class="btn-row"><button class="btn btn-primary" onclick="responderMensajeEstudiante()">Enviar</button></div>
+    </div>` : '<p class="empty">Elige una conversación de la lista.</p>';
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Comunicación</p>
+    <h1 class="page-title">Mensajes</h1>
+    <p class="page-desc">Acá puedes responder a los docentes o a dirección cuando te escriban.</p>
+  </div>
+  <div class="grid grid-2" style="gap:16px; align-items:start;">
+    <div class="card">${listaConv}</div>
+    <div class="card">${hilo}</div>
+  </div>`;
+}
+async function abrirConversacionMensajesEstudiante(otroId){
+  viewState.mensajeConv = otroId;
+  render();
+  if(motor === 'nube' && sesionEstudianteCred){
+    (DB.mensajes||[]).forEach(m=>{ if(m.paraId===currentUser.id && m.deId===otroId) m.leido = true; });
+    render();
+    await marcarMensajesLeidosNube(sesionEstudianteCred.usuario, sesionEstudianteCred.claveHash, otroId);
+  }else{
+    commit(doc=>{ (doc.mensajes||[]).forEach(m=>{ if(m.paraId===currentUser.id && m.deId===otroId) m.leido = true; }); });
+  }
+}
+async function responderMensajeEstudiante(){
+  const otroId = viewState.mensajeConv;
+  if(!otroId) return;
+  const conv = conversacionesDe(currentUser.id).find(c=>c.otroId===otroId);
+  if(!conv){ showToast('No se encontró la conversación.'); return; }
+  const ultimo = conv.mensajes[conv.mensajes.length-1];
+  const paraNombre = ultimo.deId===otroId ? ultimo.deNombre : ultimo.paraNombre;
+  const texto = ((document.getElementById('msg_reply_texto')||{}).value || '').trim();
+  if(!texto){ showToast('Escribe un mensaje.'); return; }
+  let imagen = null;
+  try{ imagen = await imagenDeInput('msg_reply_imagen', 1000); }
+  catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
+  showToast('Enviando…');
+  const nuevo = {id:uid('msg'), ts:new Date().toISOString(), deId:currentUser.id, deNombre:currentUser.nombre,
+    deTipo:'estudiante', paraId:otroId, paraNombre, paraTipo:'docente', texto, imagen, leido:false};
+  try{
+    if(motor === 'nube' && sesionEstudianteCred){
+      await enviarMensajeNube(sesionEstudianteCred.usuario, sesionEstudianteCred.claveHash, otroId, paraNombre, texto, imagen);
+      DB.mensajes = DB.mensajes || [];
+      DB.mensajes.push(nuevo);
+    }else{
+      commit(doc=>{ doc.mensajes = doc.mensajes || []; doc.mensajes.push(nuevo); });
+    }
+    showToast('Enviado.');
+  }catch(e){
+    console.error(e);
+    showToast('No se pudo enviar. Intenta de nuevo.');
+  }
+  render();
+}
+
 /* ============================= BITÁCORA DEL SISTEMA ============================= */
 /* Deja constancia de quién entró y qué hizo. Se conservan los últimos 800
    movimientos para que el archivo no crezca sin control. */
@@ -4482,18 +4826,21 @@ function renderPanel(){
 function renderEstudiantes(){
   const filtro = getPref('filtroGrado','');
   const orden = getPref('ordenEst','apellidos');
+  const busqueda = getPref('buscarEst','');
   const gradosVisibles = misGrados(currentUser);
   const puedeEditar = puedeGestionarEstudiantes(currentUser);
   const gradosMostrados = filtro ? [filtro] : gradosVisibles;
-  const idsMostrados = DB.estudiantes.filter(e=>gradosMostrados.indexOf(e.grado)>=0).map(e=>e.id);
+  const idsMostrados = estudiantesFiltrados().map(e=>e.id);
   const total = idsMostrados.length;
   const seleccion = viewState.seleccionEst || {};
   const cuantosSeleccionados = idsMostrados.filter(id=>seleccion[id]).length;
+  const busquedaNorm = normalizarComparacion(busqueda);
 
   const filasDe = (g) => {
-    const lista = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===g), orden);
+    let lista = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===g), orden);
+    if(busquedaNorm) lista = lista.filter(e=>normalizarComparacion(nombreCompleto(nombresDe(e), apellidosDe(e))).indexOf(busquedaNorm)>=0);
     if(lista.length===0){
-      return `<tr><td colspan="${puedeEditar?6:4}" class="empty">Sin estudiantes en ${esc(g)}.</td></tr>`;
+      return `<tr><td colspan="${puedeEditar?6:4}" class="empty">${busqueda?'Nadie coincide con la búsqueda en '+esc(g)+'.':'Sin estudiantes en '+esc(g)+'.'}</td></tr>`;
     }
     return lista.map((e,i)=>`
       <tr>
@@ -4522,6 +4869,10 @@ function renderEstudiantes(){
         <option value="">Todos los grados visibles</option>
         ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${filtro===g?'selected':''}>${esc(g)}</option>`).join('')}
       </select>
+    </div>
+    <div class="field">
+      <label>Buscar por nombre o apellido</label>
+      <input type="text" id="buscar_est_input" value="${esc(busqueda)}" placeholder="Ej.: gomez" oninput="buscarEstudiantesInput(this.value)">
     </div>
     <div class="field">
       <label>Ordenar por</label>
@@ -4578,10 +4929,34 @@ function toggleSeleccionEst(id, marcado){
   else delete viewState.seleccionEst[id];
   render();
 }
-function toggleSeleccionTodosMostrados(marcado){
+/* Estudiantes visibles según el grado elegido Y el texto de búsqueda (sin
+   distinguir mayúsculas ni tildes) — usado por la tabla, la selección
+   masiva y el borrado masivo, para que todos coincidan con lo que se ve. */
+/* Buscar mientras se escribe, sin perder el cursor: se guarda la posición
+   antes de redibujar y se restaura después (redibujar todo pierde el foco). */
+function buscarEstudiantesInput(valor){
+  PREFS['buscarEst'] = valor;
+  try{ window.localStorage.setItem('prefs_ui', JSON.stringify(PREFS)); }catch(e){}
+  const activo = document.activeElement;
+  const cursor = (activo && activo.id==='buscar_est_input') ? activo.selectionStart : null;
+  render();
+  if(cursor !== null){
+    const el = document.getElementById('buscar_est_input');
+    if(el){ el.focus(); el.setSelectionRange(cursor, cursor); }
+  }
+}
+function estudiantesFiltrados(){
   const filtro = getPref('filtroGrado','');
   const gradosMostrados = filtro ? [filtro] : misGrados(currentUser);
-  const idsMostrados = DB.estudiantes.filter(e=>gradosMostrados.indexOf(e.grado)>=0).map(e=>e.id);
+  const busqueda = normalizarComparacion(getPref('buscarEst',''));
+  return DB.estudiantes.filter(e=>{
+    if(gradosMostrados.indexOf(e.grado)<0) return false;
+    if(!busqueda) return true;
+    return normalizarComparacion(nombreCompleto(nombresDe(e), apellidosDe(e))).indexOf(busqueda) >= 0;
+  });
+}
+function toggleSeleccionTodosMostrados(marcado){
+  const idsMostrados = estudiantesFiltrados().map(e=>e.id);
   viewState.seleccionEst = viewState.seleccionEst || {};
   idsMostrados.forEach(id=>{
     if(marcado) viewState.seleccionEst[id] = true;
@@ -4611,7 +4986,7 @@ function eliminarTodosMostrados(){
   if(!puedeGestionarEstudiantes(currentUser)){ showToast('No tienes permiso para eliminar estudiantes.'); return; }
   const filtro = getPref('filtroGrado','');
   const gradosMostrados = filtro ? [filtro] : misGrados(currentUser);
-  const ids = DB.estudiantes.filter(e=>gradosMostrados.indexOf(e.grado)>=0).map(e=>e.id);
+  const ids = estudiantesFiltrados().map(e=>e.id);
   if(ids.length===0){ showToast('No hay estudiantes en lo que se está mostrando.'); return; }
   if(!confirm(`¿Eliminar TODOS los ${ids.length} estudiante(s) que se están mostrando (${gradosMostrados.join(', ')})? También se borrarán sus calificaciones. Esta acción no se puede deshacer.`)) return;
   commit(doc=>{
@@ -4670,6 +5045,510 @@ function aplicarAccesosMasivo(){
 }
 
 /* ============================= IMPORTAR ESTUDIANTES DESDE UNA LISTA PEGADA ============================= */
+/* ============================= CARGAR DATOS DESDE UN ARCHIVO (HOJA DE TAREAS) =============================
+   Lee un Word, un PDF, o una imagen pegada con Ctrl+V, y adivina fecha,
+   contenido, tarea y criterios para no tener que escribirlos a mano.
+   Las librerías se cargan solo la primera vez que se usa esto, para no
+   pesarle a quien nunca lo necesite. */
+const _librerias = {};
+function cargarScript(src){
+  if(_librerias[src]) return _librerias[src];
+  _librerias[src] = new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = ()=>resolve(true);
+    s.onerror = ()=>reject(new Error('No se pudo cargar ' + src + ' (revisa tu conexión a internet).'));
+    document.head.appendChild(s);
+  });
+  return _librerias[src];
+}
+function leerArchivoComoArrayBuffer(file){
+  return new Promise((resolve, reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(r.result);
+    r.onerror = ()=>reject(new Error('No se pudo leer el archivo.'));
+    r.readAsArrayBuffer(file);
+  });
+}
+async function extraerTextoDocx(file){
+  await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+  const buf = await leerArchivoComoArrayBuffer(file);
+  const zip = await JSZip.loadAsync(buf);
+  const doc = zip.file('word/document.xml');
+  if(!doc) throw new Error('Ese archivo no parece un Word (.docx) válido.');
+  const xml = await doc.async('string');
+  const parrafos = xml.split(/<\/w:p>/);
+  const partes = [];
+  parrafos.forEach(p=>{
+    const textos = [...p.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(m=>m[1]);
+    if(textos.length) partes.push(textos.join(''));
+  });
+  return partes.join('\n')
+    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
+}
+/* Lee la TABLA de verdad de un Word (filas y columnas), no solo el texto
+   corrido — así se pueden detectar varias tareas e integradoras de una
+   sola vez, tal como están armadas en la Hoja de tareas de la escuela.
+   Usa el analizador XML del navegador, que sí entiende tablas anidadas
+   (como la tabla chiquita de Puntualidad/Legibilidad/Contenido dentro de
+   la columna de Rúbrica). */
+async function extraerFilasDocx(file){
+  await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+  const buf = await leerArchivoComoArrayBuffer(file);
+  const zip = await JSZip.loadAsync(buf);
+  const docFile = zip.file('word/document.xml');
+  if(!docFile) throw new Error('Ese archivo no parece un Word (.docx) válido.');
+  const xml = await docFile.async('string');
+  const NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const xdoc = new DOMParser().parseFromString(xml, 'application/xml');
+  if(xdoc.getElementsByTagName('parsererror').length) return [];
+  const tablas = Array.from(xdoc.getElementsByTagNameNS(NS, 'tbl'));
+  if(tablas.length === 0) return [];
+  // La tabla que buscamos es la de más afuera (no una tabla chiquita metida
+  // dentro de una celda).
+  const nivelSuperior = tablas.filter(t=>{
+    let p = t.parentNode;
+    while(p){ if(p.namespaceURI===NS && p.localName==='tc') return false; p = p.parentNode; }
+    return true;
+  });
+  const candidatas = nivelSuperior.length ? nivelSuperior : tablas;
+  let mejor = candidatas[0], mejorCantidad = -1;
+  candidatas.forEach(t=>{
+    const cant = Array.from(t.childNodes).filter(n=>n.namespaceURI===NS && n.localName==='tr').length;
+    if(cant > mejorCantidad){ mejorCantidad = cant; mejor = t; }
+  });
+  const filasNodos = Array.from(mejor.childNodes).filter(n=>n.namespaceURI===NS && n.localName==='tr');
+  // Cada celda: su texto, y si "continúa" una combinación vertical desde la
+  // fila de arriba (Word junta Fecha/Contenido/Tarea en varias filas reales
+  // cuando la columna de Rúbrica trae un criterio por fila).
+  return filasNodos.map(tr=>{
+    const celdas = Array.from(tr.childNodes).filter(n=>n.namespaceURI===NS && n.localName==='tc');
+    return celdas.map(tc=>{
+      const vMerge = tc.getElementsByTagNameNS(NS, 'vMerge')[0];
+      const continua = !!vMerge && vMerge.getAttribute('w:val') !== 'restart';
+      const texto = Array.from(tc.getElementsByTagNameNS(NS,'t')).map(t=>t.textContent).join('').trim();
+      return {texto, continua};
+    });
+  });
+}
+async function extraerTextoPdf(file){
+  await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  if(typeof pdfjsLib !== 'undefined'){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  const buf = await leerArchivoComoArrayBuffer(file);
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  let texto = '';
+  for(let i=1; i<=pdf.numPages; i++){
+    const page = await pdf.getPage(i);
+    const contenido = await page.getTextContent();
+    texto += contenido.items.map(it=>it.str).join(' ') + '\n';
+  }
+  return texto;
+}
+/* Reconocimiento de texto en una imagen (OCR). No es perfecto: funciona
+   bien con texto impreso claro, y bastante peor con letra a mano o fotos
+   borrosas — por eso siempre se deja revisar el resultado antes de usarlo. */
+async function extraerTextoImagen(blob){
+  await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js');
+  const resultado = await Tesseract.recognize(blob, 'spa');
+  return resultado.data.text;
+}
+const MESES_ES = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,junio:6,julio:7,agosto:8,
+  septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
+function analizarFechaTexto(texto){
+  let m = texto.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
+  if(m){
+    let [,d,mo,y] = m;
+    if(y.length===2) y = '20'+y;
+    return y + '-' + mo.padStart(2,'0') + '-' + d.padStart(2,'0');
+  }
+  m = texto.match(/\b(\d{1,2})\s+de\s+([a-záéíóúñ]+)(?:\s+de\s+(\d{4}))?\b/i);
+  if(m){
+    const mesNum = MESES_ES[normalizarComparacion(m[2])];
+    if(mesNum){
+      const y = m[3] || String(new Date().getFullYear());
+      return y + '-' + String(mesNum).padStart(2,'0') + '-' + m[1].padStart(2,'0');
+    }
+  }
+  return '';
+}
+/* A partir del texto extraído, adivina fecha/contenido/tarea/criterios.
+   Es un intento razonable, no una lectura perfecta: por eso siempre se
+   muestra editable antes de guardarlo. */
+function analizarTextoParaFila(texto){
+  const fecha = analizarFechaTexto(texto);
+  const lineas = texto.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+  let contenido = '', tarea = '';
+  const criterios = [];
+  const restantes = [];
+  lineas.forEach(l=>{
+    const norm = normalizarComparacion(l);
+    if(/^(contenidos?|tema):/.test(norm)) contenido = (contenido?contenido+' ':'') + l.replace(/^[^:]*:/,'').trim();
+    else if(/^(tareas?|actividad|trabajo|indicaciones?):/.test(norm)) tarea = (tarea?tarea+' ':'') + l.replace(/^[^:]*:/,'').trim();
+    else if(/^(criterios?|r[uú]brica):/.test(norm)) criterios.push(l.replace(/^[^:]*:/,'').trim());
+    else if(!/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(l)) restantes.push(l);
+  });
+  if(!contenido && restantes.length) contenido = restantes[0];
+  if(!tarea && restantes.length>1) tarea = restantes.slice(1).join(' ');
+  return {fecha, contenido, tarea, criterios};
+}
+/* Separa "Páginas 78, 79 y 82Puntualidad30%Legibilidad...10%Contenido60%"
+   en el texto de la tarea y la lista de criterios con su porcentaje.
+   Los nombres de los criterios siempre empiezan justo después de un número
+   (el final del texto anterior) con mayúscula, así se distinguen del
+   texto de la tarea aunque no haya ningún espacio entre ambos. */
+function extraerCriteriosYTarea(bloque){
+  const re = /([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ()'".,\s]*?)(\d{1,3})\s*%/g;
+  const criterios = [];
+  let primerInicio = -1;
+  let m;
+  while((m = re.exec(bloque)) !== null){
+    if(primerInicio === -1) primerInicio = m.index;
+    const nombre = m[1].trim();
+    if(nombre) criterios.push({nombre, peso:Number(m[2])});
+  }
+  const tarea = (primerInicio >= 0 ? bloque.slice(0, primerInicio) : bloque).trim();
+  return {tarea, criterios};
+}
+/* A partir de las filas crudas de la tabla (cada celda con su texto y si
+   "continúa" una combinación vertical desde arriba), arma una lista de
+   filas de tarea/integradora/examen listas para revisar. Cuando Word
+   combina Fecha/Contenido/Tarea en varias filas reales (una por cada
+   criterio de la Rúbrica), estas se vuelven a juntar en una sola tarea con
+   todos sus criterios. Es un intento razonable, no perfecto — por eso todo
+   queda editable antes de guardarse. */
+function esEncabezadoOMetadatoFila(textos, todoTexto){
+  const norm0 = normalizarComparacion(textos[0]||'');
+  if(/^fecha$/.test(norm0)) return true;                              // fila "FECHA | CONTENIDOS | ..."
+  if(/^(grado|docente|asignatura|materia|periodo|per[ií]odo)\s*:?/.test(normalizarComparacion(todoTexto))) return true;
+  return false;
+}
+function interpretarFilasTabla(filasCeldas){
+  const resultado = [];
+  let grupo = null;   // {esIntegradora, fecha, contenido, tarea, criterios}
+
+  function cerrarGrupo(){
+    if(!grupo) return;
+    if(grupo.esIntegradora) resultado.push({tipo:'integradora', fecha:grupo.fecha, etiqueta:grupo.etiqueta, tarea:grupo.tarea, contenido:''});
+    else resultado.push({tipo:'tarea', fecha:grupo.fecha, contenido:grupo.contenido, tarea:grupo.tarea, criterios:grupo.criterios});
+    grupo = null;
+  }
+
+  filasCeldas.forEach(celdas=>{
+    if(!celdas.length) return;
+    const textos = celdas.map(c=>c.texto);
+    const todoTexto = textos.join(' ').trim();
+    if(!todoTexto) return;
+    if(esEncabezadoOMetadatoFila(textos, todoTexto)){ cerrarGrupo(); return; }
+
+    const continua = celdas[0] && celdas[0].continua;
+
+    if(!continua){
+      cerrarGrupo();
+      if(celdas.length <= 3 && /semana de ex[aá]menes|^ex[aá]men/i.test(todoTexto)){
+        resultado.push({tipo:'examen', fecha: analizarFechaTexto(textos[0]||todoTexto), texto: todoTexto.replace(textos[0]||'', '').trim() || todoTexto});
+        return;
+      }
+      const fecha = analizarFechaTexto(textos[0] || todoTexto);
+      const contenido = (textos[1] || '').trim();
+      const bloqueResto = textos.slice(2).join(' ').trim();
+      const esIntegradora = /integradora/i.test(contenido) || /integradora/i.test(bloqueResto);
+      if(esIntegradora){
+        const etiqueta = (todoTexto.match(/INTEGRADORA\s*[IVX0-9]+/i) || [''])[0].toUpperCase().replace(/\s+/g,' ');
+        let despues = todoTexto.slice(todoTexto.search(/INTEGRADORA\s*[IVX0-9]+/i) + etiqueta.length);
+        despues = despues.split(/Fecha:|F\.\s*Responsable|F\.\s*Maestro/i)[0].trim();
+        // Algunas integradoras traen además un tema en la columna de
+        // Contenido (ej.: "La suma"); no lo perdemos, se antepone.
+        const tarea = contenido ? (contenido + ' — ' + despues).trim() : despues;
+        grupo = {esIntegradora:true, fecha, etiqueta, tarea};
+      }else{
+        const {tarea, criterios} = criteriosDeFila(textos, bloqueResto);
+        grupo = {esIntegradora:false, fecha, contenido, tarea, criterios};
+      }
+    }else if(grupo && !grupo.esIntegradora){
+      // Esta fila solo trae un criterio más de la Rúbrica para la misma tarea.
+      const bloqueResto = textos.slice(2).join(' ').trim();
+      const {criterios} = criteriosDeFila(textos, bloqueResto);
+      grupo.criterios.push(...criterios);
+    }
+  });
+  cerrarGrupo();
+  return resultado;
+}
+/* La columna de Rúbrica casi siempre trae el nombre del criterio y su
+   porcentaje en dos celdas separadas y en una posición fija (columnas 3 y
+   4). Cuando la tarea es un texto largo, confiar en esa posición es mucho
+   más seguro que tratar de separarlo por texto (una descripción larga
+   puede "tragarse" el nombre del criterio si se adivina solo con patrones). */
+function celdaPorcentaje(txt){
+  const m = String(txt||'').match(/(\d{1,3})\s*%/);
+  return m ? Number(m[1]) : null;
+}
+function criteriosDeFila(textos, bloqueResto){
+  const nombreCrit = (textos[3]||'').trim();
+  const peso = celdaPorcentaje(textos[4]);
+  if(nombreCrit && peso !== null){
+    return {tarea: (textos[2]||'').trim(), criterios: [{nombre:nombreCrit, peso}]};
+  }
+  return extraerCriteriosYTarea(bloqueResto);
+}
+function abrirCargarArchivoHoja(){
+  viewState.modalCargarArchivo = {paso:1, cargando:false, error:''};
+  render();
+}
+function cerrarCargarArchivoHoja(){
+  viewState.modalCargarArchivo = null;
+  render();
+}
+async function procesarArchivoHoja(file){
+  if(!file) return;
+  viewState.modalCargarArchivo = {paso:1, cargando:true, error:''};
+  render();
+  try{
+    const nombre = (file.name || '').toLowerCase();
+    if(nombre.endsWith('.docx')){
+      // Primero se intenta leer la tabla de verdad (varias filas a la vez).
+      let filasTabla = [];
+      try{ filasTabla = interpretarFilasTabla(await extraerFilasDocx(file)); }catch(e){ console.warn('lectura de tabla', e); }
+      const filasUtiles = filasTabla.filter(f=>f.tipo==='examen' || f.contenido || f.tarea);
+      if(filasUtiles.length >= 2){
+        viewState.modalCargarArchivo = {paso:3, cargando:false, error:'', filas: filasUtiles};
+        render();
+        return;
+      }
+      // Si no se encontró una tabla útil, se cae al modo de una sola fila.
+      const texto = await extraerTextoDocx(file);
+      if(!texto || !texto.trim()) throw new Error('No se encontró texto en ese archivo.');
+      viewState.modalCargarArchivo = {paso:2, cargando:false, error:'', texto, campos: analizarTextoParaFila(texto)};
+      render();
+      return;
+    }
+    let texto = '';
+    if(nombre.endsWith('.pdf')) texto = await extraerTextoPdf(file);
+    else if(/^image\//.test(file.type)) texto = await extraerTextoImagen(file);
+    else throw new Error('Ese tipo de archivo no se reconoce. Usa un .docx, un .pdf, o pega una imagen.');
+    if(!texto || !texto.trim()) throw new Error('No se encontró texto en ese archivo.');
+    const campos = analizarTextoParaFila(texto);
+    viewState.modalCargarArchivo = {paso:2, cargando:false, error:'', texto, campos};
+  }catch(e){
+    console.error(e);
+    viewState.modalCargarArchivo = {paso:1, cargando:false, error: e.message || 'No se pudo procesar el archivo.'};
+  }
+  render();
+}
+async function manejarPegadoImagenHoja(ev){
+  const items = ev.clipboardData && ev.clipboardData.items;
+  if(!items) return;
+  for(let i=0; i<items.length; i++){
+    if(items[i].type.indexOf('image') === 0){
+      ev.preventDefault();
+      const blob = items[i].getAsFile();
+      await procesarArchivoHoja(blob);
+      return;
+    }
+  }
+  showToast('No se detectó ninguna imagen en lo que pegaste (Ctrl+V).');
+}
+function insertarFilaDesdeArchivo(){
+  const info = viewState.modalCargarArchivo;
+  if(!info || info.paso !== 2) return;
+  const val = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const tipoSel = document.querySelector('input[name="carg_tipo"]:checked');
+  const tipo = tipoSel ? tipoSel.value : 'tarea';
+  const fecha = val('carg_fecha');
+  const contenido = val('carg_contenido');
+  const tareaTxt = val('carg_tarea');
+  const criteriosTxt = val('carg_criterios');
+  const { grado, asigId, periodo } = hojaActual();
+  const cfg = hojaCfg();
+  const donde = (typeof viewState.filaSel === 'number') ? viewState.filaSel : null;
+  const criterios = criteriosTxt.split('\n').map(c=>c.trim()).filter(Boolean).map(nombre=>({nombre, peso:0}));
+  mutarHoja(grado, asigId, periodo, h=>{
+    const cuantas = h.filas.filter(f=>f.tipo==='integradora').length;
+    const nueva = tipo==='integradora'
+      ? {tipo:'integradora', fecha, contenido, tarea:tareaTxt, etiqueta: cfg.etiquetas[cuantas]||('INTEGRADORA '+(cuantas+1)), rubrica:[], nota:'', obs:''}
+      : {tipo:'tarea', fecha, contenido, tarea:tareaTxt, etiqueta:'', rubrica: criterios.length?criterios:cfg.rubrica.map(r=>Object.assign({},r)), nota:'', obs:''};
+    if(donde !== null && donde >= 0 && donde < h.filas.length) h.filas.splice(donde + 1, 0, nueva);
+    else h.filas.push(nueva);
+  });
+  viewState.modalCargarArchivo = null;
+  showToast('Fila agregada. Revisa que los datos hayan quedado bien.');
+  render();
+}
+function insertarFilasMultiples(){
+  const info = viewState.modalCargarArchivo;
+  if(!info || info.paso !== 3) return;
+  const filas = info.filas || [];
+
+  // Primero se lee TODO del formulario, antes de tocar la base de datos.
+  // Importante: esto no puede hacerse adentro del "mutarHoja" de más abajo,
+  // porque ese bloque se vuelve a ejecutar solo unos segundos después (al
+  // guardar en la nube) y para entonces el formulario ya no existe en
+  // pantalla — leerlo ahí adentro duplicaba las filas, la segunda tanda
+  // en blanco.
+  const resueltas = [];
+  let examenFecha = '', examenTexto = '';
+  filas.forEach((f, i)=>{
+    const incluir = document.getElementById('mf_incluir_' + i);
+    if(incluir && !incluir.checked) return;
+    const tipo = (document.getElementById('mf_tipo_' + i)||{}).value || f.tipo;
+    const fecha = (document.getElementById('mf_fecha_' + i)||{}).value || '';
+    if(tipo === 'examen'){
+      examenFecha = fecha || examenFecha;
+      examenTexto = (document.getElementById('mf_tarea_' + i)||{}).value || examenTexto;
+      return;
+    }
+    const contenido = (document.getElementById('mf_contenido_' + i)||{}).value || '';
+    const tareaTxt = (document.getElementById('mf_tarea_' + i)||{}).value || '';
+    const criteriosTxt = (document.getElementById('mf_criterios_' + i)||{}).value || '';
+    const criterios = criteriosTxt.split('\n').map(c=>c.trim()).filter(Boolean).map(linea=>{
+      const m = linea.match(/^(.*?)[:\-]?\s*(\d{1,3})\s*%?$/);
+      return m ? {nombre:m[1].trim(), peso:Number(m[2])} : {nombre:linea, peso:0};
+    });
+    resueltas.push({tipo, fecha, contenido, tarea:tareaTxt, criterios, etiquetaDetectada: f.etiqueta || ''});
+  });
+
+  const { grado, asigId, periodo } = hojaActual();
+  const cfg = hojaCfg();
+  let rellenadas = 0, agregadas = 0;
+
+  mutarHoja(grado, asigId, periodo, h=>{
+    const filaVacia = (fila) => fila.tipo==='tarea' ? (!fila.contenido && !fila.tarea) : !fila.tarea;
+    let cuantasInt = h.filas.filter(f=>f.tipo==='integradora').length;
+
+    resueltas.forEach(r=>{
+      // Primero se intenta rellenar una fila vacía existente del mismo tipo,
+      // en vez de siempre agregar una fila nueva.
+      const existente = h.filas.find(f=>f.tipo===r.tipo && filaVacia(f));
+      if(existente){
+        existente.fecha = r.fecha;
+        if(r.tipo==='tarea'){
+          existente.contenido = r.contenido;
+          existente.tarea = r.tarea;
+          if(r.criterios.length) existente.rubrica = r.criterios;
+        }else{
+          existente.tarea = r.tarea;
+          if(r.etiquetaDetectada) existente.etiqueta = r.etiquetaDetectada;
+        }
+        rellenadas++;
+        return;
+      }
+      const nueva = r.tipo==='integradora'
+        ? {tipo:'integradora', fecha:r.fecha, contenido:'', tarea:r.tarea,
+           etiqueta: r.etiquetaDetectada || cfg.etiquetas[cuantasInt] || ('INTEGRADORA '+(cuantasInt+1)), rubrica:[], nota:'', obs:''}
+        : {tipo:'tarea', fecha:r.fecha, contenido:r.contenido, tarea:r.tarea, etiqueta:'',
+           rubrica: r.criterios.length ? r.criterios : cfg.rubrica.map(x=>Object.assign({},x)), nota:'', obs:''};
+      if(r.tipo==='integradora') cuantasInt++;
+      h.filas.push(nueva);
+      agregadas++;
+    });
+
+    if(examenFecha || examenTexto){
+      h.examen = h.examen || {};
+      if(examenFecha) h.examen.fecha = examenFecha;
+      if(examenTexto) h.examen.texto = examenTexto;
+    }
+  });
+
+  viewState.modalCargarArchivo = null;
+  showToast(`${rellenadas} fila(s) rellenada(s), ${agregadas} fila(s) nueva(s) agregada(s).`);
+  render();
+}
+function renderCargarArchivoModal(){
+  const info = viewState.modalCargarArchivo;
+  if(!info) return '';
+  const cerrar = `cerrarCargarArchivoHoja()`;
+  if(info.paso === 1){
+    return `
+    <div class="modal-bg" onclick="if(event.target===this){ ${cerrar}; }">
+      <div class="modal">
+        <button class="modal-close" onclick="${cerrar}">×</button>
+        <h3 class="modal-title">Cargar desde un archivo</h3>
+        <p class="nota-chica" style="margin-top:-6px;">Se intentará adivinar la fecha, el contenido, la tarea y los criterios — vas a poder revisarlos y corregirlos antes de guardar.</p>
+        ${info.cargando ? `<div class="note">Procesando el archivo, un momento…</div>` : `
+        <div class="field"><label>Subir un Word (.docx) o un PDF</label>
+          <input type="file" accept=".docx,.pdf" onchange="procesarArchivoHoja(this.files[0])"></div>
+        <div class="field">
+          <label>O pega una imagen (captura de pantalla, foto de la guía, etc.)</label>
+          <div tabindex="0" onpaste="manejarPegadoImagenHoja(event)"
+            style="border:2px dashed var(--line-strong); border-radius:10px; padding:22px; text-align:center; color:var(--muted); font-size:13px; cursor:text;">
+            Hacé clic acá adentro y presioná Ctrl+V para pegar una imagen
+          </div>
+        </div>
+        ${info.error?`<p style="color:var(--red); font-size:13px;">${esc(info.error)}</p>`:''}
+        `}
+      </div>
+    </div>`;
+  }
+  const campos = info.campos || {fecha:'', contenido:'', tarea:'', criterios:[]};
+  if(info.paso === 3){
+    const filas = info.filas || [];
+    return `
+    <div class="modal-bg" onclick="if(event.target===this){ ${cerrar}; }">
+      <div class="modal" style="max-width:820px;">
+        <button class="modal-close" onclick="${cerrar}">×</button>
+        <h3 class="modal-title">Se encontraron ${filas.length} fila(s) en la tabla</h3>
+        <p class="nota-chica" style="margin-top:-6px;">Revisalas y corregí lo que haga falta antes de agregarlas. Desmarcá las que no quieras incluir.</p>
+        <div class="table-wrap" style="max-height:420px; overflow-y:auto;">
+        <table>
+          <thead><tr><th style="width:26px;"></th><th style="width:110px;">Tipo</th><th style="width:120px;">Fecha</th>
+            <th>Contenido</th><th>Tarea</th><th style="width:170px;">Criterios (uno por línea)</th></tr></thead>
+          <tbody>
+            ${filas.map((f,i)=>`
+              <tr>
+                <td><input type="checkbox" id="mf_incluir_${i}" checked></td>
+                <td><select id="mf_tipo_${i}">
+                  <option value="tarea" ${f.tipo==='tarea'?'selected':''}>Tarea</option>
+                  <option value="integradora" ${f.tipo==='integradora'?'selected':''}>Integradora</option>
+                  <option value="examen" ${f.tipo==='examen'?'selected':''}>Examen</option>
+                </select></td>
+                <td><input type="date" id="mf_fecha_${i}" value="${esc(f.fecha||'')}" style="width:120px;"></td>
+                <td>${f.tipo==='examen'?'—':`<textarea id="mf_contenido_${i}" rows="2" style="width:100%;">${esc(f.contenido||'')}</textarea>`}</td>
+                <td><textarea id="mf_tarea_${i}" rows="2" style="width:100%;">${esc(f.tarea || f.texto || '')}</textarea></td>
+                <td>${f.tipo==='tarea'?`<textarea id="mf_criterios_${i}" rows="2" style="width:100%;">${esc((f.criterios||[]).map(c=>c.nombre+': '+c.peso+'%').join('\n'))}</textarea>`:'—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        </div>
+        <div class="btn-row" style="margin-top:12px;">
+          <button class="btn btn-primary" onclick="insertarFilasMultiples()">Agregar las filas marcadas</button>
+          <button class="btn" onclick="viewState.modalCargarArchivo={paso:1,cargando:false,error:''}; render();">Volver</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  return `
+  <div class="modal-bg" onclick="if(event.target===this){ ${cerrar}; }">
+    <div class="modal" style="max-width:640px;">
+      <button class="modal-close" onclick="${cerrar}">×</button>
+      <h3 class="modal-title">Revisar antes de agregar</h3>
+      <p class="nota-chica" style="margin-top:-6px;">Esto es lo que se pudo adivinar del archivo. Corregilo si hace falta.</p>
+      <div class="field">
+        <div class="tag-row">
+          <label class="check-chip"><input type="radio" name="carg_tipo" value="tarea" checked> Fila de tarea</label>
+          <label class="check-chip"><input type="radio" name="carg_tipo" value="integradora"> Fila de integradora</label>
+        </div>
+      </div>
+      <div class="field"><label>Fecha</label>
+        <input type="date" id="carg_fecha" value="${esc(campos.fecha)}"></div>
+      <div class="field"><label>Contenido</label>
+        <textarea id="carg_contenido" rows="2">${esc(campos.contenido)}</textarea></div>
+      <div class="field"><label>Tarea</label>
+        <textarea id="carg_tarea" rows="2">${esc(campos.tarea)}</textarea></div>
+      <div class="field"><label>Criterios (uno por línea, opcional)</label>
+        <textarea id="carg_criterios" rows="3">${esc((campos.criterios||[]).join('\n'))}</textarea></div>
+      <details style="margin-top:6px;">
+        <summary class="nota-chica" style="cursor:pointer;">Ver el texto completo que se extrajo del archivo</summary>
+        <div class="nota-chica" style="white-space:pre-wrap; max-height:160px; overflow-y:auto; margin-top:6px;">${esc(info.texto||'')}</div>
+      </details>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-primary" onclick="insertarFilaDesdeArchivo()">Agregar como fila nueva</button>
+        <button class="btn" onclick="viewState.modalCargarArchivo={paso:1,cargando:false,error:''}; render();">Volver</button>
+      </div>
+    </div>
+  </div>`;
+}
 function normalizarComparacion(txt){
   return String(txt||'').trim().toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -4836,7 +5715,8 @@ const PANELES_ESTUDIANTE = [
   {id:'hojas',          label:'Hojas de tareas (solo su grado)'},
   {id:'calificaciones', label:'Calificaciones (solo las suyas)'},
   {id:'alertas',        label:'Alertas de tareas'},
-  {id:'boletas',        label:'Boletas de notas'}
+  {id:'boletas',        label:'Boletas de notas'},
+  {id:'mensajes',       label:'Mensajes con docentes y administración'}
 ];
 function accesosPorDefecto(){
   const a = {}; PANELES_ESTUDIANTE.forEach(p=>a[p.id]=false); return a;
@@ -7172,6 +8052,7 @@ function renderHojas(){
     ${edit?`<div class="btn-row" style="align-items:center;">
       <button class="btn btn-sm" onclick="agregarFilaHoja('tarea')">+ Fila de tarea</button>
       <button class="btn btn-sm" onclick="agregarFilaHoja('integradora')">+ Fila de integradora</button>
+      <button class="btn btn-sm" onclick="abrirCargarArchivoHoja()">Cargar desde archivo</button>
       <span class="nota-chica" style="margin:0 0 0 6px;">
         ${typeof viewState.filaSel === 'number'
           ? 'Se insertará debajo de la fila ' + (viewState.filaSel+1) + '. <a href="#" onclick="viewState.filaSel=null; render(); return false;">Quitar selección</a>'
@@ -7180,7 +8061,8 @@ function renderHojas(){
     </div>`:''}
     <p class="nota-chica">Las firmas se configuran una vez y quedan por defecto: ${cfg.firmas.map(f=>esc(f)).join(' · ')}.
       ${edit?`<button class="btn btn-sm" style="margin-left:8px;" onclick="editarFirmasHoja()">Cambiar firmas</button>`:''}</p>
-  </div>`;
+  </div>
+  ${renderCargarArchivoModal()}`;
 }
 /* --- edición --- */
 /* Resuelve el aula, la asignatura y el período que se están viendo.
