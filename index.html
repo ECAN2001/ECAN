@@ -1936,6 +1936,11 @@ function reportesVisibles(u){
   if(veTodosReportes(u)) return todos;
   return todos.filter(r => r.docenteId === u.id || esOrientador(u, r.grado));
 }
+/* Cuenta de reportes que ESTE usuario todavía no ha abierto */
+function contarReportesNoVistos(u){
+  u = u || currentUser;
+  return reportesVisibles(u).filter(r => !(r.vistas||[]).some(v=>v.userId===u.id)).length;
+}
 /* Usuarios como Recepción ven todas las aulas, pero sin editar nada */
 function tieneAlcanceTotal(u){ return !!(u && (isAdmin(u) || u.alcanceTotal)); }
 /* Grados de los que este usuario puede emitir boletas */
@@ -2224,6 +2229,66 @@ function setObs(estId, asigId, periodo, comp, texto){
 }
 
 /* Construye el registro de tareas a partir de lo cargado en Calificaciones */
+/* ============================= NOTIFICACIONES (numerito en los paneles y en el ícono) =============================
+   Solo estos 5 paneles pueden notificar — a propósito no hay opción para
+   ningún otro. Cada docente decide, en su propio dispositivo, cuáles
+   quiere ver marcados. */
+const PANELES_NOTIFICABLES = [
+  {id:'averias',  label:'Averías y solicitudes'},
+  {id:'mensajes', label:'Mensajes'},
+  {id:'soporte',  label:'Soporte de la plataforma'},
+  {id:'reportes', label:'Reportes disciplinarios'},
+  {id:'tareas',   label:'Registro y alertas de tareas'},
+];
+function notifActiva(id){ return getPref('notif_'+id, true); }
+function contarTareasPendientesDocente(){
+  return listaTareas({estado:'no'}).length;
+}
+function contadorPanelDocente(id){
+  if(!notifActiva(id)) return 0;
+  if(id==='averias')  return contarAveriasPendientes(currentUser);
+  if(id==='mensajes') return contarMensajesNoLeidos(currentUser.id);
+  if(id==='soporte')  return contarSoportePendientes(currentUser);
+  if(id==='reportes') return contarReportesNoVistos(currentUser);
+  if(id==='tareas')   return contarTareasPendientesDocente();
+  return 0;
+}
+/* Suma de todo lo que este docente eligió notificar — es lo que se manda
+   al numerito del ícono de la app. */
+function totalNotificacionesDocente(){
+  return PANELES_NOTIFICABLES.reduce((s,p)=>s + contadorPanelDocente(p.id), 0);
+}
+/* El numerito en el ícono de la app (fuera del navegador), al estilo
+   WhatsApp. OJO: esto solo se actualiza mientras la app está abierta (o
+   se vuelve a abrir) — no es una notificación push que llegue con la app
+   cerrada del todo; eso necesitaría un servidor de notificaciones aparte. */
+function actualizarBadgeApp(){
+  try{
+    if(!('setAppBadge' in navigator)) return;
+    if(!currentUser || sesionEstudiante){ navigator.clearAppBadge().catch(()=>{}); return; }
+    const total = totalNotificacionesDocente();
+    if(total>0) navigator.setAppBadge(total).catch(()=>{});
+    else navigator.clearAppBadge().catch(()=>{});
+  }catch(e){ /* navegador sin soporte: no pasa nada */ }
+}
+function renderNotificacionesModal(){
+  if(!viewState.modalNotificaciones) return '';
+  const cerrar = 'viewState.modalNotificaciones=false; render();';
+  return `
+  <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
+    <div class="modal">
+      <button class="modal-close" onclick="${cerrar}">×</button>
+      <h3 class="modal-title">🔔 Notificaciones</h3>
+      <p class="nota-chica" style="margin-top:-6px;">Elegí de cuáles paneles querés ver el numerito de pendientes. Es una preferencia de este dispositivo.</p>
+      ${PANELES_NOTIFICABLES.map(p=>`
+        <label class="check-chip" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding:10px 12px;">
+          <span>${esc(p.label)}</span>
+          <input type="checkbox" ${notifActiva(p.id)?'checked':''} onchange="setPref('notif_${p.id}', this.checked); actualizarBadgeApp();">
+        </label>`).join('')}
+      <p class="nota-chica" style="margin-top:10px;">El numerito del ícono de la app (fuera del navegador) se actualiza mientras la tenés abierta, o al volver a abrirla — no llega como aviso si la app está cerrada del todo.</p>
+    </div>
+  </div>`;
+}
 function listaTareas(filtro){
   filtro = filtro || {};
   const filas = [];
@@ -2468,6 +2533,7 @@ function render(){
     }
     app.innerHTML = sesionEstudiante ? renderLayoutEstudiante() : renderLayout();
     if(sesionEstudiante && currentView === 'credencial') cargarCredencialEstudianteEnPantalla();
+    try{ actualizarBadgeApp(); }catch(eB){}
   }catch(e){
     console.error('render', e);
     showToast('Ocurrió un problema al mostrar esta sección.');
@@ -2758,6 +2824,7 @@ const NAV_ITEMS = [
   {id:'boletas', label:'Boletas'},
   {id:'asignaturas', label:'Asignaturas'},
   {id:'docentes', label:'Docentes'},
+  {id:'seguimiento', label:'Seguimiento de docentes'},
   {id:'averias', label:'Averías y solicitudes'},
   {id:'mensajes', label:'Mensajes'},
   {id:'soporte', label:'Soporte de la plataforma'},
@@ -2769,6 +2836,7 @@ function navAllowed(id){
   if(id==='bitacora') return canManageAcademicData(currentUser);
   if(id==='personalizar') return canManageAcademicData(currentUser);
   if(id==='asignaturas' || id==='docentes') return canManageAcademicData(currentUser);
+  if(id==='seguimiento') return canManageAcademicData(currentUser);
   if(PANELES.some(p=>p.id===id)) return puedeVerPanel(currentUser, id);
   return true;
 }
@@ -2785,10 +2853,7 @@ function renderLayout(){
       </div>
       <div class="nav-list">
         ${nav.map(n=>{
-          let contador = 0;
-          if(n.id==='mensajes') contador = contarMensajesNoLeidos(currentUser.id);
-          else if(n.id==='averias') contador = contarAveriasPendientes(currentUser);
-          else if(n.id==='soporte') contador = contarSoportePendientes(currentUser);
+          const contador = PANELES_NOTIFICABLES.some(p=>p.id===n.id) ? contadorPanelDocente(n.id) : 0;
           return `<div class="nav-item ${currentView===n.id?'active':''}" onclick="goTo('${n.id}')"><span class="nav-dot"></span>${esc(n.label)}${contador>0?`<span class="nav-badge">${contador>99?'99+':contador}</span>`:''}</div>`;
         }).join('')}
       </div>
@@ -2802,6 +2867,7 @@ function renderLayout(){
         </div>
         ${renderSyncIndicator()}
         ${!appYaInstalada()?`<button class="btn btn-sm" style="width:100%; margin-bottom:6px;" onclick="instalarApp()">📲 Instalar app</button>`:''}
+        <button class="btn btn-sm" style="width:100%; margin-bottom:6px;" onclick="viewState.modalNotificaciones=true; render();">🔔 Notificaciones${totalNotificacionesDocente()>0?` (${totalNotificacionesDocente()>99?'99+':totalNotificacionesDocente()})`:''}</button>
         <button class="logout-btn" onclick="doLogout()">Cambiar de usuario</button>
       </div>
     </div>
@@ -2809,6 +2875,7 @@ function renderLayout(){
       ${renderView()}
     </div>
     ${renderMensajeBienvenida()}
+    ${renderNotificacionesModal()}
   </div>`;
 }
 
@@ -2824,6 +2891,7 @@ function renderView(){
     case 'estudiantes': return renderEstudiantes();
     case 'asignaturas': return renderAsignaturas();
     case 'docentes': return renderDocentes();
+    case 'seguimiento': return renderSeguimientoDocentes();
     case 'calificaciones': return renderCalificaciones();
     case 'matriz': return renderMatriz();
     case 'tareas': return renderTareas();
@@ -6423,6 +6491,172 @@ async function deleteSubject(id){
 }
 
 /* ============================= DOCENTES ============================= */
+/* ============================= SEGUIMIENTO DE DOCENTES ============================= */
+/* Para Dirección: de un vistazo, quién ya cargó su Hoja de tareas y sus
+   calificaciones, y quién todavía no.
+   - Hoja de tareas: se espera completa de antemano, para TODO el período
+     que ya arrancó — no se espera a que cada fecha individual pase.
+   - Calificaciones: solo se exige de lo que ya venció (no se puede
+     calificar algo que todavía no pasó). */
+function hoyISO(){ return new Date().toISOString().slice(0,10); }
+/* Fecha de inicio de un período, configurada por Dirección (config.periodosFechas).
+   Si todavía no la configuraron, se calcula como antes: la fecha de la
+   primera fila de esa hoja, para no dejar el panel en blanco mientras
+   tanto. */
+function fechaInicioPeriodo(periodo, grado, asigId){
+  const cfg = (DB.config.periodosFechas || [])[periodo-1];
+  if(cfg && cfg.inicio) return cfg.inicio;
+  const filasReales = getHoja(grado, asigId, periodo).filas.filter(f=>f.tipo==='tarea'||f.tipo==='integradora');
+  const fechas = filasReales.map(f=>f.fecha).filter(Boolean).sort();
+  return fechas[0] || '';
+}
+function guardarFechasPeriodos(){
+  const fechas = [1,2,3,4].map(p=>{
+    const el = document.getElementById('per_inicio_' + p);
+    return {inicio: el ? el.value : ''};
+  });
+  commit(doc=>{
+    doc.config = doc.config || {};
+    doc.config.periodosFechas = fechas;
+  });
+  registrar('Personalizar', 'Actualizó las fechas de inicio de los períodos');
+  showToast('Fechas guardadas.');
+  render();
+}
+function evaluarAsignacionSeguimiento(grado, asigId){
+  const hoy = hoyISO();
+  const estudiantesGrado = DB.estudiantes.filter(e=>e.grado===grado);
+  let huboFilasPasadas = false, hojaPendiente = false, califPendiente = false;
+  let filasPendHoja = 0, filasPendCalif = 0, filasTotal = 0, huboPeriodoEnCurso = false;
+  for(let periodo=1; periodo<=(DB.config.periodos||4); periodo++){
+    const hoja = getHoja(grado, asigId, periodo);
+    const filasT = filasTarea(grado, asigId, periodo);
+    const filasI = filasIntegradora(grado, asigId, periodo);
+    const filasReales = hoja.filas.filter(f=>f.tipo==='tarea' || f.tipo==='integradora');
+    if(filasReales.length===0) continue;
+    // ¿Este período ya arrancó? Se usa la fecha que configuró Dirección; si
+    // todavía no la configuraron, se calcula de las fechas ya cargadas.
+    const inicio = fechaInicioPeriodo(periodo, grado, asigId);
+    const periodoEnCurso = !!inicio && inicio<=hoy;
+    if(!periodoEnCurso) continue;
+    huboPeriodoEnCurso = true;
+    filasReales.forEach(f=>{
+      filasTotal++;
+      // Hoja de tareas: toda la fila debe estar llena, sin importar su fecha.
+      const sinTexto = f.tipo==='tarea'
+        ? !(f.contenido||'').trim() && !(f.tarea||'').trim()
+        : !(f.tarea||'').trim();
+      if(sinTexto){ hojaPendiente = true; filasPendHoja++; }
+      // Calificaciones: solo se exige de las fechas que ya vencieron.
+      if(!f.fecha || f.fecha>hoy) return;
+      huboFilasPasadas = true;
+      let comp = null;
+      if(f.tipo==='tarea'){
+        const idx = filasT.indexOf(f);
+        if(idx>=0) comp = 'act:act' + (idx+1);
+      }else{
+        const idx = filasI.indexOf(f);
+        if(idx>=0) comp = 'integradora' + (idx+1);
+      }
+      if(comp && estudiantesGrado.length>0){
+        const hayNota = estudiantesGrado.some(e=>{
+          const v = getComp(e.id, asigId, periodo, comp);
+          return v!==undefined && v!==null && v!=='';
+        });
+        if(!hayNota){ califPendiente = true; filasPendCalif++; }
+      }
+    });
+  }
+  return {huboFilasPasadas, huboPeriodoEnCurso, hojaPendiente, califPendiente, filasPendHoja, filasPendCalif, filasTotal};
+}
+function evaluarDocenteSeguimiento(docente){
+  const asignaciones = (docente.asignaciones||[]).map(a=>{
+    const ev = evaluarAsignacionSeguimiento(a.grado, a.asignaturaId);
+    const asig = DB.asignaturas.find(x=>x.id===a.asignaturaId);
+    return Object.assign({grado:a.grado, asignaturaId:a.asignaturaId, asignaturaNombre: asig?asig.nombre:a.asignaturaId}, ev);
+  });
+  const hojaPendiente = asignaciones.some(a=>a.hojaPendiente);
+  const califPendiente = asignaciones.some(a=>a.califPendiente);
+  return {asignaciones, hojaPendiente, califPendiente};
+}
+/* Solo Dirección/acceso total puede tocar esto (todo este panel ya está
+   reservado a ellos): fecha en que arranca cada período, para que
+   "Seguimiento de docentes" sepa a partir de cuándo exigir la Hoja de
+   tareas completa. Un docente normal ni siquiera ve este panel. */
+function renderFechasPeriodosCard(){
+  const fechas = DB.config.periodosFechas || [];
+  return `
+  <div class="card">
+    <p class="card-title">Fecha de inicio de cada período</p>
+    <p class="nota-chica" style="margin:-4px 0 10px;">Solo Dirección puede cambiar esto — los docentes no la ven ni la pueden tocar. A partir de esta fecha se exige la Hoja de tareas completa de ese período.</p>
+    <div class="grid grid-4">
+      ${[1,2,3,4].map(p=>`
+        <div class="field"><label>Período ${p}</label>
+          <input type="date" id="per_inicio_${p}" value="${esc((fechas[p-1]&&fechas[p-1].inicio)||'')}"></div>
+      `).join('')}
+    </div>
+    <div class="btn-row"><button class="btn btn-primary" onclick="guardarFechasPeriodos()">Guardar fechas</button></div>
+  </div>`;
+}
+function renderSeguimientoDocentes(){
+  const docentes = DB.docentes.filter(d=>!esPropietario(d) && (d.asignaciones||[]).length>0)
+    .slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const filas = docentes.map(d=>({docente:d, ev: evaluarDocenteSeguimiento(d)}));
+  const pill = (pendiente) => pendiente
+    ? `<span class="pill pill-rojo">Pendiente</span>`
+    : `<span class="pill pill-primary">Al día</span>`;
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Dirección</p>
+    <h1 class="page-title">Seguimiento de docentes</h1>
+    <p class="page-desc">De lo que ya debería estar cargado, quién tiene su Hoja de tareas llena y quién ya puso las notas. Los que faltan aparecen en rojo.</p>
+  </div>
+  ${renderFechasPeriodosCard()}
+  <div class="card">
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Docente</th><th>Aulas / materias</th>
+        <th style="width:150px;">Hoja de tareas</th><th style="width:150px;">Calificaciones</th><th style="width:90px;"></th>
+      </tr></thead>
+      <tbody>
+        ${filas.length===0?`<tr><td colspan="5" class="empty">No hay docentes con asignaturas asignadas.</td></tr>`:''}
+        ${filas.map(({docente:d, ev})=>{
+          const abierto = viewState.segDocAbierto === d.id;
+          return `<tr>
+            <td><b>${esc(d.nombre)}</b></td>
+            <td style="font-size:12px;">${ev.asignaciones.map(a=>esc(a.grado)+' · '+esc(a.asignaturaNombre)).join('<br>')}</td>
+            <td>${pill(ev.hojaPendiente)}</td>
+            <td>${pill(ev.califPendiente)}</td>
+            <td><button class="icon-btn" onclick="viewState.segDocAbierto = viewState.segDocAbierto==='${d.id}'?null:'${d.id}'; render();">${abierto?'Cerrar':'Detalle'}</button></td>
+          </tr>
+          ${abierto?`<tr><td colspan="5" style="background:var(--panel-2);">
+            <table>
+              <thead><tr><th>Aula</th><th>Materia</th><th>Hoja de tareas</th><th>Calificaciones</th><th></th></tr></thead>
+              <tbody>
+                ${ev.asignaciones.map(a=>`<tr>
+                  <td>${esc(a.grado)}</td>
+                  <td>${esc(a.asignaturaNombre)}</td>
+                  <td>${a.huboPeriodoEnCurso ? pill(a.hojaPendiente) + (a.hojaPendiente?` <span class="nota-chica">(${a.filasPendHoja} de ${a.filasTotal} sin llenar)</span>`:'') : '<span class="pill pill-muted">Todavía no arranca el período</span>'}</td>
+                  <td>${a.huboFilasPasadas ? pill(a.califPendiente) + (a.califPendiente?` <span class="nota-chica">(${a.filasPendCalif} de ${a.filasTotal} sin notas)</span>`:'') : '<span class="pill pill-muted">Sin fechas vencidas</span>'}</td>
+                  <td><button class="icon-btn" onclick="irAHojaDocente('${esc(a.grado)}','${a.asignaturaId}')">Ir a su hoja</button></td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </td></tr>`:''}`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+}
+/* Salta directo a la Hoja de tareas de esa aula/materia, esté pendiente o no */
+function irAHojaDocente(grado, asigId){
+  setPref('hojaGrado', grado);
+  setPref('hojaAsig', asigId);
+  goTo('hojas');
+}
 function renderDocentes(){
   if(!canManageAcademicData(currentUser)) return renderNoAccess();
   const admins = DB.docentes.filter(t=>t.tipo==='admin');
