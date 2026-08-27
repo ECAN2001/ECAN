@@ -838,11 +838,15 @@ function adoptarDoc(doc){
   if(DB.ajustes.siglas === undefined) DB.ajustes.siglas = 'ECAN';
 }
 async function leerDoc(){
-  try{
-    const v = await leerCrudo(DOC_KEY, true);
-    if(!v) return null;
-    return JSON.parse(v);
-  }catch(e){ return null; }
+  // OJO: no se debe confundir "no hay ningún dato todavía" con "hubo un
+  // error leyendo" — antes ambos casos devolvían null por igual, y eso
+  // hacía que un simple corte de internet pudiera terminar borrando los
+  // datos reales (el sistema pensaba "está vacío" y escribía una base en
+  // blanco encima). Ahora, si falla la lectura, se avisa con un error en
+  // vez de asumir que no hay nada.
+  const v = await leerCrudo(DOC_KEY, true);
+  if(!v) return null;
+  return JSON.parse(v);
 }
 function escribirDoc(doc){ return escribirCrudo(DOC_KEY, JSON.stringify(doc), true); }
 
@@ -863,7 +867,24 @@ function esDemoAntiguo(doc){
 
 async function loadAll(){
   await detectarMotor();
-  let doc = await leerDoc();
+  let doc, huboErrorDeLectura = false;
+  try{
+    doc = await leerDoc();
+  }catch(e){
+    // No se pudo leer (por ejemplo, un corte de internet momentáneo). Antes
+    // esto se trataba igual que "no hay datos" y terminaba escribiendo una
+    // base en blanco encima de la real — nunca más: si hubo un error de
+    // verdad, no se toca nada y se avisa.
+    console.error('lectura de la base', e);
+    huboErrorDeLectura = true;
+    doc = null;
+  }
+  if(huboErrorDeLectura){
+    setSyncStatus('error');
+    showToast('No se pudo conectar para traer tus datos. Tus datos NO se tocaron — revisa tu internet e intenta de nuevo.');
+    baseCompletaCargada = false;
+    return;
+  }
   if(!doc){
     const viejos = {};
     let encontrado = false;
@@ -6748,6 +6769,49 @@ function renderDocentes(){
   </div>
   ${renderTeacherModal()}`;
 }
+/* Convierte a alguien YA CARGADO en cuenta de acceso total, conservando su
+   mismo usuario y contraseña — no crea una cuenta nueva. */
+function darAccesoTotal(id){
+  if(!isDireccion(currentUser)){ showToast('Solo Dirección puede hacer esto.'); return; }
+  const t = DB.docentes.find(x=>x.id===id);
+  if(!t) return;
+  if(!confirm(`¿Dar acceso total a ${t.nombre}? Va a poder ver y editar todo el sistema, con su mismo usuario y contraseña.`)) return;
+  const dom = prompt('Nombre del dominio para esta cuenta (ej.: Subdirección, Coordinación Académica):');
+  if(dom === null) return;
+  const nombreDominio = dom.trim();
+  if(!nombreDominio){ showToast('Escribe el nombre del dominio.'); return; }
+  commit(doc=>{
+    const d = doc.docentes.find(x=>x.id===id);
+    if(!d) return;
+    d.tipo = 'admin';
+    d.dominio = uid('dom');
+    d.dominioNombre = nombreDominio;
+  });
+  registrar('Docentes', 'Le dio acceso total a ' + t.nombre);
+  showToast(t.nombre + ' ahora tiene acceso total.');
+  closeModal();
+  render();
+}
+/* Camino inverso: vuelve a ser un docente normal, conservando su usuario,
+   contraseña y asignaturas de antes de tener acceso total. */
+function quitarAccesoTotal(id){
+  if(!isDireccion(currentUser)){ showToast('Solo Dirección puede hacer esto.'); return; }
+  const t = DB.docentes.find(x=>x.id===id);
+  if(!t) return;
+  if(t.dominio === 'direccion'){ showToast('El dominio de Dirección no se puede quitar.'); return; }
+  if(!confirm(`¿Quitarle el acceso total a ${t.nombre}? Va a volver a ser un docente normal.`)) return;
+  commit(doc=>{
+    const d = doc.docentes.find(x=>x.id===id);
+    if(!d) return;
+    d.tipo = 'docente';
+    d.dominio = null;
+    d.dominioNombre = '';
+  });
+  registrar('Docentes', 'Le quitó el acceso total a ' + t.nombre);
+  showToast('Acceso total retirado.');
+  closeModal();
+  render();
+}
 function agregarDominio(){
   if(!isDireccion(currentUser)) return;
   const persona = prompt('Nombre de la persona a cargo (ej.: Lic. Rosa Méndez):');
@@ -6851,7 +6915,14 @@ function renderTeacherModal(){
 
       ${esAdminTarget ? `
         <div class="note">Esta es una cuenta de dominio (${esc(domainLabel(t))}). Su acceso académico es total por defecto.</div>
+        ${(editingId && isDireccion(currentUser)) ? `<div class="btn-row"><button class="btn btn-sm" onclick="quitarAccesoTotal('${editingId}')">Quitar acceso total (volver a docente normal)</button></div>` : ''}
       ` : `
+        ${(editingId && isDireccion(currentUser)) ? `
+        <div class="card" style="background:var(--panel-2); margin:4px 0 16px;">
+          <p class="card-title" style="margin-bottom:6px;">Acceso total</p>
+          <p class="nota-chica" style="margin:0 0 10px;">Convierte esta cuenta en un dominio de acceso total (ve y edita todo el sistema), conservando su mismo usuario y contraseña.</p>
+          <button class="btn btn-sm" onclick="darAccesoTotal('${editingId}')">Dar acceso total a esta persona</button>
+        </div>` : ''}
         <div class="field">
           <label>Grados de orientación (acceso total a esas aulas)</label>
           <div class="tag-row">
