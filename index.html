@@ -1999,7 +1999,7 @@ function canEditGrades(u, grado, asignaturaId){
 function canManageAcademicData(u){ return isAdmin(u); }
 function canEditTeacherAccount(u, target){
   if(target && (target.tipo === 'propietaria' || target.tipo === 'propietario')) return !!(u && u.id === target.id);
-  if(isDireccion(u)) return true;
+  if(isAdmin(u)) return true;
   if(isAdmin(u) && target.tipo === 'docente') return true;
   return false;
 }
@@ -6617,7 +6617,7 @@ function renderFechasPeriodosCard(){
   return `
   <div class="card">
     <p class="card-title">Fecha de inicio de cada período</p>
-    <p class="nota-chica" style="margin:-4px 0 10px;">Solo Dirección puede cambiar esto — los docentes no la ven ni la pueden tocar. A partir de esta fecha se exige la Hoja de tareas completa de ese período.</p>
+    <p class="nota-chica" style="margin:-4px 0 10px;">Solo un usuario de acceso total puede cambiar esto — los docentes no la ven ni la pueden tocar. A partir de esta fecha se exige la Hoja de tareas completa de ese período.</p>
     <div class="grid grid-4">
       ${[1,2,3,4].map(p=>`
         <div class="field"><label>Período ${p}</label>
@@ -6712,12 +6712,12 @@ function renderDocentes(){
   <div class="page-head">
     <p class="page-eyebrow">Base de datos</p>
     <h1 class="page-title">Docentes y administración</h1>
-    <p class="page-desc">Los dominios tienen acceso total al sistema. Solo Dirección puede crear, renombrar o eliminar dominios, y su propio dominio está protegido.</p>
+    <p class="page-desc">Los dominios tienen acceso total al sistema. Cualquier cuenta de acceso total puede crear, renombrar o eliminar dominios; el dominio de Dirección está protegido.</p>
   </div>
 
   <div class="card">
     <p class="card-title">Dominios de acceso total
-      ${isDireccion(currentUser)?`<button class="btn btn-sm btn-primary" onclick="agregarDominio()">+ Agregar dominio</button>`:''}
+      ${isAdmin(currentUser)?`<button class="btn btn-sm btn-primary" onclick="agregarDominio()">+ Agregar dominio</button>`:''}
     </p>
     <p style="font-size:13px; color:var(--muted); margin:0 0 14px;">
       Estas cuentas ven y editan todo el sistema. El dominio de Dirección no se puede renombrar ni eliminar.
@@ -6728,7 +6728,7 @@ function renderDocentes(){
       <tbody>
         ${admins.map(t=>{
           const esDir = t.dominio==='direccion';
-          const puede = isDireccion(currentUser);
+          const puede = isAdmin(currentUser);
           return `
           <tr>
             <td>${esc(t.nombre)}</td>
@@ -6736,7 +6736,7 @@ function renderDocentes(){
               ? `<input type="text" value="${esc(domainLabel(t))}" onchange="renombrarDominio('${t.id}', this.value)" style="max-width:250px;">`
               : `<span class="badge ${badgeClass(t)}">${esc(domainLabel(t))}</span>`}</td>
             <td>
-              ${canEditTeacherAccount(currentUser,t) ? `<button class="icon-btn" onclick="openTeacherModal('${t.id}')">Editar</button>` : `<span class="empty" style="padding:0;">Solo Dirección</span>`}
+              ${canEditTeacherAccount(currentUser,t) ? `<button class="icon-btn" onclick="openTeacherModal('${t.id}')">Editar</button>` : `<span class="empty" style="padding:0;">Solo acceso total</span>`}
               ${(puede && !esDir) ? `<button class="icon-btn" onclick="eliminarDominio('${t.id}')">Eliminar</button>` : ''}
             </td>
           </tr>`;
@@ -6790,7 +6790,7 @@ function renderDocentes(){
 /* Convierte a alguien YA CARGADO en cuenta de acceso total, conservando su
    mismo usuario y contraseña — no crea una cuenta nueva. */
 function darAccesoTotal(id){
-  if(!isDireccion(currentUser)){ showToast('Solo Dirección puede hacer esto.'); return; }
+  if(!isAdmin(currentUser)){ showToast('Solo un usuario de acceso total puede hacer esto.'); return; }
   const t = DB.docentes.find(x=>x.id===id);
   if(!t) return;
   if(!confirm(`¿Dar acceso total a ${t.nombre}? Va a poder ver y editar todo el sistema, con su mismo usuario y contraseña.`)) return;
@@ -6813,7 +6813,7 @@ function darAccesoTotal(id){
 /* Camino inverso: vuelve a ser un docente normal, conservando su usuario,
    contraseña y asignaturas de antes de tener acceso total. */
 function quitarAccesoTotal(id){
-  if(!isDireccion(currentUser)){ showToast('Solo Dirección puede hacer esto.'); return; }
+  if(!isAdmin(currentUser)){ showToast('Solo un usuario de acceso total puede hacer esto.'); return; }
   const t = DB.docentes.find(x=>x.id===id);
   if(!t) return;
   if(t.dominio === 'direccion'){ showToast('El dominio de Dirección no se puede quitar.'); return; }
@@ -6831,7 +6831,7 @@ function quitarAccesoTotal(id){
   render();
 }
 function agregarDominio(){
-  if(!isDireccion(currentUser)) return;
+  if(!isAdmin(currentUser)) return;
   const persona = prompt('Nombre de la persona a cargo (ej.: Lic. Rosa Méndez):');
   if(persona === null) return;
   const nombrePersona = persona.trim();
@@ -6933,9 +6933,9 @@ function renderTeacherModal(){
 
       ${esAdminTarget ? `
         <div class="note">Esta es una cuenta de dominio (${esc(domainLabel(t))}). Su acceso académico es total por defecto.</div>
-        ${(editingId && isDireccion(currentUser)) ? `<div class="btn-row"><button class="btn btn-sm" onclick="quitarAccesoTotal('${editingId}')">Quitar acceso total (volver a docente normal)</button></div>` : ''}
+        ${(editingId && isAdmin(currentUser)) ? `<div class="btn-row"><button class="btn btn-sm" onclick="quitarAccesoTotal('${editingId}')">Quitar acceso total (volver a docente normal)</button></div>` : ''}
       ` : `
-        ${(editingId && isDireccion(currentUser)) ? `
+        ${(editingId && isAdmin(currentUser)) ? `
         <div class="card" style="background:var(--panel-2); margin:4px 0 16px;">
           <p class="card-title" style="margin-bottom:6px;">Acceso total</p>
           <p class="nota-chica" style="margin:0 0 10px;">Convierte esta cuenta en un dominio de acceso total (ve y edita todo el sistema), conservando su mismo usuario y contraseña.</p>
@@ -7082,7 +7082,7 @@ async function deleteTeacher(id){
 function renderPersonalizar(){
   if(!canManageAcademicData(currentUser)) return renderNoAccess();
   const modalUsuario = renderTeacherModal();
-  const soloDir = isDireccion(currentUser);
+  const soloDir = isAdmin(currentUser);
   const aj = DB.ajustes || {};
   const docentes = DB.docentes.filter(t=>!esPropietario(t)).slice().sort((a,b)=>
     (a.tipo===b.tipo?0:(a.tipo==='admin'?-1:1)) || a.nombre.localeCompare(b.nombre,'es'));
@@ -7193,7 +7193,7 @@ function renderPersonalizar(){
   ${renderCierreModal()}
   `}
   ${modalUsuario}
-  ${!soloDir ? `<div class="note">La identidad del centro escolar, los grados, la ponderación, las contraseñas y el cierre de año los administra Dirección.</div>` : ''}`;
+  ${!soloDir ? `<div class="note">La identidad del centro escolar, los grados, la ponderación, las contraseñas y el cierre de año los administra cualquier cuenta de acceso total.</div>` : ''}`;
 }
 function renderPonderacion(){
   const lista = rubrosActivos();
@@ -7704,7 +7704,7 @@ function definirClave(id){
 function regenerarUsuarioDocente(id){
   const t0 = DB.docentes.find(x=>x.id===id);
   if(t0 && esPropietario(t0)){ showToast('Esta cuenta no se puede modificar desde aquí.'); return; }
-  if(!isDireccion(currentUser)) return;
+  if(!isAdmin(currentUser)) return;
   commit(doc=>{
     const t = doc.docentes.find(x=>x.id===id);
     if(t) t.usuario = generarUsuarioDocente(t.nombre, t.id);
@@ -7781,7 +7781,7 @@ function renderTarjetaClave(){
         <button class="btn btn-primary" onclick="cambiarMiClave()">Guardar contraseña</button>
         ${tiene?`<button class="btn btn-danger" onclick="quitarMiClave()">Quitar mi contraseña</button>`:''}
       </div>
-      ${esPropietario(currentUser)?'':`<div class="note" style="margin-top:14px;">Dirección puede consultar y restablecer las contraseñas del personal.</div>`}
+      ${esPropietario(currentUser)?'':`<div class="note" style="margin-top:14px;">Cualquier cuenta de acceso total puede consultar y restablecer las contraseñas del personal.</div>`}
     </div>`}
   </div>`;
 }
