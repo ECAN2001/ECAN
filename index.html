@@ -464,6 +464,10 @@ async function instalarApp(){
 }
 let sesionEstudiante = false;   // true cuando currentUser es un estudiante (no un docente/admin)
 let currentView = 'panel';
+/* Cuando se salta a Hojas de tareas desde el detalle de un docente en
+   Seguimiento, esto guarda a dónde volver (goTo() borra el viewState al
+   navegar, así que no sobrevive solo). */
+let volverDesdeSeguimiento = null;
 let viewState = {}; // estado temporal de cada pantalla (modales, formularios)
 /* Lo que el usuario elige en los selectores se recuerda en este equipo,
    así no hay que volver a escogerlo al cambiar de pantalla ni al recargar. */
@@ -2901,6 +2905,7 @@ function renderLayout(){
 }
 
 function goTo(id){
+  volverDesdeSeguimiento = null;
   currentView = id; viewState = {}; render();
   guardarSesion();
   pullCambios(true); // al cambiar de sección se traen los cambios de otros docentes
@@ -6564,9 +6569,12 @@ function evaluarAsignacionSeguimiento(grado, asigId){
     filasReales.forEach(f=>{
       filasTotal++;
       // Hoja de tareas: toda la fila debe estar llena, sin importar su fecha.
+      // Para integradoras, "Contenido" y "Tarea" son los campos con texto
+      // real que escribe el docente (la Etiqueta se autocompleta sola al
+      // crear la fila, así que no cuenta como contenido real).
       const sinTexto = f.tipo==='tarea'
         ? !(f.contenido||'').trim() && !(f.tarea||'').trim()
-        : !(f.tarea||'').trim();
+        : !(f.tarea||'').trim() && !(f.contenido||'').trim();
       if(sinTexto){ hojaPendiente = true; filasPendHoja++; }
       // Calificaciones: solo se exige de las fechas que ya vencieron.
       if(!f.fecha || f.fecha>hoy) return;
@@ -6661,7 +6669,7 @@ function renderSeguimientoDocentes(){
                   <td>${esc(a.asignaturaNombre)}</td>
                   <td>${a.huboPeriodoEnCurso ? pill(a.hojaPendiente) + (a.hojaPendiente?` <span class="nota-chica">(${a.filasPendHoja} de ${a.filasTotal} sin llenar)</span>`:'') : '<span class="pill pill-muted">Todavía no arranca el período</span>'}</td>
                   <td>${a.huboFilasPasadas ? pill(a.califPendiente) + (a.califPendiente?` <span class="nota-chica">(${a.filasPendCalif} de ${a.filasTotal} sin notas)</span>`:'') : '<span class="pill pill-muted">Sin fechas vencidas</span>'}</td>
-                  <td><button class="icon-btn" onclick="irAHojaDocente('${esc(a.grado)}','${a.asignaturaId}')">Ir a su hoja</button></td>
+                  <td><button class="icon-btn" onclick="irAHojaDocente('${esc(a.grado)}','${a.asignaturaId}','${d.id}')">Ir a su hoja</button></td>
                 </tr>`).join('')}
               </tbody>
             </table>
@@ -6673,10 +6681,20 @@ function renderSeguimientoDocentes(){
   </div>`;
 }
 /* Salta directo a la Hoja de tareas de esa aula/materia, esté pendiente o no */
-function irAHojaDocente(grado, asigId){
+function irAHojaDocente(grado, asigId, docenteId){
   setPref('hojaGrado', grado);
   setPref('hojaAsig', asigId);
   goTo('hojas');
+  volverDesdeSeguimiento = {docenteId: docenteId || null};
+  render();
+}
+function volverASeguimiento(){
+  const docenteId = volverDesdeSeguimiento ? volverDesdeSeguimiento.docenteId : null;
+  volverDesdeSeguimiento = null;
+  currentView = 'seguimiento';
+  viewState = {segDocAbierto: docenteId};
+  render();
+  guardarSesion();
 }
 function renderDocentes(){
   if(!canManageAcademicData(currentUser)) return renderNoAccess();
@@ -8491,6 +8509,9 @@ function renderHojas(){
     <h1 class="page-title">Hoja de tareas</h1>
     <p class="page-desc">Lo que escribas aquí alimenta Calificaciones: el texto de "${esc(cfg.encabezados.tareas)}" es el nombre de cada actividad y la fecha se copia sola.</p>
   </div>
+  ${volverDesdeSeguimiento?`<div class="btn-row" style="margin-bottom:14px;">
+    <button class="btn btn-sm" onclick="volverASeguimiento()">← Volver a Seguimiento de docentes</button>
+  </div>`:''}
   <div class="filters">
     <div class="field">
       <label>Aula</label>
