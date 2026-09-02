@@ -816,7 +816,7 @@ function docActual(){
     curriculo: DB.curriculo, tareas: DB.tareas, estados: DB.estados,
     observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros,
     boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes, averias: DB.averias,
-    soporte: DB.soporte, mensajes: DB.mensajes
+    soporte: DB.soporte, mensajes: DB.mensajes, reportesEliminados: DB.reportesEliminados
   };
 }
 function adoptarDoc(doc){
@@ -838,6 +838,7 @@ function adoptarDoc(doc){
   DB.averias = doc.averias || [];
   DB.soporte = doc.soporte || [];
   DB.mensajes = doc.mensajes || [];
+  DB.reportesEliminados = doc.reportesEliminados || [];
   DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
   if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
@@ -927,6 +928,7 @@ async function loadAll(){
   if(!DB.averias) DB.averias = [];
   if(!DB.soporte) DB.soporte = [];
   if(!DB.mensajes) DB.mensajes = [];
+  if(!DB.reportesEliminados) DB.reportesEliminados = [];
   if(DB.config.correlativoReportes === undefined){
     // Compatibilidad con datos ya existentes: arranca del número más alto ya usado.
     const nums = DB.reportes.map(r=>Number(r.numero)||0);
@@ -2007,6 +2009,13 @@ function canEditGrades(u, grado, asignaturaId){
   return u.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asignaturaId);
 }
 function canManageAcademicData(u){ return isAdmin(u); }
+/* Quién puede entrar a Personalizar → Mensajes: acceso total completo
+   (isAdmin), o un docente con "alcanceTotal" (ve todas las aulas), aunque
+   no tenga el resto de permisos de Dirección. */
+function puedePersonalizarMensajes(u){
+  u = u || currentUser;
+  return isAdmin(u) || !!(u && u.alcanceTotal);
+}
 function canEditTeacherAccount(u, target){
   if(target && (target.tipo === 'propietaria' || target.tipo === 'propietario')) return !!(u && u.id === target.id);
   if(isAdmin(u)) return true;
@@ -2772,6 +2781,18 @@ async function entrarPropietaria(){
 let selloVisto = '';
 function hoyTexto(){ return new Date().toISOString().slice(0,10); }
 /* Huella del mensaje: si Dirección lo cambia, se vuelve a mostrar el mismo día */
+/* Mensaje que le corresponde a ESTE usuario: su versión personal si se le
+   configuró una, o la general del centro escolar si no. Los estudiantes
+   nunca tienen mensaje personal (no aplica: no ven este mensaje en absoluto,
+   ver debeMostrarMensaje). */
+function saludoDe(u){
+  if(u && u.fraseSaludoPersonal) return u.fraseSaludoPersonal;
+  return (DB.ajustes && DB.ajustes.fraseSaludo) || '';
+}
+function mensajeBienvenidaDe(u){
+  if(u && u.mensajeBienvenidaPersonal) return u.mensajeBienvenidaPersonal;
+  return (DB.ajustes && DB.ajustes.mensajeBienvenida) || '';
+}
 function huellaMensaje(txt){
   let h = 5381;
   for(let i=0;i<txt.length;i++) h = ((h*33) ^ txt.charCodeAt(i)) >>> 0;
@@ -2780,7 +2801,7 @@ function huellaMensaje(txt){
 /* El sello incluye al usuario: si en este dispositivo entra alguien que
    todavía no lo ha visto, el mensaje le aparece aunque otro ya lo haya aceptado. */
 function selloActual(){
-  const txt = (DB.ajustes && DB.ajustes.mensajeBienvenida) || '';
+  const txt = mensajeBienvenidaDe(currentUser);
   const quien = currentUser ? currentUser.id : 'nadie';
   return quien + '|' + hoyTexto() + '|' + huellaMensaje(txt);
 }
@@ -2802,7 +2823,7 @@ function leerVistos(){
 function quienSoy(){ return currentUser ? currentUser.id : 'nadie'; }
 function debeMostrarMensaje(){
   if(sesionEstudiante) return false;   // los estudiantes no ven el mensaje de bienvenida
-  const txt = (DB.ajustes && DB.ajustes.mensajeBienvenida) || '';
+  const txt = mensajeBienvenidaDe(currentUser);
   if(!txt) return false;
   const sello = selloActual();
   if(selloVisto === sello) return false;       // ya se aceptó en esta sesión
@@ -2829,7 +2850,7 @@ function renderMensajeBienvenida(){
     <div class="modal" style="max-width:520px; text-align:center;">
       ${aj.logo?`<img src="${aj.logo}" alt="Logo" style="width:64px;height:64px;object-fit:contain;margin:0 auto 14px;display:block;">`:''}
       <h3 class="modal-title" style="text-align:center;">${esc(aj.nombreColegio || 'Centro Escolar')}</h3>
-      <p style="font-size:14.5px; line-height:1.7; white-space:pre-wrap; margin:0 0 22px; text-align:left;">${esc(aj.mensajeBienvenida)}</p>
+      <p style="font-size:14.5px; line-height:1.7; white-space:pre-wrap; margin:0 0 22px; text-align:left;">${esc(mensajeBienvenidaDe(currentUser))}</p>
       <button class="btn btn-primary" onclick="cerrarMensajeBienvenida()" style="min-width:140px;">Aceptar</button>
     </div>
   </div>`;
@@ -2869,7 +2890,7 @@ const NAV_ITEMS = [
 ];
 function navAllowed(id){
   if(id==='bitacora') return canManageAcademicData(currentUser);
-  if(id==='personalizar') return canManageAcademicData(currentUser);
+  if(id==='personalizar') return canManageAcademicData(currentUser) || puedePersonalizarMensajes(currentUser);
   if(id==='asignaturas' || id==='docentes') return canManageAcademicData(currentUser);
   if(id==='seguimiento') return canManageAcademicData(currentUser);
   if(PANELES.some(p=>p.id===id)) return puedeVerPanel(currentUser, id);
@@ -3476,6 +3497,7 @@ function renderReportes(){
     ${NIVELES_FALTA.map(n=>`<div class="period-tab ${vista==='nuevo'&&nivel===n.id?'active':''}"
       onclick="setPref('repVista','nuevo'); setPref('repNivel','${n.id}')">${n.noEsFalta?esc(n.nombre):'Falta '+esc(n.nombre.toLowerCase())}</div>`).join('')}
     <div class="period-tab ${vista==='historial'?'active':''}" onclick="setPref('repVista','historial')">Historial</div>
+    ${puedeEditar?`<div class="period-tab ${vista==='eliminados'?'active':''}" onclick="setPref('repVista','eliminados')">Eliminados</div>`:''}
   </div>`;
 
   let cuerpo;
@@ -3580,6 +3602,43 @@ function renderReportes(){
                 </div>
               </div>
             </td></tr>`:''}`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+  }else if(vista === 'eliminados' && puedeEditar){
+    const listaElim = (DB.reportesEliminados||[]).slice().sort((a,b)=>(b.eliminadoTs||'').localeCompare(a.eliminadoTs||''));
+    cuerpo = `
+    <div class="note">Reportes que fueron eliminados del historial activo. Se conservan aquí como respaldo — puedes restaurarlos si fue un error.</div>
+    <div class="card">
+      <p class="card-title">Eliminados <span class="pill pill-muted">${listaElim.length} reporte(s)</span></p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:56px;">N°</th><th style="width:84px;">Fecha</th><th style="width:150px;">Estudiante</th><th style="width:95px;">Grado</th>
+          <th style="width:110px;">Falta</th><th style="width:auto;min-width:280px;">Descripción</th>
+          <th style="width:150px;">Eliminado por</th><th style="width:96px;">Cuándo</th><th style="width:120px;"></th></tr></thead>
+        <tbody>
+          ${listaElim.length===0?`<tr><td colspan="9" class="empty">No hay reportes eliminados.</td></tr>`:''}
+          ${listaElim.map(r=>{
+            const n = nivelFalta(r.nivel);
+            const descLarga = (r.descripcion||'').length > 110;
+            const descExpandida = !!(viewState.descExpandidaElim && viewState.descExpandidaElim[r.id]);
+            const descTexto = (descLarga && !descExpandida) ? (r.descripcion||'').slice(0,110).trim() + '…' : (r.descripcion||'');
+            return `<tr>
+              <td class="mono"><b>${esc(String(r.numero||'').padStart(3,'0'))}</b></td>
+              <td class="mono">${esc(r.fecha||'')}</td>
+              <td>${esc(r.estudiante)}</td>
+              <td>${esc(r.grado)}</td>
+              <td><span class="pill ${n.pill}">${esc(n.nombre)}</span> <span class="pill pill-muted">${esc(n.formato)}</span></td>
+              <td style="font-size:12.5px;">${esc(descTexto)}${descLarga?` <a href="#" class="ver-mas" onclick="toggleDescripcionElim('${r.id}'); return false;">${descExpandida?'Ver menos':'Ver más'}</a>`:''}</td>
+              <td style="font-size:12px;">${esc(r.eliminadoPor||'—')}</td>
+              <td style="font-size:12px;">${esc(fechaLegible(r.eliminadoTs))}</td>
+              <td class="hj-acciones">
+                <button class="icon-btn" onclick="verReporte('${r.id}', true)">Ver</button>
+                <button class="icon-btn" onclick="restaurarReporteEliminado('${r.id}')">Restaurar</button>
+              </td>
+            </tr>`;
           }).join('')}
         </tbody>
       </table>
@@ -3704,18 +3763,45 @@ function toggleDescripcion(id){
   viewState.descExpandida[id] = !viewState.descExpandida[id];
   render();
 }
+function toggleDescripcionElim(id){
+  viewState.descExpandidaElim = viewState.descExpandidaElim || {};
+  viewState.descExpandidaElim[id] = !viewState.descExpandidaElim[id];
+  render();
+}
+function restaurarReporteEliminado(id){
+  if(!puedeEditarPanel(currentUser, 'reportes') || currentUser.soloLectura){
+    showToast('No tienes permiso para restaurar reportes.'); return;
+  }
+  if(!confirm('¿Restaurar este reporte al historial activo?')) return;
+  commit(doc=>{
+    const i = (doc.reportesEliminados||[]).findIndex(r=>r.id===id);
+    if(i<0) return;
+    const [reporte] = doc.reportesEliminados.splice(i,1);
+    delete reporte.eliminadoTs; delete reporte.eliminadoPor; delete reporte.eliminadoPorId;
+    doc.reportes = doc.reportes || [];
+    doc.reportes.push(reporte);
+  });
+  registrar('Reporte disciplinario', 'Restauró un reporte eliminado');
+  showToast('Reporte restaurado.');
+  render();
+}
 function alternarDetalleReporte(id){
   viewState.repAbierto = (viewState.repAbierto === id) ? null : id;
   if(viewState.repAbierto) registrarVista(id);
   render();
 }
 function guardarReporte(){
+  // Evita reportes duplicados si se hace clic varias veces seguidas
+  // (por ejemplo, con internet lento y la persona pensando que no funcionó).
+  if(guardarReporte._enCurso) return;
+  guardarReporte._enCurso = true;
+  setTimeout(()=>{ guardarReporte._enCurso = false; }, 1500);
   const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
   const estId = val('rep_est') || getPref('repEst','');
   const est = DB.estudiantes.find(e=>e.id===estId);
-  if(!est){ showToast('Selecciona el estudiante.'); return; }
+  if(!est){ showToast('Selecciona el estudiante.'); guardarReporte._enCurso = false; return; }
   const desc = val('rep_desc');
-  if(!desc){ showToast('Describe lo sucedido.'); return; }
+  if(!desc){ showToast('Describe lo sucedido.'); guardarReporte._enCurso = false; return; }
   const nivel = getPref('repNivel','leve');
   const marcadas = (prefijo, lista) => lista.filter((t,i)=>{
     const el = document.getElementById(prefijo + i);
@@ -3748,7 +3834,17 @@ function eliminarReporte(id){
   if(!confirm('¿Eliminar este reporte del historial?')) return;
   commit(doc=>{
     const i = (doc.reportes||[]).findIndex(r=>r.id===id);
-    if(i>=0) doc.reportes.splice(i,1);
+    if(i>=0){
+      const [reporte] = doc.reportes.splice(i,1);
+      doc.reportesEliminados = doc.reportesEliminados || [];
+      doc.reportesEliminados.push({
+        ...reporte,
+        eliminadoTs: new Date().toISOString(),
+        eliminadoPor: currentUser.nombre,
+        eliminadoPorId: currentUser.id
+      });
+      if(doc.reportesEliminados.length > 500) doc.reportesEliminados = doc.reportesEliminados.slice(-500);
+    }
   });
   registrar('Reporte disciplinario', 'Eliminó un reporte');
   render();
@@ -3998,10 +4094,12 @@ function descargarReporteFormulario(){
   if(!r.estudiante){ showToast('Selecciona el estudiante.'); return; }
   imprimirReportes([r], 'REPORTE ' + nivelFalta(r.nivel).formato + ' ' + r.estudiante.toUpperCase());
 }
-function verReporte(id){
-  const r = (DB.reportes||[]).find(x=>x.id===id);
+function verReporte(id, desdeEliminados){
+  const r = desdeEliminados
+    ? (DB.reportesEliminados||[]).find(x=>x.id===id)
+    : (DB.reportes||[]).find(x=>x.id===id);
   if(!r) return;
-  registrarVista(id);
+  if(!desdeEliminados) registrarVista(id);
   imprimirReportes([r], 'REPORTE ' + nivelFalta(r.nivel).formato + ' ' + (r.numero?correlativoTexto(r.numero)+' ':'') + r.estudiante.toUpperCase(), true);
 }
 function descargarReporte(id){
@@ -5086,7 +5184,7 @@ function renderPanel(){
 
   return `
   <div class="page-head">
-    <p class="saludo-grande">Hola, ${esc(saludoNombre(currentUser.nombre))}${(DB.ajustes && DB.ajustes.fraseSaludo) ? ' (' + esc(DB.ajustes.fraseSaludo) + ')' : ''}</p>
+    <p class="saludo-grande">Hola, ${esc(saludoNombre(currentUser.nombre))}${saludoDe(currentUser) ? ' (' + esc(saludoDe(currentUser)) + ')' : ''}</p>
     <h1 class="page-title">Panel principal</h1>
     <p class="page-desc">Resumen general del centro escolar y accesos según tu perfil (${esc(domainLabel(currentUser))}).</p>
   </div>
@@ -6931,6 +7029,18 @@ function renderTeacherModal(){
         <div class="field"><label>Cargo (aparece junto al nombre)</label>
           <input type="text" id="t_cargo" value="${esc(t.cargo||'')}" placeholder="Ej.: Docente, Recepción, Bibliotecaria"></div>
       </div>
+      <div class="card" style="background:var(--panel-2); margin:4px 0 16px;">
+        <p class="card-title" style="margin-bottom:6px;">Mensajes personalizados para esta persona</p>
+        <p class="nota-chica" style="margin:0 0 10px;">Si se dejan vacíos, ve el mensaje general configurado en "Personalizar → Mensajes para los docentes".</p>
+        <div class="field">
+          <label>Frase del saludo personal</label>
+          <input type="text" id="t_frase_personal" value="${esc(t.fraseSaludoPersonal||'')}" placeholder="Déjalo vacío para usar la frase general">
+        </div>
+        <div class="field">
+          <label>Mensaje al ingresar, personal</label>
+          <textarea id="t_mensaje_personal" rows="3" placeholder="Déjalo vacío para usar el mensaje general">${esc(t.mensajeBienvenidaPersonal||'')}</textarea>
+        </div>
+      </div>
       ${esAdminTarget?'':`
       <div class="field">
         <label>Tipo de acceso</label>
@@ -7033,17 +7143,26 @@ async function removeAsigFromModal(index){
   render();
 }
 async function saveTeacher(esAdmin){
+  // Evita usuarios duplicados si se hace clic varias veces seguidas
+  // (mismo motivo que en guardarReporte: internet lento y clics repetidos).
+  if(saveTeacher._enCurso) return;
+  saveTeacher._enCurso = true;
+  setTimeout(()=>{ saveTeacher._enCurso = false; }, 1500);
   const nombre = document.getElementById('t_nombre').value.trim();
-  if(!nombre){ showToast('Escribe el nombre del usuario.'); return; }
+  if(!nombre){ showToast('Escribe el nombre del usuario.'); saveTeacher._enCurso = false; return; }
   if(editingId){
     const objetivoActual = DB.docentes.find(x=>x.id===editingId);
     if(objetivoActual && esPropietario(objetivoActual) && !(currentUser && currentUser.id===objetivoActual.id)){
-      showToast('Esta cuenta no se puede editar.'); return;
+      showToast('Esta cuenta no se puede editar.'); saveTeacher._enCurso = false; return;
     }
   }
   const leerEl = id => document.getElementById(id);
   const campoCargo = leerEl('t_cargo');
   const cargo = campoCargo ? campoCargo.value.trim() : '';
+  const campoFrasePersonal = leerEl('t_frase_personal');
+  const frasePersonal = campoFrasePersonal ? campoFrasePersonal.value.trim() : '';
+  const campoMensajePersonal = leerEl('t_mensaje_personal');
+  const mensajePersonal = campoMensajePersonal ? campoMensajePersonal.value.trim() : '';
   const chkLectura = leerEl('t_lectura');
   const chkAlcance = leerEl('t_alcance');
   const soloLectura = chkLectura ? !!chkLectura.checked : false;
@@ -7068,6 +7187,8 @@ async function saveTeacher(esAdmin){
       const t = doc.docentes.find(x=>x.id===objetivo);
       if(t){
         t.nombre = nombre;
+        if(frasePersonal) t.fraseSaludoPersonal = frasePersonal; else delete t.fraseSaludoPersonal;
+        if(mensajePersonal) t.mensajeBienvenidaPersonal = mensajePersonal; else delete t.mensajeBienvenidaPersonal;
         if(!esAdmin){
           t.orientaciones = orientaciones; delete t.orientacion;
           t.cargo = cargo;
@@ -7080,6 +7201,8 @@ async function saveTeacher(esAdmin){
   }else{
     const nuevo = {id:uid('t'), nombre, tipo:'docente', dominio:null, asignaciones:[], orientaciones:orientaciones,
       cargo: cargo, paneles: Object.keys(paneles).length ? paneles : undefined};
+    if(frasePersonal) nuevo.fraseSaludoPersonal = frasePersonal;
+    if(mensajePersonal) nuevo.mensajeBienvenidaPersonal = mensajePersonal;
     nuevo.usuario = generarUsuarioDocente(nombre, nuevo.id);
     if(soloLectura) nuevo.soloLectura = true;
     if(alcanceTotal) nuevo.alcanceTotal = true;
@@ -7104,7 +7227,7 @@ async function deleteTeacher(id){
 }
 
 function renderPersonalizar(){
-  if(!canManageAcademicData(currentUser)) return renderNoAccess();
+  if(!canManageAcademicData(currentUser) && !puedePersonalizarMensajes(currentUser)) return renderNoAccess();
   const modalUsuario = renderTeacherModal();
   const soloDir = isAdmin(currentUser);
   const aj = DB.ajustes || {};
