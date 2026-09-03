@@ -442,7 +442,31 @@ window.addEventListener('appinstalled', ()=>{ promptInstalacion = null; try{ ren
    verdad, no solo un acceso directo que abre dentro de Chrome. */
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('sw.js').catch(err=>console.warn('service worker', err));
+    navigator.serviceWorker.register('sw.js').then(reg=>{
+      // Revisa de inmediato si hay una versión nueva, en vez de esperar
+      // hasta 24 horas (que es cada cuánto el navegador lo hace solo).
+      reg.update();
+      reg.addEventListener('updatefound', ()=>{
+        const nuevo = reg.installing;
+        if(!nuevo) return;
+        nuevo.addEventListener('statechange', ()=>{
+          // 'installed' + ya había un controlador anterior = esto es una
+          // actualización real (no la primera instalación). Recargamos
+          // solos para que la persona vea la versión nueva sin que tenga
+          // que limpiar caché a mano.
+          if(nuevo.state === 'installed' && navigator.serviceWorker.controller){
+            window.location.reload();
+          }
+        });
+      });
+    }).catch(err=>console.warn('service worker', err));
+  });
+  // También revisa cada vez que la pestaña vuelve a estar activa, por si
+  // alguien la dejó abierta varios días sin cerrarla.
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden){
+      navigator.serviceWorker.getRegistration().then(r=>{ if(r) r.update(); });
+    }
   });
 }
 function appYaInstalada(){
