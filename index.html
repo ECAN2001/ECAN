@@ -3456,22 +3456,50 @@ function renderBoletasEstudiante_(est){
 }
 
 /* ============================= REPORTES DISCIPLINARIOS ============================= */
-const OPC_F1 = {
+const OPC_F1_DEFAULT = {
   situacion: ['Agresión verbal','Agresión física','No participación','Daño material','Desacato al docente',
     'Incumplimiento de material','Incumplimiento de trabajo en clase','Participó en una pelea',
     'Tiene una constante conducta agresiva','Incumplimiento de tareas',
     'Conducta peligrosa durante el receso','Usó un lenguaje obsceno','Otros'],
   antecedentes: ['Llamada de atención verbal','Reincidió de 1 a 2 veces',
-    'La titular dialogó con el niño (a)','Compromisos no cumplidos'],
+    'La titular dialogó con el niño (a)','Compromisos no cumplidos','Otros'],
   acciones: ['Diálogo con el estudiante','Estuvo un tiempo en la dirección de la escuela',
     'Se llamó a los padres de familia','Otras']
 };
-const OPC_F2 = {
+const OPC_F2_DEFAULT = {
   situacion: ['Agresión Verbal','Daño a muebles','Incumplimiento de tareas o trabajos','Agresión Física',
     'Desacato al docente','Conducta constante agresiva','Conducta de riesgo','Uso de lenguaje inapropiado','Otro'],
   antecedentes: ['Llamada de atención verbal','Reincidió 1 o 2 veces en esta situación',
     'Diálogo con el alumno','Compromisos no cumplidos','Otro']
 };
+/* Garantiza que la lista siempre tenga una opción "otro" al final, aunque
+   Dirección la haya borrado sin querer al editar el manual de convivencia
+   — así un maestro nunca se queda sin poder registrar una falta que no
+   está en la lista. */
+function asegurarOtroEnLista(lista, etiqueta){
+  lista = (lista||[]).map(s=>String(s).trim()).filter(Boolean);
+  const yaTiene = lista.some(s=>s.toLowerCase()===etiqueta.toLowerCase());
+  if(!yaTiene) lista.push(etiqueta);
+  return lista;
+}
+/* Devuelve las categorías del manual de convivencia: las que Dirección
+   haya personalizado desde Personalizar, o las de fábrica si todavía no
+   se ha configurado nada. */
+function opcionesF1(){
+  const m = DB.ajustes && DB.ajustes.manualF1;
+  return {
+    situacion: asegurarOtroEnLista(m && m.situacion && m.situacion.length ? m.situacion : OPC_F1_DEFAULT.situacion, 'Otros'),
+    antecedentes: asegurarOtroEnLista(m && m.antecedentes && m.antecedentes.length ? m.antecedentes : OPC_F1_DEFAULT.antecedentes, 'Otros'),
+    acciones: asegurarOtroEnLista(m && m.acciones && m.acciones.length ? m.acciones : OPC_F1_DEFAULT.acciones, 'Otras')
+  };
+}
+function opcionesF2(){
+  const m = DB.ajustes && DB.ajustes.manualF2;
+  return {
+    situacion: asegurarOtroEnLista(m && m.situacion && m.situacion.length ? m.situacion : OPC_F2_DEFAULT.situacion, 'Otro'),
+    antecedentes: asegurarOtroEnLista(m && m.antecedentes && m.antecedentes.length ? m.antecedentes : OPC_F2_DEFAULT.antecedentes, 'Otro')
+  };
+}
 const NIVELES_FALTA = [
   {id:'comunicacion', nombre:'Comunicación verbal', formato:'CV', pill:'pill-blue', color:'#2E5C7A', noEsFalta:true},
   {id:'leve',      nombre:'Leve',      formato:'F1', pill:'pill-gold',    color:'#B98A2E'},
@@ -3599,6 +3627,10 @@ function renderReportes(){
                   </div>`).join('')}
                   ${r.acuerdosAlumno?`<p class="card-title" style="margin:14px 0 6px;">Acuerdos</p>
                     <p style="font-size:12.5px;">${esc(r.acuerdosAlumno)}</p>`:''}
+                  ${r.articuloManual?`<p class="card-title" style="margin:14px 0 6px;">Manual de convivencia</p>
+                    <p style="font-size:12.5px;">${esc(r.articuloManual)}</p>`:''}
+                  ${r.imagen?`<p class="card-title" style="margin:14px 0 6px;">Fotografía</p>
+                    <img src="${r.imagen}" alt="Foto del reporte" style="max-width:100%;border-radius:8px;border:1px solid var(--line);cursor:pointer;" onclick="window.open('${r.imagen.replace(/'/g,"\\'")}','_blank')">`:''}
                 </div>
               </div>
             </td></tr>`:''}`;
@@ -3646,7 +3678,31 @@ function renderReportes(){
     </div>`;
   }else{
     const n = nivelFalta(nivel);
+    // Cuántos reportes de ESTE mismo nivel ya le puso ESTE docente a ESTE
+    // estudiante — para recomendar subir al siguiente nivel si ya van 2 o
+    // más, en vez de seguir acumulando reportes del mismo tipo.
+    // Comunicación (llamado de atención) → Leve → Grave → Muy grave.
+    const SIGUIENTE_NIVEL = {comunicacion:'leve', leve:'grave', grave:'muygrave'};
+    const nivelSiguienteId = SIGUIENTE_NIVEL[nivel];
+    const claveAviso = nivel + '|' + estF;
+    const yaAvisado = viewState.avisoNivelDismiss && viewState.avisoNivelDismiss[claveAviso];
+    const previosMismoNivel = (nivelSiguienteId && estF && !yaAvisado)
+      ? (DB.reportes||[]).filter(r=>r.nivel===nivel && r.estId===estF && r.docenteId===currentUser.id).length
+      : 0;
+    const mostrarAvisoNivel = previosMismoNivel >= 2 && puedeEditar;
+    const nivelSiguiente = nivelSiguienteId ? nivelFalta(nivelSiguienteId) : null;
+    const nombreActual = n.noEsFalta ? 'llamados de atención' : ('reportes de falta ' + n.nombre.toLowerCase());
+    const nombreSiguiente = nivelSiguiente ? (nivelSiguiente.noEsFalta ? nivelSiguiente.nombre : ('Falta ' + nivelSiguiente.nombre.toLowerCase())) : '';
     cuerpo = `
+    ${mostrarAvisoNivel?`
+    <div class="card" style="border-left:4px solid var(--gold, #B98A2E); background:var(--gold-light,#FBF1DD); margin-bottom:14px;">
+      <p class="card-title" style="margin-bottom:6px;">⚠️ Ya van ${previosMismoNivel} ${nombreActual} a este estudiante</p>
+      <p style="font-size:13px; margin:0 0 12px;">Se recomienda levantar esto como <b>${nombreSiguiente}</b> en lugar de otro registro del mismo nivel.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="setPref('repNivel','${nivelSiguienteId}')">Sí, cambiar a ${nombreSiguiente}</button>
+        <button class="btn" onclick="descartarAvisoNivel('${nivel}','${estF}')">Continuar igual</button>
+      </div>
+    </div>`:''}
     <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius); border-left:4px solid ${n.color};">
       <p class="card-title">${n.noEsFalta?'Nuevo registro':'Nuevo reporte'}
         <span class="pill ${n.pill}">${n.noEsFalta?esc(n.nombre):'Falta '+esc(n.nombre.toLowerCase())}</span>
@@ -3669,19 +3725,25 @@ function renderReportes(){
         <div class="field"><label>Lugar</label>
           <input type="text" id="rep_lugar" placeholder="Ej.: aula, recreo, cancha"></div>
       </div>
+      ${(DB.ajustes && DB.ajustes.manualArticulos && DB.ajustes.manualArticulos.length) ? `
+      <div class="field"><label>Manual de convivencia (opcional)</label>
+        <select id="rep_articulo">
+          <option value="">Sin especificar artículo</option>
+          ${DB.ajustes.manualArticulos.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('')}
+        </select></div>` : ''}
       ${nivel!=='comunicacion' ? `
       <div class="field" style="max-width:200px;"><label>Reincidencias del estudiante</label>
         <input type="text" id="rep_reinc" placeholder="Ej.: 2"></div>` : ''}
       ${(nivel==='leve'||nivel==='grave') ? `
       <div class="field"><label>Situación presentada</label>
-        <div class="rep-opciones">${(nivel==='leve'?OPC_F1:OPC_F2).situacion.map((t,i)=>
+        <div class="rep-opciones">${(nivel==='leve'?opcionesF1():opcionesF2()).situacion.map((t,i)=>
           `<label class="check-chip"><input type="checkbox" id="rep_sit_${i}"> ${esc(t)}</label>`).join('')}</div></div>
       <div class="field"><label>Antecedentes</label>
-        <div class="rep-opciones">${(nivel==='leve'?OPC_F1:OPC_F2).antecedentes.map((t,i)=>
+        <div class="rep-opciones">${(nivel==='leve'?opcionesF1():opcionesF2()).antecedentes.map((t,i)=>
           `<label class="check-chip"><input type="checkbox" id="rep_ant_${i}"> ${esc(t)}</label>`).join('')}</div></div>` : ''}
       ${nivel==='leve' ? `
       <div class="field"><label>Acciones tomadas</label>
-        <div class="rep-opciones">${OPC_F1.acciones.map((t,i)=>
+        <div class="rep-opciones">${opcionesF1().acciones.map((t,i)=>
           `<label class="check-chip"><input type="checkbox" id="rep_acc_${i}"> ${esc(t)}</label>`).join('')}</div></div>` : ''}
       <div class="field"><label>${nivel==='muygrave'?'Descripción del incidente':(nivel==='comunicacion'?'¿Qué se conversó con el estudiante?':'Breve descripción de la incidencia')}</label>
         <textarea id="rep_desc" rows="4" placeholder="Describe el hecho con precisión y sin juicios de valor."></textarea></div>
@@ -3697,6 +3759,9 @@ function renderReportes(){
       </div>` : (nivel==='comunicacion' ? `
       <div class="field"><label>Compromiso del estudiante (opcional)</label><textarea id="rep_acu_alumno" rows="3"></textarea></div>` : `
       <div class="field"><label>Acuerdos</label><textarea id="rep_acu_alumno" rows="4"></textarea></div>`))}
+      <div class="field"><label>Fotografía (opcional)</label>
+        <input type="file" id="rep_imagen" accept="image/*">
+        <p class="nota-chica" style="margin-top:4px;">Solo si hace falta como evidencia — por ejemplo, un daño material.</p></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="guardarReporte()">Guardar reporte</button>
         <button class="btn" onclick="verReporteAntes()">Vista previa</button>
@@ -3758,6 +3823,11 @@ function agregarSeguimiento(id){
   showToast('Seguimiento agregado.');
   render();
 }
+function descartarAvisoNivel(nivel, estId){
+  viewState.avisoNivelDismiss = viewState.avisoNivelDismiss || {};
+  viewState.avisoNivelDismiss[nivel + '|' + estId] = true;
+  render();
+}
 function toggleDescripcion(id){
   viewState.descExpandida = viewState.descExpandida || {};
   viewState.descExpandida[id] = !viewState.descExpandida[id];
@@ -3790,7 +3860,7 @@ function alternarDetalleReporte(id){
   if(viewState.repAbierto) registrarVista(id);
   render();
 }
-function guardarReporte(){
+async function guardarReporte(){
   // Evita reportes duplicados si se hace clic varias veces seguidas
   // (por ejemplo, con internet lento y la persona pensando que no funcionó).
   if(guardarReporte._enCurso) return;
@@ -3802,22 +3872,27 @@ function guardarReporte(){
   if(!est){ showToast('Selecciona el estudiante.'); guardarReporte._enCurso = false; return; }
   const desc = val('rep_desc');
   if(!desc){ showToast('Describe lo sucedido.'); guardarReporte._enCurso = false; return; }
-  const nivel = getPref('repNivel','leve');
+  let imagen = null;
+  try{ imagen = await imagenDeInput('rep_imagen', 1000); }
+  catch(e){ showToast('No se pudo procesar la foto; se guarda el reporte sin ella.'); }
+  const nivelReal = getPref('repNivel','leve');
   const marcadas = (prefijo, lista) => lista.filter((t,i)=>{
     const el = document.getElementById(prefijo + i);
     return el && el.checked;
   });
-  const opc = nivel==='leve' ? OPC_F1 : (nivel==='grave' ? OPC_F2 : null);
+  const opc = nivelReal==='leve' ? opcionesF1() : (nivelReal==='grave' ? opcionesF2() : null);
   const reporte = {
-    id: uid('rep'), numero: siguienteCorrelativo(), ts: new Date().toISOString(), nivel: nivel,
+    id: uid('rep'), numero: siguienteCorrelativo(), ts: new Date().toISOString(), nivel: nivelReal,
     vistas: [], seguimientos: [],
     estId: est.id, estudiante: apellidosDe(est) + ', ' + nombresDe(est), grado: est.grado,
     fecha: val('rep_fecha'), lugar: val('rep_lugar'), reincidencias: val('rep_reinc'),
+    articuloManual: val('rep_articulo'),
     situaciones: opc ? marcadas('rep_sit_', opc.situacion) : [],
     antecedentes: opc ? marcadas('rep_ant_', opc.antecedentes) : [],
-    acciones: nivel==='leve' ? marcadas('rep_acc_', OPC_F1.acciones) : [],
+    acciones: nivelReal==='leve' ? marcadas('rep_acc_', opcionesF1().acciones) : [],
     descripcion: desc, medida: val('rep_medida'),
     acuerdosAlumno: val('rep_acu_alumno'), acuerdosPadres: val('rep_acu_padres'),
+    imagen: imagen,
     docente: currentUser.nombre, docenteId: currentUser.id
   };
   commit(doc=>{
@@ -3894,9 +3969,9 @@ function reporteF1(r, aj, q){
     <div class="f1cuerpo">
       <div class="izq">
         <p class="tit">SITUACIÓN</p>
-        <table class="lista">${OPC_F1.situacion.map(t=>`<tr><td>${q(t)}</td><td class="rc">${marcaRad(sit.indexOf(t)>=0)}</td></tr>`).join('')}</table>
+        <table class="lista">${opcionesF1().situacion.map(t=>`<tr><td>${q(t)}</td><td class="rc">${marcaRad(sit.indexOf(t)>=0)}</td></tr>`).join('')}</table>
         <p class="tit" style="margin-top:6px;">ANTECEDENTES</p>
-        <table class="lista chica">${OPC_F1.antecedentes.map(t=>`<tr><td>${q(t)}</td><td class="rc">${ant.indexOf(t)>=0?'X':'____'}</td></tr>`).join('')}</table>
+        <table class="lista chica">${opcionesF1().antecedentes.map(t=>`<tr><td>${q(t)}</td><td class="rc">${ant.indexOf(t)>=0?'X':'____'}</td></tr>`).join('')}</table>
       </div>
       <div class="centro">
         <p class="tit">BREVE DESCRIPCIÓN DE LA INCIDENCIA</p>
@@ -3908,7 +3983,7 @@ function reporteF1(r, aj, q){
         <table class="fechatab"><tr><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th></tr>
           <tr>${[1,2,3,4,5].map(d=>`<td class="dia">${diaSemanaDe(r&&r.fecha)===d?'<b>X</b>':''}</td>`).join('')}</tr></table>
         <p class="tit" style="margin-top:8px;">ACCIONES TOMADAS</p>
-        <table class="lista chica">${OPC_F1.acciones.map(t=>`<tr><td>${q(t)}</td><td class="rc">${marcaRad(acc.indexOf(t)>=0)}</td></tr>`).join('')}</table>
+        <table class="lista chica">${opcionesF1().acciones.map(t=>`<tr><td>${q(t)}</td><td class="rc">${marcaRad(acc.indexOf(t)>=0)}</td></tr>`).join('')}</table>
       </div>
     </div>
     <table class="acuerdos">
@@ -3929,8 +4004,8 @@ function reporteF2(r, aj, q){
   <div class="pagina"><div class="hoja">
     ${cabReporte(r, aj, q, 'F2')}
     <div class="marco">
-      <p class="titm">Situación presentada</p>${col(OPC_F2.situacion, sit)}
-      <p class="titm">Antecedentes</p>${col(OPC_F2.antecedentes, ant)}
+      <p class="titm">Situación presentada</p>${col(opcionesF2().situacion, sit)}
+      <p class="titm">Antecedentes</p>${col(opcionesF2().antecedentes, ant)}
       <p class="titm">Acciones que se tomaron al momento de intervenir</p>${lineasRep(r?r.medida:'', 3, q)}
       <p class="titm">Descripción breve de la situación</p>
       <div style="font-size:${ptD}pt;">${lineasRep(r?r.descripcion:'', 4, q)}</div>
@@ -4066,7 +4141,7 @@ function reporteDelFormulario(){
   const estId = val('rep_est') || getPref('repEst','');
   const est = DB.estudiantes.find(e=>e.id===estId);
   const nivel = getPref('repNivel','leve');
-  const opc = nivel==='leve' ? OPC_F1 : (nivel==='grave' ? OPC_F2 : null);
+  const opc = nivel==='leve' ? opcionesF1() : (nivel==='grave' ? opcionesF2() : null);
   const marcadas = (prefijo, lista) => lista.filter((t,i)=>{
     const el = document.getElementById(prefijo + i);
     return el && el.checked;
@@ -4078,7 +4153,7 @@ function reporteDelFormulario(){
     reincidencias: val('rep_reinc'),
     situaciones: opc ? marcadas('rep_sit_', opc.situacion) : [],
     antecedentes: opc ? marcadas('rep_ant_', opc.antecedentes) : [],
-    acciones: nivel==='leve' ? marcadas('rep_acc_', OPC_F1.acciones) : [],
+    acciones: nivel==='leve' ? marcadas('rep_acc_', opcionesF1().acciones) : [],
     descripcion: val('rep_desc'), medida: val('rep_medida'),
     acuerdosAlumno: val('rep_acu_alumno'), acuerdosPadres: val('rep_acu_padres'),
     docente: currentUser.nombre, docenteId: currentUser.id
@@ -7336,12 +7411,87 @@ function renderPersonalizar(){
     </div>
   </div>
   ${renderGrados()}
+  ${renderManualConvivencia()}
   ${renderPonderacion()}
   ${renderCierreAnio()}
   ${renderCierreModal()}
   `}
   ${modalUsuario}
   ${!soloDir ? `<div class="note">La identidad del centro escolar, los grados, la ponderación, las contraseñas y el cierre de año los administra cualquier cuenta de acceso total.</div>` : ''}`;
+}
+function renderManualConvivencia(){
+  const f1 = opcionesF1(), f2 = opcionesF2();
+  const aLineas = arr => (arr||[]).join('\n');
+  return `
+  <div class="card">
+    <p class="card-title">Manual de convivencia — categorías de faltas</p>
+    <div class="note" style="margin-bottom:14px;">
+      Escribe una categoría por línea (copia y pega directo desde tu manual de convivencia).
+      No hace falta escribir "Otros" — el sistema siempre lo agrega al final por si un maestro
+      necesita registrar una falta que no está en tu lista.
+    </div>
+    <p class="card-title" style="font-size:13px; margin-top:10px;">Falta leve (Formato F1)</p>
+    <div class="grid grid-2">
+      <div class="field"><label>Situaciones</label>
+        <textarea id="mc_f1_sit" rows="6">${esc(aLineas(f1.situacion.filter(s=>s.toLowerCase()!=='otros')))}</textarea></div>
+      <div class="field"><label>Antecedentes</label>
+        <textarea id="mc_f1_ant" rows="6">${esc(aLineas(f1.antecedentes.filter(s=>s.toLowerCase()!=='otros')))}</textarea></div>
+    </div>
+    <div class="field"><label>Acciones tomadas al intervenir</label>
+      <textarea id="mc_f1_acc" rows="4">${esc(aLineas(f1.acciones.filter(s=>s.toLowerCase()!=='otras')))}</textarea></div>
+
+    <p class="card-title" style="font-size:13px; margin-top:18px;">Falta grave (Formato F2)</p>
+    <div class="grid grid-2">
+      <div class="field"><label>Situaciones</label>
+        <textarea id="mc_f2_sit" rows="6">${esc(aLineas(f2.situacion.filter(s=>s.toLowerCase()!=='otro')))}</textarea></div>
+      <div class="field"><label>Antecedentes</label>
+        <textarea id="mc_f2_ant" rows="6">${esc(aLineas(f2.antecedentes.filter(s=>s.toLowerCase()!=='otro')))}</textarea></div>
+    </div>
+
+    <p class="card-title" style="font-size:13px; margin-top:18px;">Artículos o normas del manual de convivencia</p>
+    <div class="note" style="margin-bottom:10px;">
+      Esto es aparte de las categorías de arriba: es la lista que aparece como desplegable en
+      "Nuevo reporte" para que el maestro indique a qué artículo o norma específica se refiere
+      el hecho. Un artículo por línea, por ejemplo: <i>Art. 12 — Respeto a la comunidad educativa</i>.
+      Si lo dejas vacío, ese desplegable simplemente no aparece en el formulario.
+    </div>
+    <div class="field"><label>Artículos</label>
+      <textarea id="mc_articulos" rows="6" placeholder="Ej.: Art. 12 — Respeto a la comunidad educativa">${esc(aLineas(DB.ajustes && DB.ajustes.manualArticulos))}</textarea></div>
+
+    <div class="btn-row" style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="guardarManualConvivencia()">Guardar manual de convivencia</button>
+      <button class="btn btn-danger" onclick="restablecerManualConvivencia()">Restablecer a los valores originales</button>
+    </div>
+  </div>`;
+}
+function guardarManualConvivencia(){
+  const lineas = id => (document.getElementById(id).value || '')
+    .split('\n').map(s=>s.trim()).filter(Boolean);
+  DB.ajustes = DB.ajustes || {};
+  commit(doc=>{
+    doc.ajustes = doc.ajustes || {};
+    doc.ajustes.manualF1 = {
+      situacion: lineas('mc_f1_sit'),
+      antecedentes: lineas('mc_f1_ant'),
+      acciones: lineas('mc_f1_acc')
+    };
+    doc.ajustes.manualF2 = {
+      situacion: lineas('mc_f2_sit'),
+      antecedentes: lineas('mc_f2_ant')
+    };
+    doc.ajustes.manualArticulos = lineas('mc_articulos');
+  });
+  registrar('Personalizar', 'Actualizó el manual de convivencia');
+  showToast('Manual de convivencia guardado.');
+  render();
+}
+function restablecerManualConvivencia(){
+  if(!confirm('¿Volver a las categorías de faltas originales del sistema? Se perderán las que hayas personalizado.')) return;
+  commit(doc=>{
+    if(doc.ajustes){ delete doc.ajustes.manualF1; delete doc.ajustes.manualF2; delete doc.ajustes.manualArticulos; }
+  });
+  showToast('Se restablecieron los valores originales.');
+  render();
 }
 function renderPonderacion(){
   const lista = rubrosActivos();
