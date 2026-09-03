@@ -437,6 +437,15 @@ window.addEventListener('beforeinstallprompt', (e)=>{
   try{ render(); }catch(err){}
 });
 window.addEventListener('appinstalled', ()=>{ promptInstalacion = null; try{ render(); }catch(err){} });
+/* Avisa antes de cerrar la pestaña si todavía hay un cambio sin guardar
+   (por ejemplo, si se cierra justo en el instante después de escribir un
+   campo, antes de que le toque su turno de guardarse). */
+window.addEventListener('beforeunload', (e)=>{
+  if(typeof pendientes !== 'undefined' && pendientes.length > 0){
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 /* Registrar el service worker (sw.js, archivo real junto a index.html):
    en Android esto es lo que hace que la instalación quede como una app de
    verdad, no solo un acceso directo que abre dentro de Chrome. */
@@ -993,8 +1002,21 @@ function asegurarUsuariosDocentes(){
 function commit(mutador){
   mutador(docActual());
   pendientes.push(mutador);
-  setSyncStatus('pendiente');
-  programarGuardado(250);
+  // En Hojas de tareas y Calificaciones el guardado es manual: el cambio
+  // se ve en pantalla al instante, pero no se manda al servidor hasta que
+  // la persona presiona "Guardar cambios" — así varios campos editados
+  // seguidos se mandan juntos en un solo guardado, en vez de uno por
+  // campo. En el resto de paneles se sigue guardando solo, como siempre.
+  if(currentView==='hojas' || currentView==='calificaciones'){
+    setSyncStatus('manual');
+  }else{
+    setSyncStatus('pendiente');
+    // Espera un poco antes de guardar, para agrupar varios campos editados
+    // seguidos (por ejemplo, toda una fila de la hoja de tareas) en un solo
+    // guardado, en vez de uno por cada campo. Sigue siendo automático — la
+    // persona no tiene que hacer nada distinto, solo se guarda menos veces.
+    programarGuardado(700);
+  }
 }
 function programarGuardado(ms){
   if(flushTimer) clearTimeout(flushTimer);
@@ -1424,6 +1446,30 @@ function setSyncStatus(s){
   if(s==='ok') lastSync = new Date();
   const el = document.getElementById('sync-indicator');
   if(el) el.outerHTML = renderSyncIndicator();
+  actualizarBotonGuardarManual();
+}
+/* Aviso + botón de "Guardar cambios" para los paneles de guardado manual
+   (Hojas de tareas y Calificaciones). Se actualiza reemplazando solo este
+   bloque (no toda la pantalla), para no interrumpir si la persona sigue
+   escribiendo en otro campo mientras tanto. */
+function renderGuardarManualBanner(){
+  if(currentView!=='hojas' && currentView!=='calificaciones') return '';
+  const hay = pendientes.length > 0;
+  return `<div id="guardar-manual-banner" class="card" style="margin-bottom:14px; border-left:4px solid ${hay?'var(--gold)':'var(--primary)'}; background:${hay?'var(--gold-light)':'var(--primary-light)'};">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <p style="margin:0; font-size:13.5px; font-weight:600; color:${hay?'#7A5A1C':'var(--primary-dark)'};">${hay?'⚠️ Tienes cambios sin guardar':'✓ Todo guardado'}</p>
+      <button class="btn ${hay?'btn-primary':''}" ${hay?'':'disabled'} onclick="guardarCambiosManual()">Guardar cambios</button>
+    </div>
+  </div>`;
+}
+function actualizarBotonGuardarManual(){
+  const el = document.getElementById('guardar-manual-banner');
+  if(el) el.outerHTML = renderGuardarManualBanner();
+}
+function guardarCambiosManual(){
+  if(pendientes.length===0){ showToast('No hay cambios sin guardar.'); return; }
+  showToast('Guardando…');
+  programarGuardado(0);
 }
 function hayEdicionEnCurso(){
   const a = document.activeElement;
@@ -1469,6 +1515,7 @@ function renderSyncIndicator(){
   const hora = lastSync ? lastSync.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'}) : '—';
   let color = 'var(--primary)', texto;
   if(syncStatus==='pendiente'){ color = 'var(--gold)'; texto = 'Guardando…'; }
+  else if(syncStatus==='manual'){ color = 'var(--gold)'; texto = 'Cambios sin guardar'; }
   else if(syncStatus==='error'){ color = 'var(--red)'; texto = 'No se pudo guardar — toca para reintentar'; }
   else if(motor==='nube'){ texto = 'Sincronizado ' + hora; }
   else if(motor==='compartido'){ texto = 'Sincronizado ' + hora; }
@@ -2960,6 +3007,12 @@ function renderLayout(){
 }
 
 function goTo(id){
+  // Si veníamos de un panel de guardado manual (Hojas/Calificaciones) con
+  // cambios sin guardar, los mandamos solos antes de salir — para que
+  // nunca se pierdan por olvidarse de presionar "Guardar cambios".
+  if((currentView==='hojas' || currentView==='calificaciones') && pendientes.length>0){
+    programarGuardado(0);
+  }
   volverDesdeSeguimiento = null;
   currentView = id; viewState = {}; render();
   guardarSesion();
@@ -4861,23 +4914,30 @@ function renderComponerMensaje(){
       </div>
     </div>
     ${tipo==='docente' ? `
-    <div class="field"><label>¿A quién?</label>
-      <select id="msg_docente_id">
-        ${docentesPosibles.length===0?'<option value="">No hay nadie más registrado</option>':''}
-        ${docentesPosibles.map(t=>`<option value="${t.id}">${esc(t.nombre)}</option>`).join('')}
-      </select></div>
+    <div class="field"><label>¿A quién? <span class="nota-chica">(puedes elegir varios)</span></label>
+      ${docentesPosibles.length===0?'<p class="empty" style="padding:6px 0;">No hay nadie más registrado.</p>':`
+      <div style="margin-bottom:8px;">
+        <label class="check-chip"><input type="checkbox" id="msg_docente_todos" onchange="marcarTodosDocentesMensaje(this.checked)"> Seleccionar todos</label>
+      </div>
+      <div class="rep-opciones" style="max-height:220px; overflow-y:auto;">
+        ${docentesPosibles.map(t=>`<label class="check-chip"><input type="checkbox" class="msg-docente-check" value="${t.id}"> ${esc(t.nombre)}</label>`).join('')}
+      </div>`}
+    </div>
     ` : `
-    <div class="grid grid-2">
-      <div class="field"><label>Grado</label>
-        <select onchange="viewState.msgGrado=this.value; render();">
-          ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${gradoSel===g?'selected':''}>${esc(g)}</option>`).join('')}
-        </select></div>
-      <div class="field"><label>Estudiante</label>
-        <select id="msg_estudiante_id">
-          ${estudiantesPosibles.length===0?'<option value="">Sin estudiantes en este grado</option>':''}
-          ${estudiantesPosibles.map(e=>`<option value="${e.id}">${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</option>`).join('')}
-        </select></div>
-    </div>`}
+    <div class="field"><label>Grado</label>
+      <select onchange="viewState.msgGrado=this.value; render();">
+        ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${gradoSel===g?'selected':''}>${esc(g)}</option>`).join('')}
+      </select></div>
+    <div class="field"><label>Estudiante <span class="nota-chica">(puedes elegir varios)</span></label>
+      ${estudiantesPosibles.length===0?'<p class="empty" style="padding:6px 0;">Sin estudiantes en este grado.</p>':`
+      <div style="margin-bottom:8px;">
+        <label class="check-chip"><input type="checkbox" id="msg_estudiante_todos" onchange="marcarTodosEstudiantesMensaje(this.checked)"> Seleccionar todos en este grado</label>
+      </div>
+      <div class="rep-opciones" style="max-height:220px; overflow-y:auto;">
+        ${estudiantesPosibles.map(e=>`<label class="check-chip"><input type="checkbox" class="msg-estudiante-check" value="${e.id}"> ${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</label>`).join('')}
+      </div>`}
+    </div>
+    `}
     <div class="field"><label>Mensaje</label>
       <textarea id="msg_texto" rows="3" placeholder="Escribe tu mensaje…"></textarea></div>
     <div class="field"><label>Imagen (opcional)</label>
@@ -4887,6 +4947,12 @@ function renderComponerMensaje(){
       <button class="btn" onclick="viewState.mensajeNuevo=false; render();">Cancelar</button>
     </div>
   </div>`;
+}
+function marcarTodosDocentesMensaje(marcar){
+  document.querySelectorAll('.msg-docente-check').forEach(el => { el.checked = marcar; });
+}
+function marcarTodosEstudiantesMensaje(marcar){
+  document.querySelectorAll('.msg-estudiante-check').forEach(el => { el.checked = marcar; });
 }
 function abrirConversacionMensajes(otroId){
   viewState.mensajeConv = otroId;
@@ -4898,31 +4964,64 @@ function abrirConversacionMensajes(otroId){
 }
 async function enviarMensajeDocente(){
   const tipo = viewState.msgDestinoTipo || 'docente';
-  let paraId, paraNombre, paraTipo;
-  if(tipo === 'docente'){
-    paraId = (document.getElementById('msg_docente_id')||{}).value;
-    const t = DB.docentes.find(x=>x.id===paraId);
-    if(!t){ showToast('Elige a quién le vas a escribir.'); return; }
-    paraNombre = t.nombre; paraTipo = 'docente';
-  }else{
-    paraId = (document.getElementById('msg_estudiante_id')||{}).value;
-    const e = DB.estudiantes.find(x=>x.id===paraId);
-    if(!e){ showToast('Elige a quién le vas a escribir.'); return; }
-    paraNombre = nombreCompleto(e.nombres, e.apellidos); paraTipo = 'estudiante';
-  }
   const texto = ((document.getElementById('msg_texto')||{}).value || '').trim();
   if(!texto){ showToast('Escribe un mensaje.'); return; }
   let imagen = null;
   try{ imagen = await imagenDeInput('msg_imagen', 1000); }
   catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
-  const nuevo = {id:uid('msg'), ts:new Date().toISOString(), deId:currentUser.id, deNombre:currentUser.nombre,
-    deTipo: isAdmin(currentUser)?'admin':'docente', paraId, paraNombre, paraTipo, texto, imagen, leido:false};
-  commit(doc=>{ doc.mensajes = doc.mensajes || []; doc.mensajes.push(nuevo); });
-  registrar('Mensajes', 'Envió un mensaje a ' + paraNombre);
-  viewState.mensajeNuevo = false;
-  viewState.mensajeConv = paraId;
-  showToast('Mensaje enviado.');
-  render();
+
+  if(tipo === 'docente'){
+    const idsSeleccionados = Array.from(document.querySelectorAll('.msg-docente-check:checked')).map(el=>el.value);
+    if(idsSeleccionados.length===0){ showToast('Elige a quién le vas a escribir.'); return; }
+    const destinatarios = idsSeleccionados
+      .map(id => DB.docentes.find(x=>x.id===id))
+      .filter(Boolean);
+    const nuevos = destinatarios.map(t => ({
+      id: uid('msg'), ts: new Date().toISOString(), deId: currentUser.id, deNombre: currentUser.nombre,
+      deTipo: isAdmin(currentUser)?'admin':'docente',
+      paraId: t.id, paraNombre: t.nombre, paraTipo: 'docente', texto, imagen, leido: false
+    }));
+    commit(doc=>{ doc.mensajes = doc.mensajes || []; doc.mensajes.push(...nuevos); });
+    registrar('Mensajes', destinatarios.length > 1
+      ? 'Envió un mensaje a ' + destinatarios.length + ' persona(s)'
+      : 'Envió un mensaje a ' + destinatarios[0].nombre);
+    viewState.mensajeNuevo = false;
+    if(destinatarios.length === 1){
+      viewState.mensajeConv = destinatarios[0].id;
+      showToast('Mensaje enviado.');
+    }else{
+      viewState.mensajeConv = null;
+      showToast('Mensaje enviado a ' + destinatarios.length + ' persona(s).');
+    }
+    render();
+    return;
+  }
+
+  if(tipo === 'estudiante'){
+    const idsSeleccionados = Array.from(document.querySelectorAll('.msg-estudiante-check:checked')).map(el=>el.value);
+    if(idsSeleccionados.length===0){ showToast('Elige a quién le vas a escribir.'); return; }
+    const destinatarios = idsSeleccionados
+      .map(id => DB.estudiantes.find(x=>x.id===id))
+      .filter(Boolean);
+    const nuevos = destinatarios.map(est => ({
+      id: uid('msg'), ts: new Date().toISOString(), deId: currentUser.id, deNombre: currentUser.nombre,
+      deTipo: isAdmin(currentUser)?'admin':'docente',
+      paraId: est.id, paraNombre: nombreCompleto(est.nombres, est.apellidos), paraTipo: 'estudiante', texto, imagen, leido: false
+    }));
+    commit(doc=>{ doc.mensajes = doc.mensajes || []; doc.mensajes.push(...nuevos); });
+    registrar('Mensajes', destinatarios.length > 1
+      ? 'Envió un mensaje a ' + destinatarios.length + ' estudiante(s)'
+      : 'Envió un mensaje a ' + nombreCompleto(destinatarios[0].nombres, destinatarios[0].apellidos));
+    viewState.mensajeNuevo = false;
+    if(destinatarios.length === 1){
+      viewState.mensajeConv = destinatarios[0].id;
+      showToast('Mensaje enviado.');
+    }else{
+      viewState.mensajeConv = null;
+      showToast('Mensaje enviado a ' + destinatarios.length + ' estudiante(s).');
+    }
+    render();
+  }
 }
 async function responderMensaje(){
   const otroId = viewState.mensajeConv;
@@ -8831,6 +8930,7 @@ function renderHojas(){
     <h1 class="page-title">Hoja de tareas</h1>
     <p class="page-desc">Lo que escribas aquí alimenta Calificaciones: el texto de "${esc(cfg.encabezados.tareas)}" es el nombre de cada actividad y la fecha se copia sola.</p>
   </div>
+  ${edit?renderGuardarManualBanner():''}
   ${volverDesdeSeguimiento?`<div class="btn-row" style="margin-bottom:14px;">
     <button class="btn btn-sm" onclick="volverASeguimiento()">← Volver a Seguimiento de docentes</button>
   </div>`:''}
@@ -9177,6 +9277,7 @@ function renderCalificaciones(){
     <h1 class="page-title">Calificaciones</h1>
     <p class="page-desc">Cada período se compone de: Actividades ${Math.round(pesoDe('actividades')*100)}% (repartido entre las casillas que definas), ${rubrosActivos().map(r=>esc(r.nombre)+' '+Math.round(r.peso*100)+'%').join(', ')}. La nota final del año promedia los 4 períodos.</p>
   </div>
+  ${puedeEditar?renderGuardarManualBanner():''}
   <div class="filters">
     <div class="field">
       <label>Aula</label>
