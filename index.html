@@ -1029,7 +1029,17 @@ async function flush(){
   let exito = false;
   try{
     const remoto = await leerDoc();
-    const base = remoto || docActual();
+    if(!remoto){
+      // La lectura falló (corte de internet, Apps Script no respondió a
+      // tiempo, etc.) — NO hay que asumir que la copia local de esta
+      // pestaña es la más actual y guardarla igual: si esta pestaña
+      // llevaba un rato abierta, podría estar atrasada respecto a lo que
+      // otras personas ya guardaron, y subir esa copia vieja borraría
+      // silenciosamente esos cambios ajenos. Mejor tratarlo como un
+      // guardado fallido y reintentar más tarde con datos frescos.
+      throw new Error('No se pudo leer el documento actual antes de guardar');
+    }
+    const base = remoto;
     lote.forEach(m=>{ try{ m(base); }catch(e){ console.error('reaplicar', e); } });
     await escribirDoc(base);
     // Mientras se leía/guardaba (dos idas y vueltas a la nube), el usuario
@@ -4612,7 +4622,10 @@ function renderSoporte(){
           <td style="font-size:12px;">${esc(s.nombre)}</td>
           <td><span class="pill ${s.origen==='estudiante'?'pill-blue':'pill-muted'}">${s.origen==='estudiante'?'Estudiante':'Docente'}</span></td>
           <td><span class="pill ${estadoAveria(s.estado).pill}">${esc(estadoAveria(s.estado).nombre)}</span></td>
-          <td><button class="icon-btn" onclick="abrirSoporte('${s.id}')">${viewState.sopAbierto===s.id?'Cerrar':'Detalle'}</button></td>
+          <td class="hj-acciones">
+            <button class="icon-btn" onclick="abrirSoporte('${s.id}')">${viewState.sopAbierto===s.id?'Cerrar':'Detalle'}</button>
+            <button class="icon-btn" onclick="eliminarSoporte('${s.id}')">Eliminar</button>
+          </td>
         </tr>${detalle(s)}`).join('')}
       </tbody>
     </table>
@@ -4735,6 +4748,18 @@ function abrirSoporte(id){
       else s.vistas.push({userId:currentUser.id, nombre:currentUser.nombre, ts:new Date().toISOString()});
     });
   }
+  render();
+}
+function eliminarSoporte(id){
+  if(!isAdmin(currentUser)){ showToast('No tienes permiso para eliminar reportes de soporte.'); return; }
+  if(!confirm('¿Eliminar este reporte de soporte de la plataforma?')) return;
+  commit(doc=>{
+    const i = (doc.soporte||[]).findIndex(s=>s.id===id);
+    if(i>=0) doc.soporte.splice(i,1);
+  });
+  if(viewState.sopAbierto===id) viewState.sopAbierto = null;
+  registrar('Soporte de la plataforma', 'Eliminó un reporte');
+  showToast('Reporte eliminado.');
   render();
 }
 function cambiarEstadoSoporte(id, estado){
