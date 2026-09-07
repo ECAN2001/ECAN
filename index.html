@@ -2681,7 +2681,7 @@ function renderLogin(){
     <div class="login-wrap">
       <div class="login-card">
         ${cabecera}
-        <p class="login-sub">Contraseña de propietaria.</p>
+        <p class="login-sub">Acceso restringido.</p>
         <div class="field">
           <input type="password" id="clave_prop_input" placeholder="Contraseña" onkeyup="if(event.key==='Enter') entrarPropietaria()">
         </div>
@@ -4607,7 +4607,6 @@ function renderSoporte(){
   const tabla = `
   <div class="card">
     <p class="card-title">Reportes recibidos <span class="pill pill-muted">${lista.length}</span></p>
-    <div class="note">Solo la propietaria y los usuarios de acceso total ven este listado completo.</div>
     <div class="table-wrap">
     <table>
       <thead><tr><th style="width:62px;">N°</th><th style="width:140px;">Fecha</th><th>Asunto</th>
@@ -4636,7 +4635,7 @@ function renderSoporte(){
   <div class="page-head">
     <p class="page-eyebrow">Soporte</p>
     <h1 class="page-title">Soporte de la plataforma</h1>
-    <p class="page-desc">Buzón para reportar errores o problemas del sistema. Pueden escribir docentes y estudiantes; solo dirección y la propietaria ven todos los reportes.</p>
+    <p class="page-desc">Buzón para reportar errores o problemas del sistema. Pueden escribir docentes y estudiantes; solo dirección ve todos los reportes.</p>
   </div>
   <div class="period-tabs">
     <div class="period-tab ${vista==='nueva'?'active':''}" onclick="setPref('sopVista','nueva')">Nuevo reporte</div>
@@ -4710,7 +4709,7 @@ function renderSoporteFormularioYPropio(){
   <div class="page-head">
     <p class="page-eyebrow">Soporte</p>
     <h1 class="page-title">Soporte de la plataforma</h1>
-    <p class="page-desc">Reporta un error o problema del sistema. Solo dirección y la propietaria pueden verlo.</p>
+    <p class="page-desc">Reporta un error o problema del sistema. Solo dirección puede verlo.</p>
   </div>
   <div class="period-tabs">
     <div class="period-tab ${vista==='nueva'?'active':''}" onclick="setPref('sopVista','nueva')">Nuevo reporte</div>
@@ -5174,6 +5173,18 @@ function fechaLegible(iso){
            d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});
   }catch(e){ return iso; }
 }
+/* Texto corto tipo "hace 3 min" — usado para el listado de "Activos
+   recientemente" en la Bitácora. */
+function haceCuanto(iso){
+  try{
+    const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if(mins < 1) return 'ahora mismo';
+    if(mins < 60) return 'hace ' + mins + ' min';
+    const horas = Math.round(mins/60);
+    if(horas < 24) return 'hace ' + horas + ' h';
+    return 'hace ' + Math.round(horas/24) + ' d';
+  }catch(e){ return ''; }
+}
 function renderBitacora(){
   if(!canManageAcademicData(currentUser)) return renderNoAccess();
   const todo = (DB.bitacora || []).slice().reverse()
@@ -5202,12 +5213,31 @@ function renderBitacora(){
   });
   const u = quien ? DB.docentes.find(x=>x.id===quien) : null;
 
+  // "Activos recientemente": no hay conexión en vivo con el servidor, así
+  // que esto es una aproximación basada en la última acción que quedó
+  // registrada de cada quien — no un listado de conectados en tiempo real.
+  const VENTANA_ACTIVO_MIN = 20;
+  const ahora = Date.now();
+  const activosRecientes = Object.keys(resumen)
+    .map(uid => ({uid, ultimo: resumen[uid].ultimo, docente: DB.docentes.find(t=>t.id===uid)}))
+    .filter(x => x.docente && !esPropietario(x.docente) && (ahora - new Date(x.ultimo).getTime()) <= VENTANA_ACTIVO_MIN*60000)
+    .sort((a,b) => b.ultimo.localeCompare(a.ultimo));
+
   return `
   <div class="page-head">
     <p class="page-eyebrow">Control interno</p>
     <h1 class="page-title">Bitácora del sistema</h1>
     <p class="page-desc">Registro de ingresos y cambios hechos por cada usuario. Puedes filtrar por día y por tipo de acción, o agrupar los movimientos del mismo tipo. Se conservan los últimos ${BITACORA_MAX}.</p>
   </div>
+  ${isAdmin(currentUser) ? `
+  <div class="card" style="margin-bottom:16px;">
+    <p class="card-title">Activos recientemente <span class="pill pill-muted">${activosRecientes.length}</span></p>
+    <div class="note" style="margin-bottom:10px;">No es una conexión en vivo: se calcula con la última acción que quedó registrada de cada quien, en los últimos ${VENTANA_ACTIVO_MIN} minutos. Solo lo ven las cuentas de acceso total.</div>
+    ${activosRecientes.length===0?'<p class="empty" style="padding:6px 0;">Nadie con actividad reciente.</p>':`
+    <div class="tag-row">
+      ${activosRecientes.map(x=>`<span class="pill pill-blue">${esc(x.docente.nombre)} · ${haceCuanto(x.ultimo)}</span>`).join('')}
+    </div>`}
+  </div>` : ''}
   <div class="filters">
     <div class="field">
       <label>Usuario</label>
