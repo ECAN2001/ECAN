@@ -446,6 +446,20 @@ window.addEventListener('beforeunload', (e)=>{
     e.returnValue = '';
   }
 });
+/* Cierra la sesión del dispositivo al cerrar el navegador (solo docentes y
+   administradores, no estudiantes): así, la próxima vez que entren, el
+   sistema vuelve a pedir usuario y clave y trae los datos frescos desde
+   cero — en vez de reanudar una sesión guardada que puede haberse quedado
+   desactualizada durante días sin que nadie lo note. La sesión se guarda
+   solo en este dispositivo (nunca en la nube), así que borrarla acá es
+   instantáneo y no afecta a nadie más. */
+window.addEventListener('pagehide', ()=>{
+  try{
+    if(typeof sesionEstudiante !== 'undefined' && !sesionEstudiante && typeof currentUser !== 'undefined' && currentUser){
+      window.localStorage.removeItem('sesion');
+    }
+  }catch(e){}
+});
 /* Registrar el service worker (sw.js, archivo real junto a index.html):
    en Android esto es lo que hace que la instalación quede como una app de
    verdad, no solo un acceso directo que abre dentro de Chrome. */
@@ -1442,7 +1456,14 @@ async function restaurarSesion(){
     }else{
       if(!baseCompletaCargada) await loadAll();
       const u = DB.docentes.find(t=>t.id===s.userId);
-      if(u){ currentUser = u; sesionEstudiante = false; currentView = s.view || 'panel'; }
+      if(u){
+        currentUser = u; sesionEstudiante = false; currentView = s.view || 'panel';
+        // La sesión se recordó sola (no volvió a escribir su usuario y
+        // clave) — esto también cuenta como que entró al sistema, para
+        // que la Bitácora refleje bien su actividad real, no solo cuando
+        // inicia sesión desde cero.
+        registrar('Ingreso', 'Entró al sistema (sesión recordada)');
+      }
     }
   }catch(e){}
 }
@@ -2704,28 +2725,32 @@ function renderLogin(){
       </div>
       ${viewState.loginEstudiante ? `
       <p class="login-sub">Ingresa el usuario y la contraseña que te dio tu escuela.</p>
-      <div class="field">
-        <input type="text" id="est_usuario_input" placeholder="Usuario" autocomplete="username" onkeyup="if(event.key==='Enter') document.getElementById('est_clave_input').focus()">
-      </div>
-      <div class="field">
-        <input type="password" id="est_clave_input" placeholder="Contraseña" autocomplete="current-password" onkeyup="if(event.key==='Enter') entrarComoEstudianteLogin()">
-      </div>
-      ${viewState.errorLoginEstudiante?`<p style="color:var(--red); font-size:13px; margin:-4px 0 12px;">${esc(viewState.errorLoginEstudiante)}</p>`:''}
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="entrarComoEstudianteLogin()">Entrar</button>
-      </div>
+      <form onsubmit="event.preventDefault(); entrarComoEstudianteLogin();">
+        <div class="field">
+          <input type="text" id="est_usuario_input" placeholder="Usuario" autocomplete="username">
+        </div>
+        <div class="field">
+          <input type="password" id="est_clave_input" placeholder="Contraseña" autocomplete="current-password">
+        </div>
+        ${viewState.errorLoginEstudiante?`<p style="color:var(--red); font-size:13px; margin:-4px 0 12px;">${esc(viewState.errorLoginEstudiante)}</p>`:''}
+        <div class="btn-row">
+          <button type="submit" class="btn btn-primary">Entrar</button>
+        </div>
+      </form>
       ` : `
       <p class="login-sub">Ingresa tu usuario (o tu nombre completo, como lo tenga registrado la escuela) y tu contraseña.</p>
-      <div class="field">
-        <input type="text" id="doc_usuario_input" placeholder="Usuario" autocomplete="username" onkeyup="if(event.key==='Enter') document.getElementById('doc_clave_input').focus()">
-      </div>
-      <div class="field">
-        <input type="password" id="doc_clave_input" placeholder="Contraseña (si tienes)" autocomplete="current-password" onkeyup="if(event.key==='Enter') entrarComoDocenteLogin()">
-      </div>
-      ${viewState.errorLoginDocente?`<p style="color:var(--red); font-size:13px; margin:-4px 0 12px;">${esc(viewState.errorLoginDocente)}</p>`:''}
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="entrarComoDocenteLogin()">Entrar</button>
-      </div>
+      <form onsubmit="event.preventDefault(); entrarComoDocenteLogin();">
+        <div class="field">
+          <input type="text" id="doc_usuario_input" placeholder="Usuario" autocomplete="username">
+        </div>
+        <div class="field">
+          <input type="password" id="doc_clave_input" placeholder="Contraseña (si tienes)" autocomplete="current-password">
+        </div>
+        ${viewState.errorLoginDocente?`<p style="color:var(--red); font-size:13px; margin:-4px 0 12px;">${esc(viewState.errorLoginDocente)}</p>`:''}
+        <div class="btn-row">
+          <button type="submit" class="btn btn-primary">Entrar</button>
+        </div>
+      </form>
       `}
       ${!appYaInstalada()?`<div class="btn-row" style="margin-top:14px; border-top:1px solid var(--line); padding-top:14px;">
         <button class="btn btn-sm" onclick="instalarApp()">📲 Instalar esta app</button>
