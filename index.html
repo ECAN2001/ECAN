@@ -3075,6 +3075,7 @@ function renderLayout(){
     </div>
     ${renderMensajeBienvenida()}
     ${renderNotificacionesModal()}
+    ${renderVisorImagen()}
   </div>`;
 }
 
@@ -3263,6 +3264,7 @@ function renderLayoutEstudiante(){
     <div class="main">
       ${renderViewEstudiante()}
     </div>
+    ${renderVisorImagen()}
   </div>`;
 }
 function renderViewEstudiante(){
@@ -3753,8 +3755,9 @@ function renderReportes(){
         <input type="text" value="${esc(getPref('repNum',''))}" placeholder="Ej.: 007"
           onchange="setPref('repNum', this.value)"></div>
       <button class="btn btn-primary" onclick="descargarReportes()">Descargar en PDF</button>
+      <button class="btn" onclick="descargarReportesIndividual()" title="Un archivo PDF por cada reporte, todos juntos en un .zip">Descargar individual (.zip)</button>
     </div>
-    ${!veTodosReportes(currentUser)?`<div class="note">Ves los reportes que tú levantaste y los de tu grado de orientación. Dirección puede ampliarlo desde Personalizar → Paneles de acceso.</div>`:''}
+    ${!veTodosReportes(currentUser)?`<div class="note">Ves los reportes que tú levantaste y los de tu grado de orientación. Dirección puede ampliarlo desde Personalizar → Paneles de acceso. "Descargar en PDF" arma un solo archivo con todos los reportes filtrados; "Descargar individual" entrega un .zip con un PDF por cada reporte, ya nombrado con su correlativo, el estudiante y el grado.</div>`:'<div class="note">"Descargar en PDF" arma un solo archivo con todos los reportes filtrados; "Descargar individual" entrega un .zip con un PDF por cada reporte, ya nombrado con su correlativo, el estudiante y el grado.</div>'}
     <div class="card">
       <p class="card-title">Historial <span class="pill pill-muted">${lista.length} reporte(s)</span></p>
       <div class="table-wrap">
@@ -3814,7 +3817,7 @@ function renderReportes(){
                   ${r.articuloManual?`<p class="card-title" style="margin:14px 0 6px;">Manual de convivencia</p>
                     <p style="font-size:12.5px;">${esc(r.articuloManual)}</p>`:''}
                   ${r.imagen?`<p class="card-title" style="margin:14px 0 6px;">Fotografía</p>
-                    <img src="${r.imagen}" alt="Foto del reporte" style="max-width:100%;border-radius:8px;border:1px solid var(--line);cursor:pointer;" onclick="window.open('${r.imagen.replace(/'/g,"\\'")}','_blank')">`:''}
+                    <img src="${r.imagen}" alt="Foto del reporte" style="max-width:100%;border-radius:8px;border:1px solid var(--line);cursor:pointer;" onclick="verImagenGrande('${r.imagen.replace(/'/g,"\\'")}')">`:''}
                 </div>
               </div>
             </td></tr>`:''}`;
@@ -4012,6 +4015,26 @@ function descartarAvisoNivel(nivel, estId){
   viewState.avisoNivelDismiss[nivel + '|' + estId] = true;
   render();
 }
+/* Muestra una imagen (foto de reporte, mensaje, etc.) en grande, encima
+   de la misma pantalla — en vez de window.open(), que con imágenes
+   guardadas como base64 suele abrir una pestaña en blanco en varios
+   navegadores. Se cierra tocando afuera, la X, o Escape. */
+function verImagenGrande(src){
+  viewState.imagenGrande = src;
+  render();
+}
+function cerrarImagenGrande(){
+  viewState.imagenGrande = null;
+  render();
+}
+function renderVisorImagen(){
+  if(!viewState.imagenGrande) return '';
+  return `<div style="position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:999; display:flex; align-items:center; justify-content:center; padding:24px;"
+      onclick="cerrarImagenGrande()">
+    <img src="${viewState.imagenGrande}" style="max-width:100%; max-height:100%; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,.5);" onclick="event.stopPropagation()">
+    <button class="icon-btn" style="position:absolute; top:18px; right:18px; background:white; border-radius:50%; width:36px; height:36px;" onclick="cerrarImagenGrande()">✕</button>
+  </div>`;
+}
 function toggleDescripcion(id){
   viewState.descExpandida = viewState.descExpandida || {};
   viewState.descExpandida[id] = !viewState.descExpandida[id];
@@ -4128,9 +4151,15 @@ function diaSemanaDe(iso){
   return (n >= 1 && n <= 5) ? n : 0;
 }
 function marcaRad(activo){ return activo ? '<span class="rad on"></span>' : '<span class="rad"></span>'; }
+/* Antes se escribía el texto arriba y, debajo, "n" líneas vacías (mucho
+   espacio desperdiciado). Ahora el texto se escribe ENCIMA de líneas
+   rayadas tipo cuaderno: el renglón mide 14px de alto y el texto fluye
+   dentro de esa cuadrícula. Si no hay texto (para imprimir en blanco y
+   llenar a mano), igual se ven las "n" líneas vacías por el alto mínimo. */
 function lineasRep(texto, n, q){
-  const t = q(texto||'');
-  return `<div class="lineas">${t ? '<div class="txt">'+t+'</div>' : ''}${Array.from({length:n}).map(()=>'<div class="ln"></div>').join('')}</div>`;
+  const t = q(texto||'').replace(/\n/g, '<br>');
+  const alto = 15 * n;
+  return `<div class="lineas rayado" style="min-height:${alto}px;">${t}</div>`;
 }
 /* Arial 14 en descripción y acuerdos; si el texto es largo, baja lo justo
    para que el reporte siga cabiendo en una sola página. */
@@ -4250,12 +4279,11 @@ function hojaReporteHtml(r, aj, q, nivelForzado){
   if(nivel === 'muygrave') return reporteF3(r, aj, q);
   return reporteF1(r, aj, q);
 }
-function imprimirReportes(lista, titulo, soloVer){
-  const aj = DB.ajustes || {};
-  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const cierre = '<' + '/script>';
-  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>' + q(titulo) + '</title><style>' +
-  '@page{ size: letter portrait; margin: 14mm; }' +
+/* CSS compartido entre la impresión combinada (imprimirReportes) y la
+   generación de PDFs individuales (descargarReportesIndividual), para que
+   ambas se vean exactamente igual. */
+function estilosReporteCSS(){
+  return '@page{ size: letter portrait; margin: 14mm; }' +
   '*{ box-sizing:border-box; }' +
   'body{ font-family: Arial, Helvetica, sans-serif; font-size:10pt; color:#000; margin:0; }' +
   '@media screen{ body{ background:#d8d8d8; padding:18px 0; }' +
@@ -4298,6 +4326,9 @@ function imprimirReportes(lista, titulo, soloVer){
   '.lineas{ margin-bottom:4px; }' +
   '.lineas .txt{ margin-bottom:2px; white-space:pre-wrap; line-height:1.35; }' +
   '.lineas .ln{ border-bottom:1px solid #000; height:14px; }' +
+  '.rayado{ line-height:15px; padding-top:1px; overflow:hidden; word-wrap:break-word;' +
+  '  background-image: linear-gradient(to bottom, transparent 14px, #000 14px, #000 15px);' +
+  '  background-size: 100% 15px; background-repeat: repeat-y; }' +
   '.acu{ display:flex; align-items:flex-start; gap:8px; margin-bottom:4px; }' +
   '.acu .etiq{ border:1px solid #2E5C9A; padding:3px 8px; font-size:8.5pt; white-space:nowrap; }' +
   '.acu .lineas{ flex:1; }' +
@@ -4307,7 +4338,14 @@ function imprimirReportes(lista, titulo, soloVer){
   '.firmas2 p{ margin:0; font-size:10pt; }' +
   '.firmas2 .nom{ font-size:7.5pt; }' +
   '.sello{ width:60px; height:26px; border-radius:50%; background:#4A7FC1; }' +
-  '.cajaredonda{ border:1px solid #000; border-radius:18px; padding:8px 14px; margin-bottom:10px; }' +
+  '.cajaredonda{ border:1px solid #000; border-radius:18px; padding:8px 14px; margin-bottom:10px; }';
+}
+function imprimirReportes(lista, titulo, soloVer){
+  const aj = DB.ajustes || {};
+  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const cierre = '<' + '/script>';
+  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>' + q(titulo) + '</title><style>' +
+  estilosReporteCSS() +
   '</style></head><body>' +
   (lista.length ? lista.map(r=>hojaReporteHtml(r, aj, q)).join('')
                 : ['comunicacion','leve','grave','muygrave'].map(n=>hojaReporteHtml(null, aj, q, n)).join('')) +
@@ -4366,7 +4404,11 @@ function descargarReporte(id){
   if(!r) return;
   imprimirReportes([r], 'REPORTE ' + nivelFalta(r.nivel).formato + ' ' + r.estudiante.toUpperCase());
 }
-function descargarReportes(){
+/* Aplica al historial de reportes los mismos filtros (aula, estudiante, tipo de
+   falta y semana) que se ven en la pantalla de Historial. La usan tanto la
+   descarga combinada como la individual, para que descarguen siempre lo mismo
+   que el docente está viendo filtrado. */
+function listaReportesFiltrados(){
   const gradoF = getPref('repGrado',''), estF = getPref('repEst','');
   const tipoF = getPref('repTipoFalta',''), semanaF = getPref('repSemana','');
   let lista = reportesVisibles(currentUser).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
@@ -4374,12 +4416,87 @@ function descargarReportes(){
   if(estF) lista = lista.filter(r=>r.estId===estF);
   if(tipoF) lista = lista.filter(r=>r.nivel===tipoF);
   if(semanaF) lista = lista.filter(r=>lunesDe(r.fecha)===semanaF);
+  return lista;
+}
+function descargarReportes(){
+  const lista = listaReportesFiltrados();
   if(lista.length===0){ showToast('No hay reportes para descargar con ese filtro.'); return; }
+  const estF = getPref('repEst',''), gradoF = getPref('repGrado','');
   const est = estF ? DB.estudiantes.find(e=>e.id===estF) : null;
   const titulo = est
     ? 'REPORTES DISCIPLINARIOS ' + (apellidosDe(est)+' '+nombresDe(est)).toUpperCase()
     : 'REPORTES DISCIPLINARIOS ' + (gradoF ? gradoF.toUpperCase() : 'TODOS');
   imprimirReportes(lista, titulo);
+}
+/* Nombre de archivo para el PDF individual de un reporte: correlativo, nombre
+   completo del estudiante y grado — así se identifica sin tener que abrirlo. */
+function nombreArchivoReporte(r){
+  const correlativo = r.numero ? correlativoTexto(r.numero).replace('N° ', 'N') : 'S-N';
+  let base = correlativo + ' - ' + (r.estudiante||'') + ' - ' + (r.grado||'');
+  base = base.replace(/[\\\/:\*\?"<>\|]/g, ' ').replace(/\s+/g, ' ').trim();
+  return base || ('Reporte_' + r.id);
+}
+/* Genera un PDF real POR CADA reporte (no una sola impresión con muchas
+   páginas) y entrega todos juntos en un .zip, para poder guardarlos o
+   compartirlos por separado. Cada PDF conserva el mismo diseño que se ve al
+   imprimir, con el N° de reporte, el nombre completo del estudiante y el
+   grado en el encabezado. */
+async function descargarReportesIndividual(){
+  const lista = listaReportesFiltrados();
+  if(lista.length===0){ showToast('No hay reportes para descargar con ese filtro.'); return; }
+  if(lista.length > 40 && !confirm('Vas a generar ' + lista.length + ' PDF(s) individuales; puede tardar un momento. ¿Continuar?')) return;
+  if(descargarReportesIndividual._enCurso) return;
+  descargarReportesIndividual._enCurso = true;
+  showToast('Generando ' + lista.length + ' PDF(s) individuales…');
+  try{
+    await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js');
+  }catch(e){
+    showToast('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.');
+    descargarReportesIndividual._enCurso = false;
+    return;
+  }
+  const aj = DB.ajustes || {};
+  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const archivos = [];
+  const nombresUsados = {};
+  for(const r of lista){
+    const cont = document.createElement('div');
+    cont.style.position = 'fixed'; cont.style.left = '-99999px'; cont.style.top = '0';
+    const estilo = document.createElement('style');
+    estilo.textContent = '*{box-sizing:border-box;}' + estilosReporteCSS();
+    cont.appendChild(estilo);
+    const hoja = document.createElement('div');
+    hoja.innerHTML = hojaReporteHtml(r, aj, q);
+    cont.appendChild(hoja);
+    document.body.appendChild(cont);
+    let nombreArchivo = nombreArchivoReporte(r) + '.pdf';
+    let n = 2;
+    while(nombresUsados[nombreArchivo]){ nombreArchivo = nombreArchivoReporte(r) + ' (' + n + ').pdf'; n++; }
+    nombresUsados[nombreArchivo] = true;
+    try{
+      const blob = await html2pdf().set({
+        margin: 0,
+        filename: nombreArchivo,
+        html2canvas: {scale:2, useCORS:true},
+        jsPDF: {unit:'mm', format:'letter', orientation:'portrait'}
+      }).from(hoja.querySelector('.pagina')).outputPdf('blob');
+      const buf = await blob.arrayBuffer();
+      archivos.push({nombre: nombreArchivo, contenido: new Uint8Array(buf)});
+    }catch(err){
+      console.error('No se pudo generar el PDF del reporte', r.id, err);
+    }
+    document.body.removeChild(cont);
+  }
+  descargarReportesIndividual._enCurso = false;
+  if(archivos.length===0){ showToast('No se pudo generar ningún PDF.'); return; }
+  const bytes = crearZip(archivos);
+  const blob = new Blob([bytes], {type:'application/zip'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Reportes individuales.zip';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+  showToast(archivos.length + ' de ' + lista.length + ' PDF(s) individuales descargados en un .zip.');
 }
 function descargarPlantillaReporte(){
   imprimirReportes([], 'PLANTILLAS DE INCIDENCIA CV F1 F2 F3');
@@ -4968,7 +5085,7 @@ function hiloMensajesHtml(seleccionada, yoId){
       <div style="align-self:${m.deId===yoId?'flex-end':'flex-start'}; max-width:78%;">
         <div class="card" style="padding:10px 12px; margin:0; background:${m.deId===yoId?'var(--primary-light)':'var(--panel-2)'};">
           <div style="font-size:12.5px; white-space:pre-wrap;">${esc(m.texto)}</div>
-          ${m.imagen?`<img src="${m.imagen}" alt="Imagen adjunta" style="max-width:100%; border-radius:8px; margin-top:6px; cursor:pointer;" onclick="window.open('${m.imagen.replace(/'/g,"\\'")}','_blank')">`:''}
+          ${m.imagen?`<img src="${m.imagen}" alt="Imagen adjunta" style="max-width:100%; border-radius:8px; margin-top:6px; cursor:pointer;" onclick="verImagenGrande('${m.imagen.replace(/'/g,"\\'")}')">`:''}
         </div>
         <p class="nota-chica" style="text-align:${m.deId===yoId?'right':'left'}; margin:2px 4px;">${esc(fechaLegible(m.ts))}${m.deId===yoId?(' · '+(m.leido?'✓✓ Visto':'✓ Enviado')):''}</p>
       </div>`).join('')}
@@ -9156,6 +9273,7 @@ function renderHojas(){
       <button class="btn btn-sm" onclick="agregarFilaHoja('tarea')">+ Fila de tarea</button>
       <button class="btn btn-sm" onclick="agregarFilaHoja('integradora')">+ Fila de integradora</button>
       <button class="btn btn-sm" onclick="abrirCargarArchivoHoja()">Cargar desde archivo</button>
+      <button class="btn btn-sm" onclick="abrirDuplicarHoja()" title="Copiar todo el contenido de esta hoja a otra aula, asignatura o período">Duplicar esta hoja a…</button>
       <span class="nota-chica" style="margin:0 0 0 6px;">
         ${typeof viewState.filaSel === 'number'
           ? 'Se insertará debajo de la fila ' + (viewState.filaSel+1) + '. <a href="#" onclick="viewState.filaSel=null; render(); return false;">Quitar selección</a>'
@@ -9165,7 +9283,8 @@ function renderHojas(){
     <p class="nota-chica">Las firmas se configuran una vez y quedan por defecto: ${cfg.firmas.map(f=>esc(f)).join(' · ')}.
       ${edit?`<button class="btn btn-sm" style="margin-left:8px;" onclick="editarFirmasHoja()">Cambiar firmas</button>`:''}</p>
   </div>
-  ${renderCargarArchivoModal()}`;
+  ${renderCargarArchivoModal()}
+  ${renderDuplicarHojaModal()}`;
 }
 /* --- edición --- */
 /* Resuelve el aula, la asignatura y el período que se están viendo.
@@ -9184,6 +9303,99 @@ function contextoHoja(){
   return {grado, asigId, periodo, posibles, gradosVisibles};
 }
 function hojaActual(){ return contextoHoja(); }
+/* Asignaturas de un grado que el usuario actual puede editar en Hoja de
+   tareas — misma regla que usa contextoHoja() para "posibles", pero para un
+   grado cualquiera (se usa al elegir el destino al duplicar una hoja). */
+function posiblesAsignaturasHoja(grado){
+  if(!grado) return [];
+  return (isAdmin(currentUser) || esOrientador(currentUser, grado))
+    ? asignaturasDeGrado(grado)
+    : asignaturasDeGrado(grado).filter(x=>currentUser.asignaciones.some(a=>a.grado===grado && a.asignaturaId===x.id));
+}
+/* --- duplicar hoja de tareas --- */
+/* Abre el modal para copiar la hoja que se está viendo (origen) hacia otra
+   aula, asignatura o período (destino). Útil, por ejemplo, para llevar
+   "Números y formas" de 2do grado a 3er grado, o a 2do grado en Inglés. */
+function abrirDuplicarHoja(){
+  const {grado, asigId, periodo} = hojaActual();
+  if(!asigId){ showToast('Elige primero la aula y la asignatura que quieres duplicar.'); return; }
+  viewState.modalDuplicarHoja = {
+    origGrado: grado, origAsigId: asigId, origPeriodo: periodo,
+    destGrado: grado, destAsigId: '', destPeriodo: periodo
+  };
+  render();
+}
+function cerrarDuplicarHoja(){ viewState.modalDuplicarHoja = null; render(); }
+function cambiarGradoDuplicarHoja(g){
+  if(!viewState.modalDuplicarHoja) return;
+  viewState.modalDuplicarHoja.destGrado = g;
+  viewState.modalDuplicarHoja.destAsigId = '';
+  render();
+}
+function confirmarDuplicarHoja(){
+  const info = viewState.modalDuplicarHoja;
+  if(!info) return;
+  const destGrado = info.destGrado;
+  const destAsigId = (document.getElementById('dup_hoja_asig')||{}).value || '';
+  const destPeriodo = Number((document.getElementById('dup_hoja_periodo')||{}).value) || 1;
+  if(!destGrado || !destAsigId){ showToast('Elige el aula y la asignatura de destino.'); return; }
+  if(!canEditGrades(currentUser, destGrado, destAsigId) || !puedeEditarPanel(currentUser,'hojas') || currentUser.soloLectura){
+    showToast('No tienes permiso para editar la hoja de destino.'); return;
+  }
+  const esMisma = destGrado===info.origGrado && destAsigId===info.origAsigId && Number(destPeriodo)===Number(info.origPeriodo);
+  if(esMisma){ showToast('Elige una aula, asignatura o período distinto al de origen.'); return; }
+  const origenAsig = DB.asignaturas.find(a=>a.id===info.origAsigId);
+  const destAsig = DB.asignaturas.find(a=>a.id===destAsigId);
+  if(!confirm('¿Copiar la hoja de "' + (origenAsig?origenAsig.nombre:'') + '" (' + info.origGrado + ', período ' + info.origPeriodo + ') a "' +
+    (destAsig?destAsig.nombre:'') + '" (' + destGrado + ', período ' + destPeriodo + ')? Se reemplazará lo que ya tenga esa hoja.')) return;
+  const origen = JSON.parse(JSON.stringify(getHoja(info.origGrado, info.origAsigId, info.origPeriodo)));
+  const k = hojaKey(destGrado, destAsigId, destPeriodo);
+  commit(doc=>{
+    doc.hojas = doc.hojas || {};
+    doc.hojas[k] = origen;
+  });
+  registrar('Hoja de tareas', 'Duplicó la hoja de "' + (origenAsig?origenAsig.nombre:'') + '" — ' + info.origGrado + ' (P' + info.origPeriodo + ') a "' +
+    (destAsig?destAsig.nombre:'') + '" — ' + destGrado + ' (P' + destPeriodo + ')');
+  viewState.modalDuplicarHoja = null;
+  showToast('Hoja duplicada correctamente.');
+  render();
+}
+function renderDuplicarHojaModal(){
+  const info = viewState.modalDuplicarHoja;
+  if(!info) return '';
+  const cerrar = 'cerrarDuplicarHoja();';
+  const origAsig = DB.asignaturas.find(a=>a.id===info.origAsigId);
+  const gradosVisibles = misGrados(currentUser);
+  const asigsDestino = posiblesAsignaturasHoja(info.destGrado);
+  return `
+  <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
+    <div class="modal">
+      <button class="modal-close" onclick="${cerrar}">×</button>
+      <h3 class="modal-title">Duplicar esta hoja de tareas</h3>
+      <p class="nota-chica" style="margin-top:-6px;">
+        Copia todo el contenido de <b>${esc(origAsig?origAsig.nombre:'')} — ${esc(info.origGrado)} (Período ${info.origPeriodo})</b>
+        a otra aula, asignatura o período. Se reemplaza lo que ya tenga la hoja de destino.
+      </p>
+      <div class="field"><label>Aula de destino</label>
+        <select onchange="cambiarGradoDuplicarHoja(this.value)">
+          ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${info.destGrado===g?'selected':''}>${esc(g)}</option>`).join('')}
+        </select></div>
+      <div class="field"><label>Asignatura de destino</label>
+        <select id="dup_hoja_asig">
+          ${asigsDestino.length===0?'<option value="">Sin asignaturas disponibles</option>':''}
+          ${asigsDestino.map(x=>`<option value="${x.id}" ${info.destAsigId===x.id?'selected':''}>${esc(x.nombre)}</option>`).join('')}
+        </select></div>
+      <div class="field"><label>Período de destino</label>
+        <select id="dup_hoja_periodo">
+          ${[1,2,3,4].map(p=>`<option value="${p}" ${Number(info.destPeriodo)===p?'selected':''}>Período ${p}</option>`).join('')}
+        </select></div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-primary" onclick="confirmarDuplicarHoja()">Duplicar</button>
+        <button class="btn" onclick="${cerrar}">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+}
 let ultimoRegistroHoja = '';
 function editarFilaHoja(i, campo, valor){
   const {grado, asigId, periodo} = hojaActual();
