@@ -2708,24 +2708,43 @@ function render(){
   try{
     if(DB.ajustes && DB.ajustes.nombreColegio){ try{ document.title = DB.ajustes.nombreColegio; }catch(eT){} }
     if(versionRechazada){ app.innerHTML = renderVersionObsoleta(); return; }
-    if(!currentUser){ app.innerHTML = renderLogin(); return; }
+    if(!currentUser){ app.innerHTML = renderLogin(); activarOrtografia(); return; }
     if(vistaEstudiantePreview && !sesionEstudiante){
       app.innerHTML = renderLayoutVistaEstudiante();
       if(viewState.vpVista === 'credencial') cargarCredencialEstudianteEnPantalla();
+      activarOrtografia();
       return;
     }
     app.innerHTML = sesionEstudiante ? renderLayoutEstudiante() : renderLayout();
     if(sesionEstudiante && currentView === 'credencial') cargarCredencialEstudianteEnPantalla();
     try{ actualizarBadgeApp(); }catch(eB){}
+    activarOrtografia();
   }catch(e){
     console.error('render', e);
     showToast('Ocurrió un problema al mostrar esta sección.');
     if(currentUser){
       // se regresa al panel en lugar de expulsar al usuario del sistema
       vistaEstudiantePreview = null;
-      try{ currentView = sesionEstudiante ? 'sincronizacionEstudiante' : 'panel'; viewState = {}; app.innerHTML = sesionEstudiante ? renderLayoutEstudiante() : renderLayout(); }catch(e2){ console.error(e2); }
+      try{ currentView = sesionEstudiante ? 'sincronizacionEstudiante' : 'panel'; viewState = {}; app.innerHTML = sesionEstudiante ? renderLayoutEstudiante() : renderLayout(); activarOrtografia(); }catch(e2){ console.error(e2); }
     }
   }
+}
+/* Activa el corrector ortográfico propio del navegador (subrayado rojo +
+   sugerencias al hacer clic derecho) en los campos de texto libre que se
+   acaban de dibujar. No se reescribe nada por código: el navegador es quien
+   corrige. Si el docente elige "Omitir"/"Ignorar todo" en ese menú, dentro de
+   esa sesión no lo vuelve a marcar; si elige "Agregar al diccionario", el
+   navegador lo recuerda para siempre en ese dispositivo — por eso no hace
+   falta guardar nada aparte en la plataforma. */
+function activarOrtografia(){
+  const EXCLUIR_IDS = new Set(['codigo_gs', 'sync_input', 'est_usuario_input', 'doc_usuario_input']);
+  const EXCLUIR_PREFIJOS = ['cl_'];   // campos para restablecer contraseñas
+  document.querySelectorAll('#app textarea, #app input[type="text"]').forEach(el=>{
+    if(EXCLUIR_IDS.has(el.id)) return;
+    if(EXCLUIR_PREFIJOS.some(p=>el.id && el.id.indexOf(p)===0)) return;
+    el.spellcheck = true;
+    if(!el.hasAttribute('lang')) el.setAttribute('lang', 'es');
+  });
 }
 
 function renderLogin(){
