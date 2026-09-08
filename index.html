@@ -574,6 +574,27 @@ async function imagenDeInput(inputId, maxAncho){
   if(!file) return null;
   return comprimirImagen(file, maxAncho);
 }
+/* Permite pegar una imagen copiada (Ctrl+V, o "copiar imagen" con el
+   mouse) directo en el cuadro de texto de un mensaje: la mete en el mismo
+   input de archivo de siempre, como si la hubieran elegido a mano — así
+   el resto del envío (comprimirImagen, etc.) no tiene que cambiar nada. */
+function manejarPegadoImagen(event, inputFileId){
+  const items = (event.clipboardData || window.clipboardData) ? (event.clipboardData || window.clipboardData).items : null;
+  if(!items) return;
+  for(let i=0; i<items.length; i++){
+    if(items[i].type && items[i].type.indexOf('image') === 0){
+      const file = items[i].getAsFile();
+      if(!file) continue;
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      const inputFile = document.getElementById(inputFileId);
+      if(inputFile) inputFile.files = dt.files;
+      showToast('Imagen pegada — se enviará adjunta.');
+      event.preventDefault();
+      break;
+    }
+  }
+}
 
 /* ============================= STORAGE ============================= */
 
@@ -1475,6 +1496,9 @@ let syncTimer = null;
 function setSyncStatus(s){
   syncStatus = s;
   if(s==='ok') lastSync = new Date();
+  // El guardado (exitoso o fallido) ya terminó su ciclo en este punto —
+  // así que el botón "Guardar cambios" se puede volver a habilitar.
+  guardadoManualEnCurso = false;
   const el = document.getElementById('sync-indicator');
   if(el) el.outerHTML = renderSyncIndicator();
   actualizarBotonGuardarManual();
@@ -1483,13 +1507,15 @@ function setSyncStatus(s){
    (Hojas de tareas y Calificaciones). Se actualiza reemplazando solo este
    bloque (no toda la pantalla), para no interrumpir si la persona sigue
    escribiendo en otro campo mientras tanto. */
+let guardadoManualEnCurso = false;
 function renderGuardarManualBanner(){
   if(currentView!=='hojas' && currentView!=='calificaciones') return '';
   const hay = pendientes.length > 0;
+  const activo = guardadoManualEnCurso;
   return `<div id="guardar-manual-banner" class="card" style="margin-bottom:14px; border-left:4px solid ${hay?'var(--gold)':'var(--primary)'}; background:${hay?'var(--gold-light)':'var(--primary-light)'};">
     <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-      <p style="margin:0; font-size:13.5px; font-weight:600; color:${hay?'#7A5A1C':'var(--primary-dark)'};">${hay?'⚠️ Tienes cambios sin guardar':'✓ Todo guardado'}</p>
-      <button class="btn ${hay?'btn-primary':''}" ${hay?'':'disabled'} onclick="guardarCambiosManual()">Guardar cambios</button>
+      <p style="margin:0; font-size:13.5px; font-weight:600; color:${hay?'#7A5A1C':'var(--primary-dark)'};">${activo?'Guardando…':(hay?'⚠️ Tienes cambios sin guardar':'✓ Todo guardado')}</p>
+      <button class="btn ${hay?'btn-primary':''}" ${(hay && !activo)?'':'disabled'} onclick="guardarCambiosManual()">${activo?'Guardando…':'Guardar cambios'}</button>
     </div>
   </div>`;
 }
@@ -1498,7 +1524,10 @@ function actualizarBotonGuardarManual(){
   if(el) el.outerHTML = renderGuardarManualBanner();
 }
 function guardarCambiosManual(){
+  if(guardadoManualEnCurso) return; // ya se está guardando, ignora los clics de más
   if(pendientes.length===0){ showToast('No hay cambios sin guardar.'); return; }
+  guardadoManualEnCurso = true;
+  actualizarBotonGuardarManual();
   showToast('Guardando…');
   programarGuardado(0);
 }
@@ -1506,6 +1535,14 @@ function hayEdicionEnCurso(){
   const a = document.activeElement;
   if(a && (a.tagName==='INPUT' || a.tagName==='SELECT' || a.tagName==='TEXTAREA')) return true;
   if(viewState.modalStudent || viewState.modalTeacher || viewState.modalSubject) return true;
+  // El modal de "Cargar desde archivo" (paso 2: revisar una fila; paso 3:
+  // revisar varias filas de una tabla de Word) tiene muchos campos sueltos
+  // que la persona va llenando o corrigiendo sin necesariamente tener el
+  // cursor puesto todo el tiempo. Si una sincronización de fondo redibuja
+  // la pantalla en medio de esa revisión, se pierde lo que ya se había
+  // corregido — por eso se bloquea el redibujado mientras este modal esté
+  // abierto, igual que con los otros modales de arriba.
+  if(viewState.modalCargarArchivo) return true;
   return false;
 }
 async function pullCambios(silencioso){
@@ -3048,13 +3085,42 @@ function goTo(id){
   if((currentView==='hojas' || currentView==='calificaciones') && pendientes.length>0){
     programarGuardado(0);
   }
+  // Guarda de dónde veníamos, para que el botón "← Volver" pueda regresar
+  // ahí. No se guarda si ya estábamos en esa misma pantalla, ni si esto es
+  // apenas el primer panel que se abre (currentView todavía sin definir).
+  if(currentView && currentView !== id){
+    historialNav.push(currentView);
+    if(historialNav.length > 20) historialNav.shift();
+  }
   volverDesdeSeguimiento = null;
   currentView = id; viewState = {}; render();
   guardarSesion();
   pullCambios(true); // al cambiar de sección se traen los cambios de otros docentes
 }
 
+/* Botón "← Volver" genérico: aparece en cualquier panel, para cualquier
+   usuario, siempre que haya una pantalla anterior a la que regresar
+   (guardada en historialNav). No reemplaza al botón específico de
+   "Volver a Seguimiento" (ese sigue funcionando para ese caso puntual). */
+let historialNav = [];
 function renderView(){
+  const botonVolver = (historialNav.length > 0) ? `
+    <div class="btn-row" style="margin-bottom:14px;">
+      <button class="btn btn-sm" onclick="volverAtras()">← Volver</button>
+    </div>` : '';
+  return botonVolver + renderViewInterno();
+}
+function volverAtras(){
+  if(historialNav.length === 0) return;
+  if((currentView==='hojas' || currentView==='calificaciones') && pendientes.length>0){
+    programarGuardado(0);
+  }
+  currentView = historialNav.pop();
+  viewState = {};
+  render();
+  guardarSesion();
+}
+function renderViewInterno(){
   switch(currentView){
     case 'panel': return renderPanel();
     case 'estudiantes': return renderEstudiantes();
@@ -3202,18 +3268,24 @@ function renderLayoutEstudiante(){
 function renderViewEstudiante(){
   const est = currentUser;
   const accesos = est.accesos || accesosPorDefecto();
+  const botonVolver = (historialNav.length > 0) ? `
+    <div class="btn-row" style="margin-bottom:14px;">
+      <button class="btn btn-sm" onclick="volverAtras()">← Volver</button>
+    </div>` : '';
   if(currentView !== 'sincronizacionEstudiante' && currentView !== 'credencial' && currentView !== 'soporte' && !accesos[currentView]) return renderSincronizacionEstudiante();
-  switch(currentView){
-    case 'credencial': return renderCredencialEstudiante(est);
-    case 'soporte': return renderSoporteEstudiante(est);
-    case 'mensajes': return renderMensajesEstudiante(est);
-    case 'reportes': return renderReportesEstudiante(est);
-    case 'hojas': return renderHojasEstudiante(est);
-    case 'calificaciones': return renderCalificacionesEstudiante(est);
-    case 'alertas': return renderAlertasEstudiante(est);
-    case 'boletas': return renderBoletasEstudiante_(est);
-    default: return renderSincronizacionEstudiante();
-  }
+  return botonVolver + (()=>{
+    switch(currentView){
+      case 'credencial': return renderCredencialEstudiante(est);
+      case 'soporte': return renderSoporteEstudiante(est);
+      case 'mensajes': return renderMensajesEstudiante(est);
+      case 'reportes': return renderReportesEstudiante(est);
+      case 'hojas': return renderHojasEstudiante(est);
+      case 'calificaciones': return renderCalificacionesEstudiante(est);
+      case 'alertas': return renderAlertasEstudiante(est);
+      case 'boletas': return renderBoletasEstudiante_(est);
+      default: return renderSincronizacionEstudiante();
+    }
+  })();
 }
 /* --- Credencial: la misma plantilla e imagen que se descarga desde Estudiantes,
    pero mostrada dentro de la app. Se dibuja después de montar el HTML porque
@@ -4896,9 +4968,9 @@ function hiloMensajesHtml(seleccionada, yoId){
       <div style="align-self:${m.deId===yoId?'flex-end':'flex-start'}; max-width:78%;">
         <div class="card" style="padding:10px 12px; margin:0; background:${m.deId===yoId?'var(--primary-light)':'var(--panel-2)'};">
           <div style="font-size:12.5px; white-space:pre-wrap;">${esc(m.texto)}</div>
-          ${m.imagen?`<img src="${m.imagen}" alt="Imagen adjunta" style="max-width:100%; border-radius:8px; margin-top:6px;">`:''}
+          ${m.imagen?`<img src="${m.imagen}" alt="Imagen adjunta" style="max-width:100%; border-radius:8px; margin-top:6px; cursor:pointer;" onclick="window.open('${m.imagen.replace(/'/g,"\\'")}','_blank')">`:''}
         </div>
-        <p class="nota-chica" style="text-align:${m.deId===yoId?'right':'left'}; margin:2px 4px;">${esc(fechaLegible(m.ts))}</p>
+        <p class="nota-chica" style="text-align:${m.deId===yoId?'right':'left'}; margin:2px 4px;">${esc(fechaLegible(m.ts))}${m.deId===yoId?(' · '+(m.leido?'✓✓ Visto':'✓ Enviado')):''}</p>
       </div>`).join('')}
   </div>`;
 }
@@ -4924,7 +4996,7 @@ function renderMensajes(){
 
   const hilo = seleccionada ? hiloMensajesHtml(seleccionada, yo.id) + `
     <div class="field" style="margin-top:10px;">
-      <textarea id="msg_reply_texto" rows="2" placeholder="Escribe una respuesta…"></textarea>
+      <textarea id="msg_reply_texto" rows="2" placeholder="Escribe una respuesta… (puedes pegar una imagen con Ctrl+V)" onpaste="manejarPegadoImagen(event, 'msg_reply_imagen')"></textarea>
       <input type="file" id="msg_reply_imagen" accept="image/*" style="margin-top:6px;">
       <div class="btn-row"><button class="btn btn-primary" onclick="responderMensaje()">Enviar</button></div>
     </div>` : '<p class="empty">Elige una conversación, o inicia una nueva.</p>';
@@ -4988,7 +5060,7 @@ function renderComponerMensaje(){
     </div>
     `}
     <div class="field"><label>Mensaje</label>
-      <textarea id="msg_texto" rows="3" placeholder="Escribe tu mensaje…"></textarea></div>
+      <textarea id="msg_texto" rows="3" placeholder="Escribe tu mensaje… (puedes pegar una imagen con Ctrl+V)" onpaste="manejarPegadoImagen(event, 'msg_imagen')"></textarea></div>
     <div class="field"><label>Imagen (opcional)</label>
       <input type="file" id="msg_imagen" accept="image/*"></div>
     <div class="btn-row">
@@ -5004,11 +5076,17 @@ function marcarTodosEstudiantesMensaje(marcar){
   document.querySelectorAll('.msg-estudiante-check').forEach(el => { el.checked = marcar; });
 }
 function abrirConversacionMensajes(otroId){
+  const yaAbierta = viewState.mensajeConv === otroId;
   viewState.mensajeConv = otroId;
   viewState.mensajeNuevo = false;
   commit(doc=>{
     (doc.mensajes||[]).forEach(m=>{ if(m.paraId===currentUser.id && m.deId===otroId) m.leido = true; });
   });
+  if(!yaAbierta){
+    const otro = DB.docentes.find(t=>t.id===otroId) || DB.estudiantes.find(e=>e.id===otroId);
+    const nombreOtro = otro ? (otro.nombre || nombreCompleto(otro.nombres, otro.apellidos)) : 'alguien';
+    registrar('Mensajes', 'Leyó la conversación con ' + nombreOtro);
+  }
   render();
 }
 async function enviarMensajeDocente(){
@@ -5111,7 +5189,7 @@ function renderMensajesEstudiante(est){
 
   const hilo = seleccionada ? hiloMensajesHtml(seleccionada, est.id) + `
     <div class="field" style="margin-top:10px;">
-      <textarea id="msg_reply_texto" rows="2" placeholder="Escribe una respuesta…"></textarea>
+      <textarea id="msg_reply_texto" rows="2" placeholder="Escribe una respuesta… (puedes pegar una imagen con Ctrl+V)" onpaste="manejarPegadoImagen(event, 'msg_reply_imagen')"></textarea>
       <input type="file" id="msg_reply_imagen" accept="image/*" style="margin-top:6px;">
       <div class="btn-row"><button class="btn btn-primary" onclick="responderMensajeEstudiante()">Enviar</button></div>
     </div>` : '<p class="empty">Elige una conversación de la lista.</p>';
@@ -5128,14 +5206,24 @@ function renderMensajesEstudiante(est){
   </div>`;
 }
 async function abrirConversacionMensajesEstudiante(otroId){
+  const yaAbierta = viewState.mensajeConv === otroId;
   viewState.mensajeConv = otroId;
   render();
   if(motor === 'nube' && sesionEstudianteCred){
     (DB.mensajes||[]).forEach(m=>{ if(m.paraId===currentUser.id && m.deId===otroId) m.leido = true; });
     render();
     await marcarMensajesLeidosNube(sesionEstudianteCred.usuario, sesionEstudianteCred.claveHash, otroId);
+    if(!yaAbierta){
+      const otro = DB.docentes.find(t=>t.id===otroId);
+      registrarEventoNube(sesionEstudianteCred.usuario, sesionEstudianteCred.claveHash, 'Mensajes',
+        'Leyó la conversación con ' + (otro?otro.nombre:'alguien'));
+    }
   }else{
     commit(doc=>{ (doc.mensajes||[]).forEach(m=>{ if(m.paraId===currentUser.id && m.deId===otroId) m.leido = true; }); });
+    if(!yaAbierta){
+      const otro = DB.docentes.find(t=>t.id===otroId);
+      registrar('Mensajes', 'Leyó la conversación con ' + (otro?otro.nombre:'alguien'));
+    }
   }
 }
 async function responderMensajeEstudiante(){
