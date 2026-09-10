@@ -2558,6 +2558,13 @@ function accionTomadaDe(r){
   if((r.acciones||[]).length) return r.acciones.join(', ');
   return '—';
 }
+/* Todos los seguimientos escritos en el reporte, con fecha y hora — para la
+   columna "Seguimiento" del Resumen de conducta. */
+function seguimientosTexto(r){
+  const segs = r.seguimientos || [];
+  if(segs.length===0) return '—';
+  return segs.map(s => s.texto + ' (' + fechaLegible(s.ts) + ')').join('\n');
+}
 
 /* Alertas: 2 pendientes = amarilla, 3 = naranja, 4 o más = roja */
 /* 2 pendientes: amarilla. 3 pendientes: naranja solo si son de tres materias
@@ -3951,18 +3958,20 @@ function renderReportes(){
       <button class="btn btn-primary" onclick="imprimirResumenConducta()">Descargar en PDF</button>
     </div>
     <div class="card" id="resumen_conducta_area">
-      <div style="text-align:center; border:2px solid #2E5C9A; border-radius:10px; padding:14px 10px; margin-bottom:14px;">
-        ${aj.logo?`<img src="${aj.logo}" style="width:56px;height:56px;object-fit:contain;">`:''}
-        <p style="font-weight:bold; font-size:15px; margin:8px 0 2px;">${esc(aj.nombreColegio||'')}</p>
-        <p style="font-weight:bold; font-size:14.5px; margin:0; color:#2E5C9A;">Seguimiento ${tituloTipo} de conducta</p>
-        <p class="nota-chica" style="margin:4px 0 0;">${esc(rotuloPeriodo(periodoTipo, periodoValor))}${gradoF?' · '+esc(gradoF):''}${estF && alumnos.find(e=>e.id===estF)?' · '+esc(apellidosDe(alumnos.find(e=>e.id===estF)))+', '+esc(nombresDe(alumnos.find(e=>e.id===estF))):''}</p>
+      <div style="display:flex; align-items:center; justify-content:center; gap:16px; text-align:center; border:2px solid #2E5C9A; border-radius:10px; padding:14px 18px; margin-bottom:14px;">
+        ${aj.logo?`<img src="${aj.logo}" style="width:56px;height:56px;object-fit:contain;flex-shrink:0;">`:''}
+        <div>
+          <p style="font-weight:bold; font-size:15px; margin:0 0 2px;">${esc(aj.nombreColegio||'')}</p>
+          <p style="font-weight:bold; font-size:14.5px; margin:0; color:#2E5C9A;">Seguimiento ${tituloTipo} de conducta</p>
+          <p class="nota-chica" style="margin:4px 0 0;">${esc(rotuloPeriodo(periodoTipo, periodoValor))}${gradoF?' · '+esc(gradoF):''}${estF && alumnos.find(e=>e.id===estF)?' · '+esc(apellidosDe(alumnos.find(e=>e.id===estF)))+', '+esc(nombresDe(alumnos.find(e=>e.id===estF))):''}</p>
+        </div>
       </div>
       <div class="table-wrap">
       <table class="tabla-reportes">
         <thead><tr><th style="width:84px;">Fecha</th><th style="width:180px;">Estudiante</th><th style="width:95px;">Grado</th>
-          <th style="width:90px;">Tipo de falta</th><th style="width:140px;">Docente</th><th style="width:auto;min-width:260px;">Acción tomada</th></tr></thead>
+          <th style="width:90px;">Tipo de falta</th><th style="width:140px;">Docente</th><th style="width:220px;">Acción tomada</th><th style="width:auto;min-width:220px;">Seguimiento</th></tr></thead>
         <tbody>
-          ${lista.length===0?`<tr><td colspan="6" class="empty">No hay reportes en este período.</td></tr>`:''}
+          ${lista.length===0?`<tr><td colspan="7" class="empty">No hay reportes en este período.</td></tr>`:''}
           ${lista.map(r=>{
             const n = nivelFalta(r.nivel);
             return `<tr>
@@ -3972,6 +3981,7 @@ function renderReportes(){
               <td><span class="pill ${n.pill}">${esc(n.formato)}</span></td>
               <td style="font-size:12px;">${esc(r.docente)}</td>
               <td style="font-size:12.5px;">${esc(accionTomadaDe(r))}</td>
+              <td style="font-size:12px;white-space:pre-line;">${esc(seguimientosTexto(r))}</td>
             </tr>`;
           }).join('')}
         </tbody>
