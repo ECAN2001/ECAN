@@ -3969,7 +3969,7 @@ function renderReportes(){
         <input type="file" id="rep_imagen" accept="image/*">
         <p class="nota-chica" style="margin-top:4px;">Solo si hace falta como evidencia — por ejemplo, un daño material.</p></div>
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="guardarReporte()">Guardar reporte</button>
+        <button class="btn btn-primary" id="rep_btn_guardar" onclick="guardarReporte()">Guardar reporte</button>
         <button class="btn" onclick="verReporteAntes()">Vista previa</button>
         <button class="btn" onclick="descargarReporteFormulario()">Descargar en PDF</button>
         <button class="btn" onclick="descargarPlantillaReporte()">Plantilla en blanco</button>
@@ -4089,47 +4089,71 @@ function alternarDetalleReporte(id){
 async function guardarReporte(){
   // Evita reportes duplicados si se hace clic varias veces seguidas
   // (por ejemplo, con internet lento y la persona pensando que no funcionó).
+  // El botón se deshabilita mientras se procesa el guardado completo —ya no
+  // se libera solo con un tiempo fijo, sino cuando la función realmente
+  // termina— y además se revisa que no se acabe de guardar un reporte
+  // idéntico hace unos segundos, como red de seguridad extra.
   if(guardarReporte._enCurso) return;
   guardarReporte._enCurso = true;
-  setTimeout(()=>{ guardarReporte._enCurso = false; }, 1500);
-  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
-  const estId = val('rep_est') || getPref('repEst','');
-  const est = DB.estudiantes.find(e=>e.id===estId);
-  if(!est){ showToast('Selecciona el estudiante.'); guardarReporte._enCurso = false; return; }
-  const desc = val('rep_desc');
-  if(!desc){ showToast('Describe lo sucedido.'); guardarReporte._enCurso = false; return; }
-  let imagen = null;
-  try{ imagen = await imagenDeInput('rep_imagen', 1000); }
-  catch(e){ showToast('No se pudo procesar la foto; se guarda el reporte sin ella.'); }
-  const nivelReal = getPref('repNivel','leve');
-  const marcadas = (prefijo, lista) => lista.filter((t,i)=>{
-    const el = document.getElementById(prefijo + i);
-    return el && el.checked;
-  });
-  const opc = nivelReal==='leve' ? opcionesF1() : (nivelReal==='grave' ? opcionesF2() : null);
-  const reporte = {
-    id: uid('rep'), numero: siguienteCorrelativo(), ts: new Date().toISOString(), nivel: nivelReal,
-    vistas: [], seguimientos: [],
-    estId: est.id, estudiante: apellidosDe(est) + ', ' + nombresDe(est), grado: est.grado,
-    fecha: val('rep_fecha'), lugar: val('rep_lugar'), reincidencias: val('rep_reinc'),
-    articuloManual: val('rep_articulo'),
-    situaciones: opc ? marcadas('rep_sit_', opc.situacion) : [],
-    antecedentes: opc ? marcadas('rep_ant_', opc.antecedentes) : [],
-    acciones: nivelReal==='leve' ? marcadas('rep_acc_', opcionesF1().acciones) : [],
-    descripcion: desc, medida: val('rep_medida'),
-    acuerdosAlumno: val('rep_acu_alumno'), acuerdosPadres: val('rep_acu_padres'),
-    imagen: imagen,
-    docente: currentUser.nombre, docenteId: currentUser.id
-  };
-  commit(doc=>{
-    doc.reportes = doc.reportes || [];
-    doc.reportes.push(reporte);
-    doc.config.correlativoReportes = Math.max(doc.config.correlativoReportes||0, reporte.numero);
-  });
-  registrar('Reporte disciplinario', correlativoTexto(reporte.numero) + ' · ' + (nivelFalta(nivel).noEsFalta?nivelFalta(nivel).nombre.toLowerCase():'falta '+nivelFalta(nivel).nombre.toLowerCase()) + ' — ' + reporte.estudiante);
-  setPref('repEst','');
-  showToast('Reporte guardado. El formulario quedó en blanco.');
-  render();
+  const btn = document.getElementById('rep_btn_guardar');
+  const btnTextoOriginal = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try{
+    const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    const estId = val('rep_est') || getPref('repEst','');
+    const est = DB.estudiantes.find(e=>e.id===estId);
+    if(!est){ showToast('Selecciona el estudiante.'); return; }
+    const desc = val('rep_desc');
+    if(!desc){ showToast('Describe lo sucedido.'); return; }
+    const nivelReal = getPref('repNivel','leve');
+    // Red de seguridad: si el clic se alcanzó a duplicar antes de que el
+    // botón se deshabilitara, no se crea un segundo reporte igual.
+    const yaGuardadoHaceUnSegundo = (DB.reportes||[]).some(r=>
+      r.estId===est.id && r.nivel===nivelReal && r.docenteId===currentUser.id &&
+      r.descripcion===desc && (Date.now() - new Date(r.ts).getTime()) < 20000
+    );
+    if(yaGuardadoHaceUnSegundo){ showToast('Ese reporte ya se guardó hace unos segundos; no se creó uno repetido.'); return; }
+    let imagen = null;
+    try{ imagen = await imagenDeInput('rep_imagen', 1000); }
+    catch(e){ showToast('No se pudo procesar la foto; se guarda el reporte sin ella.'); }
+    const marcadas = (prefijo, lista) => lista.filter((t,i)=>{
+      const el = document.getElementById(prefijo + i);
+      return el && el.checked;
+    });
+    const opc = nivelReal==='leve' ? opcionesF1() : (nivelReal==='grave' ? opcionesF2() : null);
+    const reporte = {
+      id: uid('rep'), numero: siguienteCorrelativo(), ts: new Date().toISOString(), nivel: nivelReal,
+      vistas: [], seguimientos: [],
+      estId: est.id, estudiante: apellidosDe(est) + ', ' + nombresDe(est), grado: est.grado,
+      fecha: val('rep_fecha'), lugar: val('rep_lugar'), reincidencias: val('rep_reinc'),
+      articuloManual: val('rep_articulo'),
+      situaciones: opc ? marcadas('rep_sit_', opc.situacion) : [],
+      antecedentes: opc ? marcadas('rep_ant_', opc.antecedentes) : [],
+      acciones: nivelReal==='leve' ? marcadas('rep_acc_', opcionesF1().acciones) : [],
+      descripcion: desc, medida: val('rep_medida'),
+      acuerdosAlumno: val('rep_acu_alumno'), acuerdosPadres: val('rep_acu_padres'),
+      imagen: imagen,
+      docente: currentUser.nombre, docenteId: currentUser.id
+    };
+    commit(doc=>{
+      doc.reportes = doc.reportes || [];
+      doc.reportes.push(reporte);
+      doc.config.correlativoReportes = Math.max(doc.config.correlativoReportes||0, reporte.numero);
+    });
+    registrar('Reporte disciplinario', correlativoTexto(reporte.numero) + ' · ' + (nivelFalta(nivelReal).noEsFalta?nivelFalta(nivelReal).nombre.toLowerCase():'falta '+nivelFalta(nivelReal).nombre.toLowerCase()) + ' — ' + reporte.estudiante);
+    setPref('repEst','');
+    showToast('Reporte guardado. El formulario quedó en blanco.');
+    render();
+  }catch(e){
+    console.error('guardarReporte', e);
+    showToast('Ocurrió un problema al guardar. Intenta de nuevo.');
+  }finally{
+    guardarReporte._enCurso = false;
+    // Si algo impidió que render() reconstruyera la pantalla (por ejemplo un
+    // error), se reactiva el botón a mano para que la persona no se quede
+    // sin poder volver a intentar.
+    if(btn && document.body.contains(btn)){ btn.disabled = false; btn.textContent = btnTextoOriginal; }
+  }
 }
 function eliminarReporte(id){
   if(!confirm('¿Eliminar este reporte del historial?')) return;
