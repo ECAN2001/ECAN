@@ -2537,6 +2537,27 @@ function fechaCorta(iso){
   if(isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('es', {weekday:'short', day:'2-digit', month:'2-digit'});
 }
+/* Mes de una fecha "YYYY-MM-DD" en formato "YYYY-MM", y su rótulo legible
+   ("Septiembre 2026") — para el filtro y el resumen mensual de conducta. */
+function mesDe(iso){ return iso ? iso.slice(0,7) : ''; }
+function rotuloMes(ym){
+  if(!ym) return 'Sin fecha';
+  const [y,m] = ym.split('-');
+  const nombres = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const nombre = nombres[Number(m)-1] || '';
+  return nombre.charAt(0).toUpperCase() + nombre.slice(1) + ' ' + y;
+}
+/* "Acción tomada" para el resumen de conducta: cada formato guarda esto en
+   un campo distinto (F1 son casillas marcadas, F2 es un texto libre, CV/F3
+   solo tienen "Acuerdos"), así que se junta en un solo texto según lo que
+   ese reporte realmente tenga guardado. */
+function accionTomadaDe(r){
+  if(r.nivel==='leve' && (r.acciones||[]).length) return r.acciones.join(', ');
+  if(r.medida) return r.medida;
+  if(r.acuerdosAlumno) return r.acuerdosAlumno;
+  if((r.acciones||[]).length) return r.acciones.join(', ');
+  return '—';
+}
 
 /* Alertas: 2 pendientes = amarilla, 3 = naranja, 4 o más = roja */
 /* 2 pendientes: amarilla. 3 pendientes: naranja solo si son de tres materias
@@ -3713,6 +3734,27 @@ const NIVELES_FALTA = [
 ];
 function nivelFalta(id){ return NIVELES_FALTA.find(n=>n.id===id) || NIVELES_FALTA[0]; }
 /* Los reportes son de todo el colegio: cualquier docente puede levantar uno */
+/* Filtra una lista de reportes por período: 'dia' compara la fecha exacta,
+   'semana' agrupa por el lunes de esa semana, 'mes' por año-mes. Lo usan
+   tanto el filtro de Historial como la pestaña Resumen. */
+function filtrarPorPeriodo(lista, tipo, valor){
+  if(!tipo || !valor) return lista;
+  if(tipo==='dia') return lista.filter(r=>r.fecha===valor);
+  if(tipo==='mes') return lista.filter(r=>mesDe(r.fecha)===valor);
+  return lista.filter(r=>lunesDe(r.fecha)===valor);
+}
+function rotuloDia(iso){
+  if(!iso) return 'Sin fecha';
+  const d = new Date(iso + 'T12:00:00');
+  if(isNaN(d.getTime())) return iso;
+  const txt = d.toLocaleDateString('es', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+function rotuloPeriodo(tipo, valor){
+  if(tipo==='dia') return rotuloDia(valor);
+  if(tipo==='mes') return rotuloMes(valor);
+  return rotuloSemana(valor);
+}
 function renderReportes(){
   if(!puedeVerPanel(currentUser, 'reportes')) return renderNoAccess();
   const vista = getPref('repVista','nuevo');
@@ -3730,6 +3772,7 @@ function renderReportes(){
     ${NIVELES_FALTA.map(n=>`<div class="period-tab ${vista==='nuevo'&&nivel===n.id?'active':''}"
       onclick="setPref('repVista','nuevo'); setPref('repNivel','${n.id}')">${n.noEsFalta?esc(n.nombre):'Falta '+esc(n.nombre.toLowerCase())}</div>`).join('')}
     <div class="period-tab ${vista==='historial'?'active':''}" onclick="setPref('repVista','historial')">Historial</div>
+    <div class="period-tab ${vista==='resumen'?'active':''}" onclick="setPref('repVista','resumen')">Resumen</div>
     ${puedeEditar?`<div class="period-tab ${vista==='eliminados'?'active':''}" onclick="setPref('repVista','eliminados')">Eliminados</div>`:''}
   </div>`;
 
@@ -3742,12 +3785,16 @@ function renderReportes(){
     if(busca) lista = lista.filter(r=>String(r.numero||'').padStart(3,'0').indexOf(busca)>=0);
     const tipoF = getPref('repTipoFalta','');
     if(tipoF) lista = lista.filter(r=>r.nivel===tipoF);
-    const semanaF = getPref('repSemana','');
-    if(semanaF) lista = lista.filter(r=>lunesDe(r.fecha)===semanaF);
-    // Semanas con al menos un reporte visible para este usuario, de la más reciente a la más antigua.
-    const semanasDisponibles = Array.from(new Set(
-      reportesVisibles(currentUser).map(r=>lunesDe(r.fecha)).filter(Boolean)
-    )).sort((a,b)=>b.localeCompare(a));
+    const periodoTipo = getPref('repPeriodo','');
+    const periodoValor = getPref('repPeriodoValor','');
+    lista = filtrarPorPeriodo(lista, periodoTipo, periodoValor);
+    // Opciones disponibles para el selector de semana/mes, según todo lo
+    // que este usuario puede ver (no solo lo ya filtrado por aula/tipo).
+    const opcionesPeriodo = periodoTipo==='mes'
+      ? Array.from(new Set(reportesVisibles(currentUser).map(r=>mesDe(r.fecha)).filter(Boolean))).sort((a,b)=>b.localeCompare(a))
+      : periodoTipo==='semana'
+      ? Array.from(new Set(reportesVisibles(currentUser).map(r=>lunesDe(r.fecha)).filter(Boolean))).sort((a,b)=>b.localeCompare(a))
+      : [];
     cuerpo = `
     <div class="filters">
       <div class="field"><label>Aula</label>
@@ -3765,11 +3812,22 @@ function renderReportes(){
           <option value="">Todos los tipos</option>
           ${NIVELES_FALTA.map(n=>`<option value="${n.id}" ${tipoF===n.id?'selected':''}>${esc(n.nombre)}</option>`).join('')}
         </select></div>
-      <div class="field"><label>Semana</label>
-        <select onchange="setPref('repSemana', this.value)">
-          <option value="">Todas las semanas</option>
-          ${semanasDisponibles.map(s=>`<option value="${s}" ${semanaF===s?'selected':''}>${esc(rotuloSemana(s))}</option>`).join('')}
+      <div class="field"><label>Periodo</label>
+        <select onchange="setPref('repPeriodo', this.value); setPref('repPeriodoValor','')">
+          <option value="">Todo</option>
+          <option value="dia" ${periodoTipo==='dia'?'selected':''}>Día</option>
+          <option value="semana" ${periodoTipo==='semana'?'selected':''}>Semana</option>
+          <option value="mes" ${periodoTipo==='mes'?'selected':''}>Mes</option>
         </select></div>
+      ${periodoTipo?`
+      <div class="field"><label>${periodoTipo==='dia'?'Fecha':(periodoTipo==='mes'?'Mes':'Semana')}</label>
+        ${periodoTipo==='dia'
+          ? `<input type="date" value="${esc(periodoValor)}" onchange="setPref('repPeriodoValor', this.value)">`
+          : `<select onchange="setPref('repPeriodoValor', this.value)">
+              <option value="">${periodoTipo==='mes'?'Todos los meses':'Todas las semanas'}</option>
+              ${opcionesPeriodo.map(v=>`<option value="${esc(v)}" ${periodoValor===v?'selected':''}>${esc(periodoTipo==='mes'?rotuloMes(v):rotuloSemana(v))}</option>`).join('')}
+            </select>`}
+      </div>`:''}
       <div class="field"><label>N° de reporte</label>
         <input type="text" value="${esc(getPref('repNum',''))}" placeholder="Ej.: 007"
           onchange="setPref('repNum', this.value)"></div>
@@ -3845,6 +3903,81 @@ function renderReportes(){
       </table>
       </div>
     </div>`;
+  }else if(vista === 'resumen'){
+    const aj = DB.ajustes || {};
+    const periodoTipo = getPref('resPeriodo','semana');
+    let periodoValor = getPref('resPeriodoValor','');
+    if(!periodoValor){
+      periodoValor = periodoTipo==='semana' ? semanaEnCurso()
+        : periodoTipo==='mes' ? mesDe(new Date().toISOString().slice(0,10))
+        : new Date().toISOString().slice(0,10);
+    }
+    let lista = reportesVisibles(currentUser).slice().sort((a,b)=>a.fecha.localeCompare(b.fecha) || a.ts.localeCompare(b.ts));
+    if(gradoF) lista = lista.filter(r=>r.grado===gradoF);
+    if(estF) lista = lista.filter(r=>r.estId===estF);
+    lista = filtrarPorPeriodo(lista, periodoTipo, periodoValor);
+    const opcionesPeriodo = periodoTipo==='mes'
+      ? Array.from(new Set(reportesVisibles(currentUser).map(r=>mesDe(r.fecha)).filter(Boolean))).sort((a,b)=>b.localeCompare(a))
+      : periodoTipo==='semana'
+      ? Array.from(new Set(reportesVisibles(currentUser).map(r=>lunesDe(r.fecha)).filter(Boolean))).sort((a,b)=>b.localeCompare(a))
+      : [];
+    const tituloTipo = periodoTipo==='dia' ? 'diario' : (periodoTipo==='mes' ? 'mensual' : 'semanal');
+    cuerpo = `
+    <div class="filters">
+      <div class="field"><label>Aula</label>
+        <select onchange="setPref('repEst',''); setPref('repGrado', this.value)">
+          <option value="">Todos los grados</option>
+          ${grados.map(g=>`<option value="${esc(g)}" ${gradoF===g?'selected':''}>${esc(g)}</option>`).join('')}
+        </select></div>
+      <div class="field"><label>Estudiante</label>
+        <select onchange="setPref('repEst', this.value)">
+          <option value="">Todos</option>
+          ${alumnos.map(e=>`<option value="${e.id}" ${estF===e.id?'selected':''}>${esc(apellidosDe(e))}, ${esc(nombresDe(e))}${gradoF?'':' — '+esc(e.grado)}</option>`).join('')}
+        </select></div>
+      <div class="field"><label>Ver por</label>
+        <select onchange="setPref('resPeriodo', this.value); setPref('resPeriodoValor','')">
+          <option value="dia" ${periodoTipo==='dia'?'selected':''}>Día</option>
+          <option value="semana" ${periodoTipo==='semana'?'selected':''}>Semana</option>
+          <option value="mes" ${periodoTipo==='mes'?'selected':''}>Mes</option>
+        </select></div>
+      <div class="field"><label>${periodoTipo==='dia'?'Fecha':(periodoTipo==='mes'?'Mes':'Semana')}</label>
+        ${periodoTipo==='dia'
+          ? `<input type="date" value="${esc(periodoValor)}" onchange="setPref('resPeriodoValor', this.value)">`
+          : `<select onchange="setPref('resPeriodoValor', this.value)">
+              ${opcionesPeriodo.length===0?`<option value="${esc(periodoValor)}">${esc(periodoTipo==='mes'?rotuloMes(periodoValor):rotuloSemana(periodoValor))}</option>`:''}
+              ${opcionesPeriodo.map(v=>`<option value="${esc(v)}" ${periodoValor===v?'selected':''}>${esc(periodoTipo==='mes'?rotuloMes(v):rotuloSemana(v))}</option>`).join('')}
+            </select>`}
+      </div>
+      <button class="btn btn-primary" onclick="imprimirResumenConducta()">Descargar en PDF</button>
+    </div>
+    <div class="card" id="resumen_conducta_area">
+      <div style="text-align:center; border:2px solid #2E5C9A; border-radius:10px; padding:14px 10px; margin-bottom:14px;">
+        ${aj.logo?`<img src="${aj.logo}" style="width:56px;height:56px;object-fit:contain;">`:''}
+        <p style="font-weight:bold; font-size:15px; margin:8px 0 2px;">${esc(aj.nombreColegio||'')}</p>
+        <p style="font-weight:bold; font-size:14.5px; margin:0; color:#2E5C9A;">Seguimiento ${tituloTipo} de conducta</p>
+        <p class="nota-chica" style="margin:4px 0 0;">${esc(rotuloPeriodo(periodoTipo, periodoValor))}${gradoF?' · '+esc(gradoF):''}${estF && alumnos.find(e=>e.id===estF)?' · '+esc(apellidosDe(alumnos.find(e=>e.id===estF)))+', '+esc(nombresDe(alumnos.find(e=>e.id===estF))):''}</p>
+      </div>
+      <div class="table-wrap">
+      <table class="tabla-reportes">
+        <thead><tr><th style="width:84px;">Fecha</th><th style="width:180px;">Estudiante</th><th style="width:95px;">Grado</th>
+          <th style="width:90px;">Tipo de falta</th><th style="width:140px;">Docente</th><th style="width:auto;min-width:260px;">Acción tomada</th></tr></thead>
+        <tbody>
+          ${lista.length===0?`<tr><td colspan="6" class="empty">No hay reportes en este período.</td></tr>`:''}
+          ${lista.map(r=>{
+            const n = nivelFalta(r.nivel);
+            return `<tr>
+              <td class="mono">${esc(r.fecha||'')}</td>
+              <td>${esc(r.estudiante)}</td>
+              <td>${esc(r.grado)}</td>
+              <td><span class="pill ${n.pill}">${esc(n.formato)}</span></td>
+              <td style="font-size:12px;">${esc(r.docente)}</td>
+              <td style="font-size:12.5px;">${esc(accionTomadaDe(r))}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
   }else if(vista === 'eliminados' && puedeEditar){
     const listaElim = (DB.reportesEliminados||[]).slice().sort((a,b)=>(b.eliminadoTs||'').localeCompare(a.eliminadoTs||''));
     cuerpo = `
@@ -3895,7 +4028,7 @@ function renderReportes(){
     const previosMismoNivel = (nivelSiguienteId && estF && !yaAvisado)
       ? (DB.reportes||[]).filter(r=>r.nivel===nivel && r.estId===estF && r.docenteId===currentUser.id).length
       : 0;
-    const mostrarAvisoNivel = previosMismoNivel >= 2 && puedeEditar;
+    const mostrarAvisoNivel = previosMismoNivel >= 3 && puedeEditar;
     const nivelSiguiente = nivelSiguienteId ? nivelFalta(nivelSiguienteId) : null;
     const nombreActual = n.noEsFalta ? 'llamados de atención' : ('reportes de falta ' + n.nombre.toLowerCase());
     const nombreSiguiente = nivelSiguiente ? (nivelSiguiente.noEsFalta ? nivelSiguiente.nombre : ('Falta ' + nivelSiguiente.nombre.toLowerCase())) : '';
@@ -3952,7 +4085,7 @@ function renderReportes(){
         <div class="rep-opciones">${opcionesF1().acciones.map((t,i)=>
           `<label class="check-chip"><input type="checkbox" id="rep_acc_${i}"> ${esc(t)}</label>`).join('')}</div></div>` : ''}
       <div class="field"><label>${nivel==='muygrave'?'Descripción del incidente':(nivel==='comunicacion'?'¿Qué se conversó con el estudiante?':'Breve descripción de la incidencia')}</label>
-        <textarea id="rep_desc" rows="4" placeholder="Describe el hecho con precisión y sin juicios de valor."></textarea></div>
+        <textarea id="rep_desc" rows="4" placeholder="Describe el hecho con precisión y sin juicios de valor." oninput="actualizarBotonGuardarReporte()"></textarea></div>
       ${nivel==='grave' ? `
       <div class="field"><label>Acciones que se tomaron al momento de intervenir</label>
         <textarea id="rep_medida" rows="3"></textarea></div>` : ''}
@@ -3969,7 +4102,7 @@ function renderReportes(){
         <input type="file" id="rep_imagen" accept="image/*">
         <p class="nota-chica" style="margin-top:4px;">Solo si hace falta como evidencia — por ejemplo, un daño material.</p></div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="rep_btn_guardar" onclick="guardarReporte()">Guardar reporte</button>
+        <button class="btn btn-primary" id="rep_btn_guardar" onclick="guardarReporte()" disabled title="Escribe la descripción para poder guardar">Guardar reporte</button>
         <button class="btn" onclick="verReporteAntes()">Vista previa</button>
         <button class="btn" onclick="descargarReporteFormulario()">Descargar en PDF</button>
         <button class="btn" onclick="descargarPlantillaReporte()">Plantilla en blanco</button>
@@ -4151,9 +4284,22 @@ async function guardarReporte(){
     guardarReporte._enCurso = false;
     // Si algo impidió que render() reconstruyera la pantalla (por ejemplo un
     // error), se reactiva el botón a mano para que la persona no se quede
-    // sin poder volver a intentar.
-    if(btn && document.body.contains(btn)){ btn.disabled = false; btn.textContent = btnTextoOriginal; }
+    // sin poder volver a intentar — respetando que siga bloqueado si la
+    // descripción quedó vacía.
+    if(btn && document.body.contains(btn)){ btn.textContent = btnTextoOriginal; actualizarBotonGuardarReporte(); }
   }
+}
+/* El botón "Guardar reporte" empieza bloqueado y solo se habilita cuando hay
+   algo escrito en la descripción (Breve descripción de la incidencia /
+   Descripción del incidente / ¿Qué se conversó con el estudiante?, según el
+   tipo). Así no se puede enviar un reporte vacío ni por accidente. */
+function actualizarBotonGuardarReporte(){
+  const btn = document.getElementById('rep_btn_guardar');
+  if(!btn) return;
+  const desc = (document.getElementById('rep_desc')||{}).value || '';
+  const listo = !!desc.trim();
+  btn.disabled = !listo;
+  btn.title = listo ? '' : 'Escribe la descripción para poder guardar';
 }
 function eliminarReporte(id){
   if(!confirm('¿Eliminar este reporte del historial?')) return;
@@ -4453,13 +4599,40 @@ function descargarReporte(id){
    que el docente está viendo filtrado. */
 function listaReportesFiltrados(){
   const gradoF = getPref('repGrado',''), estF = getPref('repEst','');
-  const tipoF = getPref('repTipoFalta',''), semanaF = getPref('repSemana','');
+  const tipoF = getPref('repTipoFalta','');
+  const periodoTipo = getPref('repPeriodo',''), periodoValor = getPref('repPeriodoValor','');
   let lista = reportesVisibles(currentUser).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
   if(gradoF) lista = lista.filter(r=>r.grado===gradoF);
   if(estF) lista = lista.filter(r=>r.estId===estF);
   if(tipoF) lista = lista.filter(r=>r.nivel===tipoF);
-  if(semanaF) lista = lista.filter(r=>lunesDe(r.fecha)===semanaF);
+  lista = filtrarPorPeriodo(lista, periodoTipo, periodoValor);
   return lista;
+}
+/* Imprime (o guarda como PDF, eligiendo "Guardar como PDF" en el diálogo)
+   el cuadro de Resumen de conducta que está en pantalla, tal cual se ve:
+   logo, título y la tabla filtrada por el período elegido. */
+function imprimirResumenConducta(){
+  const el = document.getElementById('resumen_conducta_area');
+  if(!el){ showToast('No hay nada que descargar todavía.'); return; }
+  const cierre = '<' + '/script>';
+  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Resumen de conducta</title><style>' +
+    '@page{ size: letter landscape; margin: 12mm; }' +
+    '*{ box-sizing:border-box; } body{ font-family: Arial, Helvetica, sans-serif; font-size:10pt; color:#000; margin:0; padding:0; }' +
+    'table{ width:100%; border-collapse:collapse; margin-top:14px; }' +
+    'th, td{ border:1px solid #000; padding:4px 6px; font-size:8.5pt; text-align:left; }' +
+    'th{ background:#eef3fa; }' +
+    '.pill{ display:inline-block; padding:2px 7px; border-radius:10px; font-size:8pt; border:1px solid #999; background:#f2f2f2; }' +
+    '.nota-chica{ font-size:8.5pt; color:#555; }' +
+    '.empty{ text-align:center; color:#777; padding:10px; }' +
+    '</style></head><body>' +
+    el.innerHTML +
+    '<script>window.onload=function(){setTimeout(function(){window.print();},350);};' + cierre +
+    '</body></html>';
+  const v = window.open('', '_blank');
+  if(!v){ showToast('El navegador bloqueó la ventana emergente. Permítela e intenta de nuevo.'); return; }
+  v.document.write(html);
+  v.document.close();
+  showToast('En el diálogo de impresión elige "Guardar como PDF".');
 }
 function descargarReportes(){
   const lista = listaReportesFiltrados();
