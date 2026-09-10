@@ -2547,6 +2547,16 @@ function fechaCorta(iso){
 /* Mes de una fecha "YYYY-MM-DD" en formato "YYYY-MM", y su rótulo legible
    ("Septiembre 2026") — para el filtro y el resumen mensual de conducta. */
 function mesDe(iso){ return iso ? iso.slice(0,7) : ''; }
+/* Solo la hora (HH:MM) de un ISO de creación — para mostrarla junto a la
+   fecha del hecho en las tablas de reportes disciplinarios, igual que en
+   Soporte de la plataforma. */
+function horaDe(iso){
+  try{
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'});
+  }catch(e){ return ''; }
+}
 function rotuloMes(ym){
   if(!ym) return 'Sin fecha';
   const [y,m] = ym.split('-');
@@ -3443,7 +3453,7 @@ function renderReportesEstudiante(est){
           const n = nivelFalta(r.nivel);
           return `<tr>
             <td class="mono"><b>${esc(String(r.numero||'').padStart(3,'0'))}</b></td>
-            <td class="mono">${esc(r.fecha||'')}</td>
+            <td class="mono">${esc(r.fecha||'')}${r.ts?`<div style="font-size:10.5px;color:#888;">${esc(horaDe(r.ts))}</div>`:''}</td>
             <td><span class="pill ${n.pill}">${esc(n.nombre)}</span></td>
             <td style="font-size:12.5px;">${esc(r.descripcion)}</td>
             <td><button class="icon-btn" onclick="verReporte('${r.id}')">Ver</button></td>
@@ -3867,7 +3877,7 @@ function renderReportes(){
             const descTexto = (descLarga && !descExpandida) ? (r.descripcion||'').slice(0,110).trim() + '…' : (r.descripcion||'');
             return `<tr>
               <td class="mono"><b>${esc(String(r.numero||'').padStart(3,'0'))}</b></td>
-              <td class="mono">${esc(r.fecha||'')}</td>
+              <td class="mono">${esc(r.fecha||'')}${r.ts?`<div style="font-size:10.5px;color:#888;">${esc(horaDe(r.ts))}</div>`:''}</td>
               <td>${esc(r.estudiante)}</td>
               <td>${esc(r.grado)}</td>
               <td><span class="pill ${n.pill}">${esc(n.nombre)}</span> <span class="pill pill-muted">${esc(n.formato)}</span></td>
@@ -3982,7 +3992,7 @@ function renderReportes(){
           ${lista.map(r=>{
             const n = nivelFalta(r.nivel);
             return `<tr>
-              <td class="mono">${esc(r.fecha||'')}</td>
+              <td class="mono">${esc(r.fecha||'')}${r.ts?`<div style="font-size:10.5px;color:#888;">${esc(horaDe(r.ts))}</div>`:''}</td>
               <td>${esc(r.estudiante)}</td>
               <td>${esc(r.grado)}</td>
               <td><span class="pill ${n.pill}">${esc(n.formato)}</span></td>
@@ -4015,7 +4025,7 @@ function renderReportes(){
             const descTexto = (descLarga && !descExpandida) ? (r.descripcion||'').slice(0,110).trim() + '…' : (r.descripcion||'');
             return `<tr>
               <td class="mono"><b>${esc(String(r.numero||'').padStart(3,'0'))}</b></td>
-              <td class="mono">${esc(r.fecha||'')}</td>
+              <td class="mono">${esc(r.fecha||'')}${r.ts?`<div style="font-size:10.5px;color:#888;">${esc(horaDe(r.ts))}</div>`:''}</td>
               <td>${esc(r.estudiante)}</td>
               <td>${esc(r.grado)}</td>
               <td><span class="pill ${n.pill}">${esc(n.nombre)}</span> <span class="pill pill-muted">${esc(n.formato)}</span></td>
@@ -5077,9 +5087,12 @@ function renderSoporte(){
           <p class="nota-chica">Reportó: ${esc(s.nombre)} (${s.origen==='estudiante'?'estudiante':'docente'})</p>
           ${s.imagen?`<img src="${s.imagen}" alt="Captura adjunta" style="max-width:100%; border-radius:8px; margin-top:10px; border:1px solid var(--line);">`:''}
           <p class="card-title" style="margin:14px 0 6px;">Estado</p>
-          <select style="max-width:200px;" onchange="cambiarEstadoSoporte('${s.id}', this.value)">
-            ${ESTADOS_AVERIA.map(e=>`<option value="${e.id}" ${s.estado===e.id?'selected':''}>${esc(e.nombre)}</option>`).join('')}
-          </select>
+          ${s.cerrado
+            ? `<span class="pill ${estadoAveria(s.estado).pill}">${esc(estadoAveria(s.estado).nombre)}</span>
+               <div class="btn-row" style="margin-top:8px;"><button class="btn btn-sm" onclick="reabrirSoporte('${s.id}')">Reabrir conversación</button></div>`
+            : `<select style="max-width:200px;" onchange="cambiarEstadoSoporte('${s.id}', this.value)">
+                ${ESTADOS_AVERIA.map(e=>`<option value="${e.id}" ${s.estado===e.id?'selected':''}>${esc(e.nombre)}</option>`).join('')}
+              </select>`}
         </div>
         <div>
           <p class="card-title" style="margin-bottom:8px;">Seguimiento</p>
@@ -5088,6 +5101,9 @@ function renderSoporte(){
             <div style="font-size:12.5px;">${esc(n.texto)}</div>
             ${n.imagen?`<img src="${n.imagen}" alt="Foto adjunta" style="max-width:100%; border-radius:8px; margin-top:6px; border:1px solid var(--line);">`:''}
             <div class="nota-chica" style="margin:3px 0 0;">${esc(n.nombre)} · ${esc(fechaLegible(n.ts))}</div></div>`).join('')}
+          ${s.cerrado ? `
+          <p class="nota-chica" style="margin-top:10px;">✅ Conversación cerrada: se confirmó que el problema ya se solucionó. Nadie puede escribir más aquí, salvo que dirección la reabra.</p>
+          ` : `
           ${esReportante ? `
           <div class="btn-row" style="margin-top:10px;">
             <button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}','Gracias.')">Gracias</button>
@@ -5099,6 +5115,7 @@ function renderSoporte(){
             <input type="file" id="sopnotaimg_${s.id}" accept="image/*" style="margin-top:6px;">
             <div class="btn-row"><button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}')">Agregar respuesta</button></div>
           </div>
+          `}
         </div>
       </div>
     </td></tr>`;
@@ -5189,6 +5206,9 @@ function renderSoporteFormularioYPropio(){
               <div style="font-size:12.5px;">${esc(n.texto)}</div>
               ${n.imagen?`<img src="${n.imagen}" alt="Foto adjunta" style="max-width:100%; border-radius:8px; margin-top:6px; border:1px solid var(--line);">`:''}
               <div class="nota-chica" style="margin:3px 0 0;">${esc(n.nombre)} · ${esc(fechaLegible(n.ts))}</div></div>`).join('')}
+            ${s.cerrado ? `
+            <p class="nota-chica" style="margin-top:10px;">✅ Conversación cerrada: confirmaste que el problema ya se solucionó. Nadie puede escribir más aquí.</p>
+            ` : `
             <div class="btn-row" style="margin-top:10px;">
               <button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}','Gracias.')">Gracias</button>
               <button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}','Confirmo que ya se solucionó.')">Ya se solucionó</button>
@@ -5199,6 +5219,7 @@ function renderSoporteFormularioYPropio(){
               <input type="file" id="sopnotaimg_${s.id}" accept="image/*" style="margin-top:6px;">
               <div class="btn-row"><button class="btn btn-sm" onclick="agregarNotaSoporte('${s.id}')">Agregar respuesta</button></div>
             </div>
+            `}
           </td></tr>`;
         })()}`).join('')}
       </tbody>
@@ -5270,7 +5291,23 @@ function cambiarEstadoSoporte(id, estado){
   showToast('Estado actualizado.');
   render();
 }
+/* Solo dirección puede reabrir una conversación que ya se cerró (por si
+   resulta que en realidad no estaba solucionado). Vuelve a dejar el
+   reporte en "En proceso" y habilita de nuevo el cuadro de respuesta. */
+function reabrirSoporte(id){
+  commit(doc=>{
+    const s = (doc.soporte||[]).find(x=>x.id===id);
+    if(!s) return;
+    s.cerrado = false;
+    s.estado = 'proceso';
+  });
+  registrar('Soporte de la plataforma', 'Reabrió una conversación cerrada');
+  showToast('Conversación reabierta.');
+  render();
+}
 async function agregarNotaSoporte(id, textoFijo){
+  const yaCerrado = (DB.soporte||[]).find(x=>x.id===id && x.cerrado);
+  if(yaCerrado){ showToast('Esta conversación ya está cerrada; nadie puede escribir más aquí.'); return; }
   const campo = document.getElementById('sopnota_' + id);
   const txt = textoFijo || (campo ? campo.value.trim() : '');
   if(!txt){ showToast('Escribe la respuesta.'); return; }
@@ -5279,12 +5316,18 @@ async function agregarNotaSoporte(id, textoFijo){
     try{ imagen = await imagenDeInput('sopnotaimg_' + id, 1000); }
     catch(e){ showToast('No se pudo procesar la imagen; se envía sin foto.'); }
   }
+  // Cuando quien reportó el problema confirma con el botón "Ya se
+  // solucionó", el reporte queda marcado como resuelto Y cerrado: no
+  // aparece más el cuadro de respuesta para nadie (ni para dirección).
+  const cierraConversacion = textoFijo === 'Confirmo que ya se solucionó.';
   commit(doc=>{
     const s = (doc.soporte||[]).find(x=>x.id===id);
     if(!s) return;
     s.notas = s.notas || [];
     s.notas.push({ts:new Date().toISOString(), userId:currentUser.id, nombre:currentUser.nombre, texto:txt, imagen:imagen});
+    if(cierraConversacion){ s.estado = 'resuelto'; s.cerrado = true; }
   });
+  if(cierraConversacion) showToast('Reporte marcado como solucionado. La conversación quedó cerrada.');
   render();
 }
 /* --- Vista para estudiantes: solo enviar, sin ver el historial de nadie ---
