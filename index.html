@@ -1076,6 +1076,13 @@ async function flush(){
     }
     const base = remoto;
     lote.forEach(m=>{ try{ m(base); }catch(e){ console.error('reaplicar', e); } });
+    // Dos pestañas/sesiones pudieron calcular el mismo "siguiente número"
+    // de reporte antes de que ninguna alcanzara a sincronizar con la otra
+    // (por eso a veces dos reportes distintos salían con el mismo N°). Antes
+    // de guardar, se revisa la lista completa y, si hay un choque, el
+    // reporte más reciente de los dos recibe el siguiente número libre —
+    // así nunca quedan dos reportes oficiales con el mismo correlativo.
+    repararCorrelativosDuplicados(base);
     await escribirDoc(base);
     // Mientras se leía/guardaba (dos idas y vueltas a la nube), el usuario
     // pudo haber hecho más cambios (por ejemplo, borrar otra nota). Esos
@@ -2563,7 +2570,7 @@ function accionTomadaDe(r){
 function seguimientosTexto(r){
   const segs = r.seguimientos || [];
   if(segs.length===0) return '—';
-  return segs.map(s => s.texto + ' (' + fechaLegible(s.ts) + ')').join('\n');
+  return segs.map(s => s.texto + ' (' + s.nombre + ' · ' + fechaLegible(s.ts) + ')').join('\n');
 }
 
 /* Alertas: 2 pendientes = amarilla, 3 = naranja, 4 o más = roja */
@@ -4139,6 +4146,57 @@ function siguienteCorrelativo(){
   const maxExistente = nums.length ? Math.max.apply(null, nums) : 0;
   return Math.max(DB.config.correlativoReportes||0, maxExistente) + 1;
 }
+/* Red de seguridad contra el N° de reporte duplicado: si dos pestañas o
+   sesiones alcanzaron a calcular "el siguiente" número antes de que
+   ninguna se enterara de la otra, aquí — justo antes de guardar en el
+   servidor, con la lista ya completa — se detecta el choque y al reporte
+   creado más tarde (por fecha y hora real de creación, "ts") se le asigna
+   el siguiente número libre. El más antiguo conserva el suyo.
+   Se llama desde flush(), nunca hace falta invocarla a mano. */
+/* Red de seguridad final contra reportes duplicados por choque entre
+   pestañas/sesiones (dos guardados de lo mismo antes de que ninguna se
+   enterara de la otra). Se llama desde flush(), justo antes de escribir en
+   el servidor, con la lista ya completa y fresca:
+   1) Si dos reportes son EXACTAMENTE lo mismo (mismo estudiante, nivel,
+      docente y texto) creados con pocos minutos de diferencia, se borra
+      la copia más nueva y se conserva la primera.
+   2) Si dos reportes DISTINTOS quedaron con el mismo N° (el choque que
+      causaba correlativos repetidos), se renumera el más nuevo de los dos
+      en vez de borrarlo — ese sí es un reporte real. */
+function repararCorrelativosDuplicados(doc){
+  doc.reportes = doc.reportes || [];
+  if(doc.reportes.length===0) return;
+  const ordenados = doc.reportes.slice().sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+  const vistosContenido = new Map();
+  const idsAEliminar = new Set();
+  ordenados.forEach(r=>{
+    const clave = [r.estId, r.nivel, r.docenteId, (r.descripcion||'').trim()].join('|');
+    const anteriorTs = vistosContenido.get(clave);
+    if(anteriorTs && (new Date(r.ts).getTime() - new Date(anteriorTs).getTime()) < 600000){
+      idsAEliminar.add(r.id);
+      console.warn('Reporte duplicado eliminado al sincronizar:', r.id);
+    }else{
+      vistosContenido.set(clave, r.ts);
+    }
+  });
+  if(idsAEliminar.size) doc.reportes = doc.reportes.filter(r=>!idsAEliminar.has(r.id));
+  let maxNum = doc.config.correlativoReportes || 0;
+  doc.reportes.forEach(r=>{ const n = Number(r.numero)||0; if(n>maxNum) maxNum = n; });
+  const numerosVistos = new Set();
+  doc.reportes.slice()
+    .sort((a,b)=>(a.ts||'').localeCompare(b.ts||''))
+    .forEach(r=>{
+      const n = Number(r.numero)||0;
+      if(n && !numerosVistos.has(n)){
+        numerosVistos.add(n);
+      }else{
+        maxNum += 1;
+        r.numero = maxNum;
+        numerosVistos.add(maxNum);
+      }
+    });
+  doc.config.correlativoReportes = maxNum;
+}
 function correlativoTexto(n){ return 'N° ' + String(n).padStart(3,'0'); }
 /* Deja constancia de quién abrió el reporte */
 function registrarVista(id){
@@ -4249,13 +4307,14 @@ async function guardarReporte(){
     const desc = val('rep_desc');
     if(!desc){ showToast('Describe lo sucedido.'); return; }
     const nivelReal = getPref('repNivel','leve');
-    // Red de seguridad: si el clic se alcanzó a duplicar antes de que el
-    // botón se deshabilitara, no se crea un segundo reporte igual.
-    const yaGuardadoHaceUnSegundo = (DB.reportes||[]).some(r=>
+    // Red de seguridad: si el mismo reporte (mismo estudiante, mismo texto,
+    // mismo docente) ya se guardó hace poco —aunque haya sido en otra
+    // pestaña o después de recargar la página—, no se crea uno repetido.
+    const yaGuardadoHaceRato = (DB.reportes||[]).some(r=>
       r.estId===est.id && r.nivel===nivelReal && r.docenteId===currentUser.id &&
-      r.descripcion===desc && (Date.now() - new Date(r.ts).getTime()) < 20000
+      r.descripcion===desc && (Date.now() - new Date(r.ts).getTime()) < 600000
     );
-    if(yaGuardadoHaceUnSegundo){ showToast('Ese reporte ya se guardó hace unos segundos; no se creó uno repetido.'); return; }
+    if(yaGuardadoHaceRato){ showToast('Ese reporte ya se guardó hace unos minutos; no se creó uno repetido.'); return; }
     let imagen = null;
     try{ imagen = await imagenDeInput('rep_imagen', 1000); }
     catch(e){ showToast('No se pudo procesar la foto; se guarda el reporte sin ella.'); }
@@ -4338,6 +4397,7 @@ function cabReporte(r, aj, q, codigo){
       <p class="reinc">${r&&r.numero?('Reporte '+q(correlativoTexto(r.numero))+' &nbsp;&nbsp;'):''}Reincidencias del estudiante: <span class="lin">${r?q(r.reincidencias||''):''}</span><b class="cod">${codigo}</b></p>
       <p class="dato"><b>Estudiante:</b> <span class="lin ancho">${r?q(r.estudiante):''}</span></p>
       <p class="dato"><b>Grado:</b> <span class="lin medio">${r?q(r.grado):''}</span></p>
+      ${r&&r.ts?`<p style="margin:2px 0 0;font-size:7.5pt;color:#555;">Realizado: ${q(fechaLegible(r.ts))}</p>`:''}
     </div>
   </div>`;
 }
