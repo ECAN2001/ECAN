@@ -1532,6 +1532,13 @@ function actualizarBotonGuardarManual(){
 }
 function guardarCambiosManual(){
   if(guardadoManualEnCurso) return; // ya se está guardando, ignora los clics de más
+  // Si hay un campo con el foco puesto (por ejemplo, la última nota que se
+  // acaba de escribir y todavía no perdió el foco), se fuerza a que suelte
+  // su valor ANTES de seguir. Si no, esa última nota podía quedar fuera del
+  // guardado y del cambio automático a "Entregada", porque el navegador
+  // solo la procesa cuando el campo pierde el foco.
+  const activo = document.activeElement;
+  if(activo && typeof activo.blur === 'function' && activo !== document.body) activo.blur();
   if(currentView === 'calificaciones'){
     const n = aplicarEntregasAutomaticas();
     if(n>0) render();
@@ -1645,9 +1652,9 @@ function renderSyncIndicator(){
   else { texto = 'Sin guardado — descarga respaldo'; color = 'var(--red)'; necesitaAtencion = true; }
 
   if(!necesitaAtencion && !syncIndicatorVisible){
-    return `<div id="sync-indicator" class="sync-row" style="justify-content:center;" onclick="toggleSyncIndicator()" title="Ver estado de sincronización">
-      <span class="sync-dot" style="background:${color}"></span>
-    </div>`;
+    // Sigue existiendo el elemento (vacío, oculto) para que setSyncStatus()
+    // lo pueda encontrar y mostrarlo de inmediato en cuanto haga falta.
+    return `<div id="sync-indicator" style="display:none;"></div>`;
   }
   const accion = necesitaAtencion ? 'reintentarGuardado()' : 'toggleSyncIndicator()';
   return `<div id="sync-indicator" class="sync-row" onclick="${accion}" title="${necesitaAtencion?'Reintentar / actualizar':'Tocar para ocultar'}">
@@ -3195,7 +3202,7 @@ function renderLayout(){
         }).join('')}
       </div>
       <div class="sidebar-footer">
-        <div class="who">
+        <div class="who" onclick="toggleSyncIndicator()" title="Tocar para ver el estado de guardado" style="cursor:pointer;">
           <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:${domainColor(currentUser.dominio)}">${esc(initials(currentUser.nombre))}</div>
           <div class="user-meta">
             <p class="user-name">${esc(currentUser.nombre)}</p>
@@ -3386,7 +3393,7 @@ function renderLayoutEstudiante(){
         <div class="nav-item ${currentView==='sincronizacionEstudiante'?'active':''}" onclick="goTo('sincronizacionEstudiante')"><span class="nav-dot"></span>Sincronización</div>
       </div>
       <div class="sidebar-footer">
-        <div class="who">
+        <div class="who" onclick="toggleSyncIndicator()" title="Tocar para ver el estado de guardado" style="cursor:pointer;">
           <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:#2F6F5E">${esc(initials(nombreCompleto(est.nombres,est.apellidos)))}</div>
           <div class="user-meta">
             <p class="user-name">${esc(nombresDe(est))} ${esc(apellidosDe(est))}</p>
@@ -4079,9 +4086,14 @@ function renderReportes(){
       </div>
     </div>`;
   }else if(vista === 'eliminados' && puedeEditar){
-    const listaElim = (DB.reportesEliminados||[]).slice().sort((a,b)=>(b.eliminadoTs||'').localeCompare(a.eliminadoTs||''));
+    // Cada quien ve solo los reportes que ELLA MISMA eliminó; las cuentas
+    // de acceso total (Dirección/administración) ven todos los eliminados,
+    // sin importar quién los haya borrado.
+    const listaElim = (DB.reportesEliminados||[])
+      .filter(r => veTodosReportes(currentUser) || r.eliminadoPorId === currentUser.id)
+      .slice().sort((a,b)=>(b.eliminadoTs||'').localeCompare(a.eliminadoTs||''));
     cuerpo = `
-    <div class="note">Reportes que fueron eliminados del historial activo. Se conservan aquí como respaldo — puedes restaurarlos si fue un error.</div>
+    <div class="note">Reportes que fueron eliminados del historial activo. Se conservan aquí como respaldo — puedes restaurarlos si fue un error.${veTodosReportes(currentUser)?'':' Solo ves los que tú eliminaste; las cuentas de acceso total ven todos.'}</div>
     <div class="card">
       <p class="card-title">Eliminados <span class="pill pill-muted">${listaElim.length} reporte(s)</span></p>
       <div class="table-wrap">
