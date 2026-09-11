@@ -1558,9 +1558,9 @@ function guardarCambiosManual(){
    resuelve todo junto justo al guardar. El docente puede corregir
    cualquier estado desde su propio selector después de guardar. */
 function aplicarEntregasAutomaticas(){
-  const grado = getPref('califGrado',''), asigId = getPref('califAsig','');
-  const periodo = Number(getPref('califPeriodo',1)) || 1;
-  if(!grado || !asigId) return 0;
+  const ctx = window._notasCtx;
+  if(!ctx || !ctx.grado || !ctx.asigId) return 0;
+  const { asigId, periodo } = ctx;
   const cols = window._notasCols || [];
   const ests = window._notasEstIds || [];
   const aMarcar = [];
@@ -1636,6 +1636,16 @@ function iniciarSync(){
    falló el guardado. En esos tres casos aparece solo, sin necesidad de
    tocarlo. */
 let syncIndicatorVisible = false;
+/* Toda la tarjeta de "quién soy" (avatar, nombre, Instalar app,
+   Notificaciones, Cambiar de usuario) empieza escondida, para no ocupar
+   espacio de la barra lateral. Queda solo el avatar chiquito, que al
+   tocarlo la despliega completa; se vuelve a esconder con el botón
+   "Ocultar" que aparece abajo una vez desplegada. */
+let sidebarFooterVisible = false;
+function toggleSidebarFooter(){
+  sidebarFooterVisible = !sidebarFooterVisible;
+  render();
+}
 function toggleSyncIndicator(){
   syncIndicatorVisible = !syncIndicatorVisible;
   render();
@@ -3202,6 +3212,7 @@ function renderLayout(){
         }).join('')}
       </div>
       <div class="sidebar-footer">
+        ${sidebarFooterVisible ? `
         <div class="who" onclick="toggleSyncIndicator()" title="Tocar para ver el estado de guardado" style="cursor:pointer;">
           <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:${domainColor(currentUser.dominio)}">${esc(initials(currentUser.nombre))}</div>
           <div class="user-meta">
@@ -3213,6 +3224,12 @@ function renderLayout(){
         ${!appYaInstalada()?`<button class="btn btn-sm" style="width:100%; margin-bottom:6px;" onclick="instalarApp()">📲 Instalar app</button>`:''}
         <button class="btn btn-sm" style="width:100%; margin-bottom:6px;" onclick="viewState.modalNotificaciones=true; render();">🔔 Notificaciones${totalNotificacionesDocente()>0?` (${totalNotificacionesDocente()>99?'99+':totalNotificacionesDocente()})`:''}</button>
         <button class="logout-btn" onclick="doLogout()">Cambiar de usuario</button>
+        <button class="btn btn-sm" style="width:100%; margin-top:6px; background:none; border:none; color:var(--muted);" onclick="toggleSidebarFooter()">Ocultar ▲</button>
+        ` : `
+        <div style="display:flex; justify-content:center;">
+          <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:${domainColor(currentUser.dominio)};cursor:pointer;position:relative;" onclick="toggleSidebarFooter()" title="${esc(currentUser.nombre)} — tocar para ver opciones">${esc(initials(currentUser.nombre))}${totalNotificacionesDocente()>0?`<span style="position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--red);border:1.5px solid var(--panel);"></span>`:''}</div>
+        </div>
+        `}
       </div>
     </div>
     <div class="main">
@@ -3393,6 +3410,7 @@ function renderLayoutEstudiante(){
         <div class="nav-item ${currentView==='sincronizacionEstudiante'?'active':''}" onclick="goTo('sincronizacionEstudiante')"><span class="nav-dot"></span>Sincronización</div>
       </div>
       <div class="sidebar-footer">
+        ${sidebarFooterVisible ? `
         <div class="who" onclick="toggleSyncIndicator()" title="Tocar para ver el estado de guardado" style="cursor:pointer;">
           <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:#2F6F5E">${esc(initials(nombreCompleto(est.nombres,est.apellidos)))}</div>
           <div class="user-meta">
@@ -3403,6 +3421,12 @@ function renderLayoutEstudiante(){
         ${renderSyncIndicator()}
         ${!appYaInstalada()?`<button class="btn btn-sm" style="width:100%; margin-bottom:6px;" onclick="instalarApp()">📲 Instalar app</button>`:''}
         <button class="logout-btn" onclick="doLogout()">Salir</button>
+        <button class="btn btn-sm" style="width:100%; margin-top:6px; background:none; border:none; color:var(--muted);" onclick="toggleSidebarFooter()">Ocultar ▲</button>
+        ` : `
+        <div style="display:flex; justify-content:center;">
+          <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:#2F6F5E;cursor:pointer;" onclick="toggleSidebarFooter()" title="${esc(nombresDe(est))} ${esc(apellidosDe(est))} — tocar para ver opciones">${esc(initials(nombreCompleto(est.nombres,est.apellidos)))}</div>
+        </div>
+        `}
       </div>
     </div>
     <div class="main">
@@ -10284,12 +10308,16 @@ function renderCalificaciones(){
   const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
   // Orden de columnas y de filas de ESTA tabla, para que las flechas del
   // teclado sepan a qué casilla saltar aunque la pantalla se vuelva a
-  // dibujar entre una tecla y otra (ver moverFocoNota).
+  // dibujar entre una tecla y otra (ver moverFocoNota). Se guarda también
+  // el grado/asignatura/período YA RESUELTOS (con su valor por defecto si
+  // el docente todavía no tocó el selector) para que "Guardar cambios"
+  // revise exactamente la misma asignatura que se ve en pantalla.
   window._notasCols = [
     ...acts.map(a=>'act:'+a.id),
     ...rubrosActivos().reduce((arr,r)=>{ arr.push(r.key); if(r.conRecuperacion) arr.push(claveRecuperacion(r.key)); return arr; }, [])
   ];
   window._notasEstIds = estudiantes.map(e=>e.id);
+  window._notasCtx = {grado, asigId: asignatura, periodo};
 
   return `
   <div class="page-head">
