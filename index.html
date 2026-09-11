@@ -3142,8 +3142,7 @@ const NAV_ITEMS = [
   {id:'tareas', label:'Registro y alertas de tareas'},
   {id:'matriz', label:'Notas por aula'},
   {id:'boletas', label:'Boletas'},
-  {id:'asignaturas', label:'Asignaturas'},
-  {id:'docentes', label:'Docentes'},
+  {id:'docentes', label:'Docentes y asignaturas'},
   {id:'seguimiento', label:'Seguimiento de docentes'},
   {id:'averias', label:'Averías y solicitudes'},
   {id:'mensajes', label:'Mensajes'},
@@ -3155,7 +3154,7 @@ const NAV_ITEMS = [
 function navAllowed(id){
   if(id==='bitacora') return canManageAcademicData(currentUser);
   if(id==='personalizar') return canManageAcademicData(currentUser) || puedePersonalizarMensajes(currentUser);
-  if(id==='asignaturas' || id==='docentes') return canManageAcademicData(currentUser);
+  if(id==='docentes') return canManageAcademicData(currentUser);
   if(id==='seguimiento') return canManageAcademicData(currentUser);
   if(PANELES.some(p=>p.id===id)) return puedeVerPanel(currentUser, id);
   return true;
@@ -3246,8 +3245,7 @@ function renderViewInterno(){
   switch(currentView){
     case 'panel': return renderPanel();
     case 'estudiantes': return renderEstudiantes();
-    case 'asignaturas': return renderAsignaturas();
-    case 'docentes': return renderDocentes();
+    case 'docentes': return renderDocentesAsignaturas();
     case 'seguimiento': return renderSeguimientoDocentes();
     case 'calificaciones': return renderCalificaciones();
     case 'matriz': return renderMatriz();
@@ -7394,14 +7392,8 @@ async function deleteStudent(id){
 }
 
 /* ============================= ASIGNATURAS ============================= */
-function renderAsignaturas(){
-  if(!canManageAcademicData(currentUser)) return renderNoAccess();
+function renderAsignaturasBody(){
   return `
-  <div class="page-head">
-    <p class="page-eyebrow">Base de datos</p>
-    <h1 class="page-title">Asignaturas</h1>
-    <p class="page-desc">Catálogo general de materias. Se vinculan a un grado cuando se asignan a un docente.</p>
-  </div>
   <div class="card">
     <p class="card-title">Agregar asignatura</p>
     <div class="field"><label>Nombre de la asignatura</label><input type="text" id="new_subject" placeholder="Ej.: Educación Física"></div>
@@ -7687,8 +7679,7 @@ function volverASeguimiento(){
   render();
   guardarSesion();
 }
-function renderDocentes(){
-  if(!canManageAcademicData(currentUser)) return renderNoAccess();
+function renderDocentesBody(){
   const admins = DB.docentes.filter(t=>t.tipo==='admin');
   // Esta pantalla lista solo a quienes imparten clases. El resto del personal
   // (Recepción, administrativos) se administra desde Personalizar.
@@ -7700,12 +7691,6 @@ function renderDocentes(){
   const otros = DB.docentes.filter(t=>t.tipo==='docente' && !esDocente(t)).length;
 
   return `
-  <div class="page-head">
-    <p class="page-eyebrow">Base de datos</p>
-    <h1 class="page-title">Docentes y administración</h1>
-    <p class="page-desc">Los dominios tienen acceso total al sistema. Cualquier cuenta de acceso total puede crear, renombrar o eliminar dominios; el dominio de Dirección está protegido.</p>
-  </div>
-
   <div class="card">
     <p class="card-title">Dominios de acceso total
       ${isAdmin(currentUser)?`<button class="btn btn-sm btn-primary" onclick="agregarDominio()">+ Agregar dominio</button>`:''}
@@ -7775,7 +7760,22 @@ function renderDocentes(){
     </table>
     </div>
     ${otros>0?`<p class="nota-chica">Hay ${otros} usuario(s) con otro cargo (Recepción, administrativos). Se gestionan desde <b>Personalizar</b>.</p>`:''}
+  </div>`;
+}
+function renderDocentesAsignaturas(){
+  if(!canManageAcademicData(currentUser)) return renderNoAccess();
+  const vista = getPref('daVista','docentes');
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Base de datos</p>
+    <h1 class="page-title">Docentes y asignaturas</h1>
+    <p class="page-desc">Dominios de acceso total, cuentas docentes con sus paneles de acceso, y el catálogo de asignaturas del centro.</p>
   </div>
+  <div class="period-tabs">
+    <div class="period-tab ${vista==='docentes'?'active':''}" onclick="setPref('daVista','docentes')">Docentes</div>
+    <div class="period-tab ${vista==='asignaturas'?'active':''}" onclick="setPref('daVista','asignaturas')">Asignaturas</div>
+  </div>
+  ${vista==='asignaturas' ? renderAsignaturasBody() : renderDocentesBody()}
   ${renderTeacherModal()}`;
 }
 /* Convierte a alguien YA CARGADO en cuenta de acceso total, conservando su
@@ -7898,22 +7898,6 @@ function renderTeacherModal(){
         <div class="field"><label>Cargo (aparece junto al nombre)</label>
           <input type="text" id="t_cargo" value="${esc(t.cargo||'')}" placeholder="Ej.: Docente, Recepción, Bibliotecaria"></div>
       </div>
-      <div class="card" style="background:var(--panel-2); margin:4px 0 16px;">
-        <p class="card-title" style="margin-bottom:6px;">Mensajes personalizados para esta persona</p>
-        <p class="nota-chica" style="margin:0 0 10px;">Si se dejan vacíos, ve el mensaje general configurado en "Personalizar → Mensajes para los docentes".</p>
-        <div class="field">
-          <label>Frase del saludo personal</label>
-          <div style="display:flex; gap:6px;">
-            <input type="text" id="t_frase_personal" value="${esc(t.fraseSaludoPersonal||'')}" placeholder="Déjalo vacío para usar la frase general" style="flex:1;">
-            <button type="button" class="btn btn-sm" title="Insertar emoticono" onclick="abrirTecladoEmojis('t_frase_personal')">😊</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>Mensaje al ingresar, personal</label>
-          <textarea id="t_mensaje_personal" rows="3" placeholder="Déjalo vacío para usar el mensaje general">${esc(t.mensajeBienvenidaPersonal||'')}</textarea>
-          <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('t_mensaje_personal')">😊 Emoticones</button>
-        </div>
-      </div>
       ${esAdminTarget?'':`
       <div class="field">
         <label>Tipo de acceso</label>
@@ -8032,10 +8016,6 @@ async function saveTeacher(esAdmin){
   const leerEl = id => document.getElementById(id);
   const campoCargo = leerEl('t_cargo');
   const cargo = campoCargo ? campoCargo.value.trim() : '';
-  const campoFrasePersonal = leerEl('t_frase_personal');
-  const frasePersonal = campoFrasePersonal ? campoFrasePersonal.value.trim() : '';
-  const campoMensajePersonal = leerEl('t_mensaje_personal');
-  const mensajePersonal = campoMensajePersonal ? campoMensajePersonal.value.trim() : '';
   const chkLectura = leerEl('t_lectura');
   const chkAlcance = leerEl('t_alcance');
   const soloLectura = chkLectura ? !!chkLectura.checked : false;
@@ -8060,8 +8040,6 @@ async function saveTeacher(esAdmin){
       const t = doc.docentes.find(x=>x.id===objetivo);
       if(t){
         t.nombre = nombre;
-        if(frasePersonal) t.fraseSaludoPersonal = frasePersonal; else delete t.fraseSaludoPersonal;
-        if(mensajePersonal) t.mensajeBienvenidaPersonal = mensajePersonal; else delete t.mensajeBienvenidaPersonal;
         if(!esAdmin){
           t.orientaciones = orientaciones; delete t.orientacion;
           t.cargo = cargo;
@@ -8074,8 +8052,6 @@ async function saveTeacher(esAdmin){
   }else{
     const nuevo = {id:uid('t'), nombre, tipo:'docente', dominio:null, asignaciones:[], orientaciones:orientaciones,
       cargo: cargo, paneles: Object.keys(paneles).length ? paneles : undefined};
-    if(frasePersonal) nuevo.fraseSaludoPersonal = frasePersonal;
-    if(mensajePersonal) nuevo.mensajeBienvenidaPersonal = mensajePersonal;
     nuevo.usuario = generarUsuarioDocente(nombre, nuevo.id);
     if(soloLectura) nuevo.soloLectura = true;
     if(alcanceTotal) nuevo.alcanceTotal = true;
@@ -10728,4 +10704,3 @@ function renderMatriz(){
 </script>
 </body>
 </html>
-  
