@@ -10760,9 +10760,25 @@ async function updateComp(estId, asigId, periodo, comp, value){
   const v = limpio===''? null : Math.max(0, Math.min(100, Number(limpio)));
   const key = estId+'|'+asigId+'|'+periodo+'|'+comp;
   setComp(estId, asigId, periodo, comp, v); // se refleja en pantalla de inmediato
+  // Si la nota queda arriba de 70 y esa entrega tiene selector de estado
+  // (una Actividad, o un rubro marcado "Con fecha") y todavía no se había
+  // elegido ningún estado, se marca "Entregada" al instante, en el mismo
+  // redibujado que ya se hace para mostrar la nota — no espera a "Guardar
+  // cambios". El docente siempre puede cambiarla desde su propio selector.
+  const tieneEstado = comp.indexOf('act:')===0 || !!(rubrosActivos().find(r=>r.key===comp && r.tarea));
+  const ek = estId+'|'+asigId+'|'+periodo+'|'+comp;
+  const autoEntregada = v!==null && v>70 && tieneEstado && !getEstado(estId, asigId, periodo, comp);
+  if(autoEntregada){
+    if(!DB.estados) DB.estados = {};
+    DB.estados[ek] = 'entregada';
+  }
   render();
   commit(doc=>{
     if(v===null) delete doc.calificaciones[key]; else doc.calificaciones[key] = v;
+    if(autoEntregada){
+      if(!doc.estados) doc.estados = {};
+      if(!doc.estados[ek]) doc.estados[ek] = 'entregada';
+    }
   });
 }
 
