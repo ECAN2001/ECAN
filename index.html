@@ -1532,11 +1532,47 @@ function actualizarBotonGuardarManual(){
 }
 function guardarCambiosManual(){
   if(guardadoManualEnCurso) return; // ya se está guardando, ignora los clics de más
+  if(currentView === 'calificaciones'){
+    const n = aplicarEntregasAutomaticas();
+    if(n>0) render();
+  }
   if(pendientes.length===0){ showToast('No hay cambios sin guardar.'); return; }
   guardadoManualEnCurso = true;
   actualizarBotonGuardarManual();
   showToast('Guardando…');
   programarGuardado(0);
+}
+/* Al presionar "Guardar cambios" en Calificaciones: revisa todas las notas
+   de esta aula/asignatura/período y, si alguna quedó en más de 70 y esa
+   entrega (Actividad o rubro "Con fecha") todavía no tenía ningún estado
+   elegido, la marca como "Entregada" automáticamente antes de guardar.
+   Así el cambio de estado ya no depende de cada tecla mientras se escribe
+   —lo que antes chocaba con la navegación con flechas—, sino que se
+   resuelve todo junto justo al guardar. El docente puede corregir
+   cualquier estado desde su propio selector después de guardar. */
+function aplicarEntregasAutomaticas(){
+  const grado = getPref('califGrado',''), asigId = getPref('califAsig','');
+  const periodo = Number(getPref('califPeriodo',1)) || 1;
+  if(!grado || !asigId) return 0;
+  const cols = window._notasCols || [];
+  const ests = window._notasEstIds || [];
+  const aMarcar = [];
+  ests.forEach(estId=>{
+    cols.forEach(comp=>{
+      const tieneEstado = comp.indexOf('act:')===0 || !!(rubrosActivos().find(r=>r.key===comp && r.tarea));
+      if(!tieneEstado) return;
+      const val = getComp(estId, asigId, periodo, comp);
+      if(val===undefined || val<=70) return;
+      if(getEstado(estId, asigId, periodo, comp)) return; // ya tiene un estado elegido, no se toca
+      aMarcar.push(estId+'|'+asigId+'|'+periodo+'|'+comp);
+    });
+  });
+  if(aMarcar.length===0) return 0;
+  commit(doc=>{
+    if(!doc.estados) doc.estados = {};
+    aMarcar.forEach(ek=>{ if(!doc.estados[ek]) doc.estados[ek] = 'entregada'; });
+  });
+  return aMarcar.length;
 }
 function hayEdicionEnCurso(){
   const a = document.activeElement;
@@ -10505,8 +10541,7 @@ let ultimoRegistroNota = '';
    el HTML). Y en vez de dejar que el navegador guarde la nota "solo" al
    perder el foco (lo cual podía redibujar la pantalla justo a mitad de
    camino y perder el salto), aquí se guarda la nota actual A PROPÓSITO y
-   se espera a que termine —incluyendo el posible cambio a "Entregada"—
-   ANTES de buscar y enfocar la casilla destino. Así las flechas nunca se
+   se espera a que termine antes de buscar y enfocar la casilla destino. Así las flechas nunca se
    quedan sin efecto, ni al borrar una nota ni al escribir una nueva. */
 async function moverFocoNota(actual, dx, dy){
   const cols = window._notasCols || [];
@@ -10560,24 +10595,9 @@ async function updateComp(estId, asigId, periodo, comp, value){
   const v = limpio===''? null : Math.max(0, Math.min(100, Number(limpio)));
   const key = estId+'|'+asigId+'|'+periodo+'|'+comp;
   setComp(estId, asigId, periodo, comp, v); // se refleja en pantalla de inmediato
-  // Si la nota queda arriba de 70 y esa entrega tiene selector de estado
-  // (una Actividad, o un rubro marcado "Con fecha") y todavía no se había
-  // elegido ningún estado, se marca "Entregada" sola para ahorrar el clic.
-  // El docente siempre puede cambiarla desde el mismo selector.
-  const tieneEstado = comp.indexOf('act:')===0 || !!(rubrosActivos().find(r=>r.key===comp && r.tarea));
-  const ek = estId+'|'+asigId+'|'+periodo+'|'+comp;
-  const autoEntregada = v!==null && v>70 && tieneEstado && !getEstado(estId, asigId, periodo, comp);
-  if(autoEntregada){
-    if(!DB.estados) DB.estados = {};
-    DB.estados[ek] = 'entregada';
-  }
   render();
   commit(doc=>{
     if(v===null) delete doc.calificaciones[key]; else doc.calificaciones[key] = v;
-    if(autoEntregada){
-      if(!doc.estados) doc.estados = {};
-      if(!doc.estados[ek]) doc.estados[ek] = 'entregada';
-    }
   });
 }
 
@@ -10708,3 +10728,4 @@ function renderMatriz(){
 </script>
 </body>
 </html>
+  
