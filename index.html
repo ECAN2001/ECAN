@@ -1635,19 +1635,15 @@ function iniciarSync(){
    necesita su atención — se está guardando, hay cambios sin guardar, o
    falló el guardado. En esos tres casos aparece solo, sin necesidad de
    tocarlo. */
-let syncIndicatorVisible = false;
-/* Toda la tarjeta de "quién soy" (avatar, nombre, Instalar app,
-   Notificaciones, Cambiar de usuario) empieza escondida, para no ocupar
-   espacio de la barra lateral. Queda solo el avatar chiquito, que al
-   tocarlo la despliega completa; se vuelve a esconder con el botón
-   "Ocultar" que aparece abajo una vez desplegada. */
+
+/* Toda la tarjeta de "quién soy" (nombre, Instalar app, Notificaciones,
+   Cambiar de usuario) empieza escondida, para no ocupar espacio de la
+   barra lateral. Queda visible siempre el avatar chiquito junto al estado
+   de guardado; al tocarlo se despliega la tarjeta completa, y con el
+   botón "Ocultar" se vuelve a esconder. */
 let sidebarFooterVisible = false;
 function toggleSidebarFooter(){
   sidebarFooterVisible = !sidebarFooterVisible;
-  render();
-}
-function toggleSyncIndicator(){
-  syncIndicatorVisible = !syncIndicatorVisible;
   render();
 }
 function renderSyncIndicator(){
@@ -1660,15 +1656,16 @@ function renderSyncIndicator(){
   else if(motor==='compartido'){ texto = 'Sincronizado ' + hora; }
   else if(motor==='local'){ texto = 'Solo este equipo ' + hora; }
   else { texto = 'Sin guardado — descarga respaldo'; color = 'var(--red)'; necesitaAtencion = true; }
-
-  if(!necesitaAtencion && !syncIndicatorVisible){
-    // Sigue existiendo el elemento (vacío, oculto) para que setSyncStatus()
-    // lo pueda encontrar y mostrarlo de inmediato en cuanto haga falta.
-    return `<div id="sync-indicator" style="display:none;"></div>`;
-  }
-  const accion = necesitaAtencion ? 'reintentarGuardado()' : 'toggleSyncIndicator()';
-  return `<div id="sync-indicator" class="sync-row" onclick="${accion}" title="${necesitaAtencion?'Reintentar / actualizar':'Tocar para ocultar'}">
-    <span class="sync-dot" style="background:${color}"></span><span>${texto}</span>
+  // El avatar chiquito de la persona va a la par del estado, siempre visible
+  // (no hace falta tocar nada para verlo). El resto de la tarjeta (nombre,
+  // Instalar app, Notificaciones, Cambiar de usuario) se despliega aparte,
+  // solo si se toca esta fila.
+  const avatarColor = sesionEstudiante ? '#2F6F5E' : domainColor(currentUser.dominio);
+  const iniciales = sesionEstudiante ? initials(nombreCompleto(currentUser.nombres, currentUser.apellidos)) : initials(currentUser.nombre);
+  const accion = necesitaAtencion ? 'reintentarGuardado()' : 'toggleSidebarFooter()';
+  return `<div id="sync-indicator" style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:10px;" onclick="${accion}" title="${necesitaAtencion?'Reintentar / actualizar':'Tocar para ver más opciones'}">
+    <div class="user-avatar" style="width:28px;height:28px;font-size:10px;background:${avatarColor};flex-shrink:0;">${esc(iniciales)}</div>
+    <span style="font-size:11.5px; color:${necesitaAtencion?color:'var(--muted)'};">${esc(texto)}</span>
   </div>`;
 }
 function renderSincronizacion(){
@@ -3212,24 +3209,15 @@ function renderLayout(){
         }).join('')}
       </div>
       <div class="sidebar-footer">
-        ${sidebarFooterVisible ? `
-        <div class="who" onclick="toggleSyncIndicator()" title="Tocar para ver el estado de guardado" style="cursor:pointer;">
-          <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:${domainColor(currentUser.dominio)}">${esc(initials(currentUser.nombre))}</div>
-          <div class="user-meta">
-            <p class="user-name">${esc(currentUser.nombre)}</p>
-            <p class="user-role">${esc(domainLabel(currentUser))}</p>
-          </div>
-        </div>
         ${renderSyncIndicator()}
+        ${sidebarFooterVisible ? `
+        <p class="user-name" style="margin:0;">${esc(currentUser.nombre)}</p>
+        <p class="user-role" style="margin:0 0 10px;">${esc(domainLabel(currentUser))}</p>
         ${!appYaInstalada()?`<button class="btn btn-sm" style="width:100%; margin-bottom:6px;" onclick="instalarApp()">📲 Instalar app</button>`:''}
         <button class="btn btn-sm" style="width:100%; margin-bottom:6px;" onclick="viewState.modalNotificaciones=true; render();">🔔 Notificaciones${totalNotificacionesDocente()>0?` (${totalNotificacionesDocente()>99?'99+':totalNotificacionesDocente()})`:''}</button>
         <button class="logout-btn" onclick="doLogout()">Cambiar de usuario</button>
         <button class="btn btn-sm" style="width:100%; margin-top:6px; background:none; border:none; color:var(--muted);" onclick="toggleSidebarFooter()">Ocultar ▲</button>
-        ` : `
-        <div style="display:flex; justify-content:center;">
-          <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:${domainColor(currentUser.dominio)};cursor:pointer;position:relative;" onclick="toggleSidebarFooter()" title="${esc(currentUser.nombre)} — tocar para ver opciones">${esc(initials(currentUser.nombre))}${totalNotificacionesDocente()>0?`<span style="position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--red);border:1.5px solid var(--panel);"></span>`:''}</div>
-        </div>
-        `}
+        ` : ''}
       </div>
     </div>
     <div class="main">
@@ -3410,23 +3398,14 @@ function renderLayoutEstudiante(){
         <div class="nav-item ${currentView==='sincronizacionEstudiante'?'active':''}" onclick="goTo('sincronizacionEstudiante')"><span class="nav-dot"></span>Sincronización</div>
       </div>
       <div class="sidebar-footer">
-        ${sidebarFooterVisible ? `
-        <div class="who" onclick="toggleSyncIndicator()" title="Tocar para ver el estado de guardado" style="cursor:pointer;">
-          <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:#2F6F5E">${esc(initials(nombreCompleto(est.nombres,est.apellidos)))}</div>
-          <div class="user-meta">
-            <p class="user-name">${esc(nombresDe(est))} ${esc(apellidosDe(est))}</p>
-            <p class="user-role">${esc(est.grado)} · Estudiante</p>
-          </div>
-        </div>
         ${renderSyncIndicator()}
+        ${sidebarFooterVisible ? `
+        <p class="user-name" style="margin:0;">${esc(nombresDe(est))} ${esc(apellidosDe(est))}</p>
+        <p class="user-role" style="margin:0 0 10px;">${esc(est.grado)} · Estudiante</p>
         ${!appYaInstalada()?`<button class="btn btn-sm" style="width:100%; margin-bottom:6px;" onclick="instalarApp()">📲 Instalar app</button>`:''}
         <button class="logout-btn" onclick="doLogout()">Salir</button>
         <button class="btn btn-sm" style="width:100%; margin-top:6px; background:none; border:none; color:var(--muted);" onclick="toggleSidebarFooter()">Ocultar ▲</button>
-        ` : `
-        <div style="display:flex; justify-content:center;">
-          <div class="user-avatar" style="width:32px;height:32px;font-size:11px;background:#2F6F5E;cursor:pointer;" onclick="toggleSidebarFooter()" title="${esc(nombresDe(est))} ${esc(apellidosDe(est))} — tocar para ver opciones">${esc(initials(nombreCompleto(est.nombres,est.apellidos)))}</div>
-        </div>
-        `}
+        ` : ''}
       </div>
     </div>
     <div class="main">
