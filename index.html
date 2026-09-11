@@ -8159,9 +8159,9 @@ function renderPersonalizar(){
       <button class="btn" onclick="verMensajeAhora()">Ver cómo se ve</button>
     </div>
   </div>
-  <div class="note">¿Quieres un saludo o mensaje distinto para una sola persona? Edítalo desde la pestaña "Otros ajustes" → Usuarios, contraseñas y accesos → botón "Editar" de esa persona.</div>`;
+  <div class="note">¿Quieres un saludo o mensaje distinto para una sola persona? Edítalo desde la pestaña "Usuarios, contraseñas y accesos" → botón "Editar" de esa persona.</div>`;
 
-  const tabOtros = !soloDir ? '' : `
+  const tabIdentidad = !soloDir ? '' : `
   <div class="card">
     <p class="card-title">Identidad del centro escolar</p>
     <div class="grid grid-2">
@@ -8181,8 +8181,15 @@ function renderPersonalizar(){
       </div>
     </div>
     <div class="btn-row"><button class="btn btn-primary" onclick="guardarAjustes()">Guardar cambios</button></div>
-  </div>
+  </div>`;
 
+  const tabGrados = !soloDir ? '' : `
+  ${renderGrados()}
+  ${renderPonderacion()}`;
+
+  const tabManual = !soloDir ? '' : renderManualConvivencia();
+
+  const tabUsuarios = !soloDir ? '' : `
   <div class="card">
     <p class="card-title">Usuarios, contraseñas y accesos
       <button class="btn btn-sm btn-primary" onclick="openTeacherModal()">Agregar usuario</button>
@@ -8239,12 +8246,10 @@ function renderPersonalizar(){
     </table>
     </div>
   </div>
-  ${renderGrados()}
-  ${renderManualConvivencia()}
-  ${renderPonderacion()}
   ${renderCierreAnio()}
-  ${renderCierreModal()}
-  `;
+  ${renderCierreModal()}`;
+
+  const tabsContenido = {mensaje:tabMensaje, identidad:tabIdentidad, grados:tabGrados, manual:tabManual, usuarios:tabUsuarios};
 
   return `
   <div class="page-head">
@@ -8254,9 +8259,14 @@ function renderPersonalizar(){
   </div>
   <div class="period-tabs">
     <div class="period-tab ${vista==='mensaje'?'active':''}" onclick="setPref('persVista','mensaje')">Personalizar mensaje</div>
-    ${soloDir?`<div class="period-tab ${vista==='otros'?'active':''}" onclick="setPref('persVista','otros')">Otros ajustes</div>`:''}
+    ${soloDir?`
+    <div class="period-tab ${vista==='identidad'?'active':''}" onclick="setPref('persVista','identidad')">Identidad del centro</div>
+    <div class="period-tab ${vista==='grados'?'active':''}" onclick="setPref('persVista','grados')">Grados y aulas</div>
+    <div class="period-tab ${vista==='manual'?'active':''}" onclick="setPref('persVista','manual')">Manual de convivencia</div>
+    <div class="period-tab ${vista==='usuarios'?'active':''}" onclick="setPref('persVista','usuarios')">Usuarios, contraseñas y accesos</div>
+    `:''}
   </div>
-  ${vista==='otros' ? tabOtros : tabMensaje}
+  ${tabsContenido[vista] !== undefined ? tabsContenido[vista] : tabMensaje}
   ${modalUsuario}
   ${!soloDir ? `<div class="note">La identidad del centro escolar, los grados, la ponderación, las contraseñas y el cierre de año los administra cualquier cuenta de acceso total.</div>` : ''}
   ${renderTecladoEmojis()}`;
