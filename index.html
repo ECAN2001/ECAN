@@ -2809,7 +2809,7 @@ function renderLogin(){
         </div>
         ${viewState.accesoPropietaria.error?`<p style="color:var(--red); font-size:13px; margin:-4px 0 12px;">${esc(viewState.accesoPropietaria.error)}</p>`:''}
         <div class="btn-row">
-          <button class="btn btn-primary" onclick="entrarPropietaria()">Entrar</button>
+          <button class="btn btn-primary" id="btn_entrar_propietaria" onclick="entrarPropietaria()">Entrar</button>
           <button class="btn" onclick="viewState.accesoPropietaria=null; render();">Volver</button>
         </div>
       </div>
@@ -2835,7 +2835,7 @@ function renderLogin(){
         </div>
         ${viewState.errorLoginEstudiante?`<p style="color:var(--red); font-size:13px; margin:-4px 0 12px;">${esc(viewState.errorLoginEstudiante)}</p>`:''}
         <div class="btn-row">
-          <button type="submit" class="btn btn-primary">Entrar</button>
+          <button type="submit" class="btn btn-primary" id="btn_entrar_estudiante">Entrar</button>
         </div>
       </form>
       ` : `
@@ -2849,7 +2849,7 @@ function renderLogin(){
         </div>
         ${viewState.errorLoginDocente?`<p style="color:var(--red); font-size:13px; margin:-4px 0 12px;">${esc(viewState.errorLoginDocente)}</p>`:''}
         <div class="btn-row">
-          <button type="submit" class="btn btn-primary">Entrar</button>
+          <button type="submit" class="btn btn-primary" id="btn_entrar_docente">Entrar</button>
         </div>
       </form>
       `}
@@ -2868,7 +2868,24 @@ async function asegurarMotorNube(){
     try{ await detectarMotor(); }catch(e){}
   }
 }
+/* Deshabilita el botón "Entrar" y le pone "Entrando…" mientras la función
+   de acceso hace lo suyo (puede tardar si hay que conectar con el
+   servidor). Al terminar —haya funcionado o no— se restaura solo, salvo
+   que ya se haya entrado y la pantalla haya cambiado (ahí el botón ya no
+   existe y no hay nada que restaurar). */
+async function conBotonEntrando(btnId, fn){
+  const btn = document.getElementById(btnId);
+  const original = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Entrando…'; }
+  try{
+    await fn();
+  }finally{
+    const btn2 = document.getElementById(btnId);
+    if(btn2){ btn2.disabled = false; btn2.textContent = original; }
+  }
+}
 async function entrarComoDocenteLogin(){
+  await conBotonEntrando('btn_entrar_docente', async ()=>{
   await asegurarMotorNube();
   if(!baseCompletaCargada) await loadAll();
   const crudo = ((document.getElementById('doc_usuario_input')||{}).value || '').trim();
@@ -2891,8 +2908,10 @@ async function entrarComoDocenteLogin(){
   }
   viewState.errorLoginDocente = '';
   entrarComo(u);
+  });
 }
 async function entrarComoEstudianteLogin(){
+  await conBotonEntrando('btn_entrar_estudiante', async ()=>{
   const usuario = normalizarUsuario((document.getElementById('est_usuario_input')||{}).value || '');
   const clave = (document.getElementById('est_clave_input')||{}).value || '';
   if(!usuario || !clave){
@@ -2905,7 +2924,6 @@ async function entrarComoEstudianteLogin(){
   if(motor === 'nube'){
     // El servidor filtra: a este navegador solo llegan los datos de este estudiante.
     viewState.errorLoginEstudiante = '';
-    showToast('Ingresando…');
     try{
       const datos = await nubeLeerEstudiante(usuario, claveHash);
       if(!datos || !datos.estudiante){
@@ -2935,6 +2953,7 @@ async function entrarComoEstudianteLogin(){
   }
   viewState.errorLoginEstudiante = '';
   await entrarComoEstudiante(est);
+  });
 }
 async function entrarComoEstudiante(est, credEst){
   selloVisto = '';
@@ -2972,6 +2991,7 @@ function tocarTitulo(){
   }
 }
 async function entrarPropietaria(){
+  await conBotonEntrando('btn_entrar_propietaria', async ()=>{
   if(!baseCompletaCargada) await loadAll();
   const propietaria = DB.docentes.find(t=>t.tipo==='propietaria' || t.tipo==='propietario');
   const val = (document.getElementById('clave_prop_input')||{}).value || '';
@@ -2983,6 +3003,7 @@ async function entrarPropietaria(){
   }
   viewState.accesoPropietaria = null;
   entrarComo(propietaria);
+  });
 }
 
 let selloVisto = '';
