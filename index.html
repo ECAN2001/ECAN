@@ -10115,6 +10115,14 @@ function renderCalificaciones(){
   const acts = asignatura ? getActividades(grado, asignatura, periodo) : [];
 
   const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
+  // Orden de columnas y de filas de ESTA tabla, para que las flechas del
+  // teclado sepan a qué casilla saltar aunque la pantalla se vuelva a
+  // dibujar entre una tecla y otra (ver moverFocoNota).
+  window._notasCols = [
+    ...acts.map(a=>'act:'+a.id),
+    ...rubrosActivos().reduce((arr,r)=>{ arr.push(r.key); if(r.conRecuperacion) arr.push(claveRecuperacion(r.key)); return arr; }, [])
+  ];
+  window._notasEstIds = estudiantes.map(e=>e.id);
 
   return `
   <div class="page-head">
@@ -10220,6 +10228,7 @@ function renderCalificaciones(){
                 onclick="abrirObs('${e.id}','${asignatura}',${periodo},'${comp}')">${obs?'✎':'+'}</button>`;
             const input = puedeEditar
               ? `<input class="score-input ${deficiente?'deficiente':''}" type="text" inputmode="decimal" autocomplete="off"
+                  data-est="${esc(e.id)}" data-comp="${esc(comp)}"
                   value="${val!==undefined?val:''}" placeholder="—"
                   onchange="updateComp('${e.id}','${asignatura}',${periodo},'${comp}',this.value)">`
               : `<span class="mono">${val!==undefined?val:'—'}</span>`;
@@ -10491,30 +10500,39 @@ let ultimoRegistroNota = '';
    hoja de cálculo): arriba/abajo cambia de estudiante en la misma columna;
    izquierda/derecha pasa a la casilla anterior/siguiente de ese estudiante,
    solo cuando el cursor ya está al inicio o al final del número escrito
-   (para no interferir con la edición normal del texto). */
+   (para no interferir con la edición normal del texto).
+   Se identifica cada casilla por estudiante+columna (no por su posición en
+   el HTML): si al borrar una nota la casilla se guarda y la pantalla se
+   vuelve a dibujar a media jugada, igual se encuentra la casilla correcta
+   después, en vez de perder el foco y dejar las flechas sin efecto. */
 function moverFocoNota(actual, dx, dy){
-  const td = actual.closest('td');
-  const tr = td ? td.closest('tr') : null;
-  if(!td || !tr) return false;
+  const cols = window._notasCols || [];
+  const ests = window._notasEstIds || [];
+  const est = actual.dataset.est, comp = actual.dataset.comp;
+  let destEst = est, destComp = comp;
   if(dy !== 0){
-    const idx = Array.prototype.indexOf.call(tr.children, td);
-    let fila = tr;
-    while(true){
-      fila = dy>0 ? fila.nextElementSibling : fila.previousElementSibling;
-      if(!fila) return false;
-      const celda = fila.children[idx];
-      const destino = celda ? celda.querySelector('.score-input') : null;
-      if(destino){ destino.focus(); try{ destino.select(); }catch(e){} return true; }
-    }
+    const i = ests.indexOf(est);
+    if(i<0) return false;
+    const j = i + dy;
+    if(j<0 || j>=ests.length) return false;
+    destEst = ests[j];
   }else{
-    let celda = td;
-    while(true){
-      celda = dx>0 ? celda.nextElementSibling : celda.previousElementSibling;
-      if(!celda) return false;
-      const destino = celda.querySelector('.score-input');
-      if(destino){ destino.focus(); try{ destino.select(); }catch(e){} return true; }
-    }
+    const i = cols.indexOf(comp);
+    if(i<0) return false;
+    const j = i + dx;
+    if(j<0 || j>=cols.length) return false;
+    destComp = cols[j];
   }
+  const selector = '.score-input[data-est="'+CSS.escape(destEst)+'"][data-comp="'+CSS.escape(destComp)+'"]';
+  // Si la nota cambió, "actual.blur()" dispara su guardado (y el posible
+  // redibujado) YA, de una vez — así el setTimeout de abajo siempre busca
+  // la casilla destino en la pantalla ya actualizada, nunca en una vieja.
+  actual.blur();
+  setTimeout(()=>{
+    const destino = document.querySelector(selector);
+    if(destino){ destino.focus(); try{ destino.select(); }catch(e){} }
+  }, 0);
+  return true;
 }
 document.addEventListener('keydown', function(ev){
   const el = ev.target;
