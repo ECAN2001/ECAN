@@ -10112,6 +10112,131 @@ function renderNoAccess(){
 }
 
 /* ============================= CALIFICACIONES ============================= */
+/* --- duplicar notas de una asignatura/período a otra (mismo grado) --- */
+/* Útil, por ejemplo, cuando por error queda una asignatura duplicada: se
+   copian las notas ya cargadas a la asignatura correcta y, si se quiere,
+   se dejan en blanco las de la asignatura equivocada. */
+function abrirDuplicarNotas(){
+  const grado = getPref('califGrado','');
+  const origAsigId = getPref('califAsig','');
+  const origPeriodo = Number(getPref('califPeriodo',1)) || 1;
+  if(!grado || !origAsigId){ showToast('Elige primero la aula y la asignatura.'); return; }
+  viewState.modalDuplicarNotas = {
+    grado, origAsigId, origPeriodo, destAsigId: '', destPeriodo: origPeriodo, hecho:false, cambios:0
+  };
+  render();
+}
+function cerrarDuplicarNotas(){ viewState.modalDuplicarNotas = null; render(); }
+function confirmarDuplicarNotas(){
+  const info = viewState.modalDuplicarNotas;
+  if(!info) return;
+  const destAsigId = (document.getElementById('dup_notas_asig')||{}).value || '';
+  const destPeriodo = Number((document.getElementById('dup_notas_periodo')||{}).value) || 1;
+  if(!destAsigId){ showToast('Elige la asignatura de destino.'); return; }
+  if(destAsigId===info.origAsigId && destPeriodo===info.origPeriodo){ showToast('Elige una asignatura o un período distinto al de origen.'); return; }
+  if(!canEditGrades(currentUser, info.grado, destAsigId)){ showToast('No tienes permiso para editar las notas de destino.'); return; }
+  const destAsig = DB.asignaturas.find(a=>a.id===destAsigId);
+  const origAsig = DB.asignaturas.find(a=>a.id===info.origAsigId);
+  if(!confirm('¿Copiar las notas de "' + (origAsig?origAsig.nombre:'') + '" (período ' + info.origPeriodo + ') a "' +
+    (destAsig?destAsig.nombre:'') + '" (período ' + destPeriodo + ')? Se reemplazará cualquier nota que ya tenga ahí.')) return;
+  const estudiantes = DB.estudiantes.filter(e=>e.grado===info.grado);
+  const prefOrig = '|'+info.origAsigId+'|'+info.origPeriodo+'|';
+  let cambios = 0;
+  commit(doc=>{
+    estudiantes.forEach(e=>{
+      const prefijoEst = e.id + prefOrig;
+      Object.keys(doc.calificaciones||{}).forEach(k=>{
+        if(k.indexOf(prefijoEst)!==0) return;
+        const comp = k.slice(prefijoEst.length);
+        doc.calificaciones[e.id+'|'+destAsigId+'|'+destPeriodo+'|'+comp] = doc.calificaciones[k];
+        cambios++;
+      });
+      Object.keys(doc.estados||{}).forEach(k=>{
+        if(k.indexOf(prefijoEst)!==0) return;
+        const comp = k.slice(prefijoEst.length);
+        doc.estados[e.id+'|'+destAsigId+'|'+destPeriodo+'|'+comp] = doc.estados[k];
+      });
+      Object.keys(doc.observaciones||{}).forEach(k=>{
+        if(k.indexOf(prefijoEst)!==0) return;
+        const comp = k.slice(prefijoEst.length);
+        doc.observaciones[e.id+'|'+destAsigId+'|'+destPeriodo+'|'+comp] = doc.observaciones[k];
+      });
+    });
+  });
+  registrar('Calificaciones', 'Duplicó notas de "' + (origAsig?origAsig.nombre:'') + '" (P'+info.origPeriodo+') a "' + (destAsig?destAsig.nombre:'') + '" (P'+destPeriodo+')');
+  info.hecho = true;
+  info.cambios = cambios;
+  info.destAsigNombre = destAsig?destAsig.nombre:'';
+  info.destPeriodo = destPeriodo;
+  showToast(cambios>0 ? 'Notas duplicadas correctamente.' : 'No había notas que copiar en esa asignatura/período.');
+  render();
+}
+function mantenerNotasOrigen(){
+  viewState.modalDuplicarNotas = null;
+  render();
+}
+function eliminarNotasOrigen(){
+  const info = viewState.modalDuplicarNotas;
+  if(!info) return;
+  if(!confirm('¿Borrar las notas de origen y dejar esa asignatura en blanco? Ya se copiaron a "' + (info.destAsigNombre||'') + '".')) return;
+  const estudiantes = DB.estudiantes.filter(e=>e.grado===info.grado);
+  const prefOrig = '|'+info.origAsigId+'|'+info.origPeriodo+'|';
+  commit(doc=>{
+    estudiantes.forEach(e=>{
+      const prefijoEst = e.id + prefOrig;
+      Object.keys(doc.calificaciones||{}).forEach(k=>{ if(k.indexOf(prefijoEst)===0) delete doc.calificaciones[k]; });
+      Object.keys(doc.estados||{}).forEach(k=>{ if(k.indexOf(prefijoEst)===0) delete doc.estados[k]; });
+      Object.keys(doc.observaciones||{}).forEach(k=>{ if(k.indexOf(prefijoEst)===0) delete doc.observaciones[k]; });
+    });
+  });
+  registrar('Calificaciones', 'Vació las notas de origen tras duplicarlas');
+  viewState.modalDuplicarNotas = null;
+  showToast('Las notas de origen quedaron en blanco.');
+  render();
+}
+function renderDuplicarNotasModal(){
+  const info = viewState.modalDuplicarNotas;
+  if(!info) return '';
+  const cerrar = 'cerrarDuplicarNotas();';
+  const origAsig = DB.asignaturas.find(a=>a.id===info.origAsigId);
+  const asigsDestino = posiblesAsignaturasHoja(info.grado);
+  if(info.hecho){
+    return `
+    <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
+      <div class="modal">
+        <button class="modal-close" onclick="${cerrar}">×</button>
+        <h3 class="modal-title">Notas duplicadas</h3>
+        <p style="font-size:13.5px;">Se copiaron a <b>${esc(info.destAsigNombre)}</b> (período ${info.destPeriodo}). ¿Qué quieres hacer con las notas de origen, en <b>${esc(origAsig?origAsig.nombre:'')}</b> (período ${info.origPeriodo})?</p>
+        <div class="btn-row" style="margin-top:12px;">
+          <button class="btn btn-primary" onclick="mantenerNotasOrigen()">Mantener notas</button>
+          <button class="btn btn-danger" onclick="eliminarNotasOrigen()">Eliminar notas</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  return `
+  <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
+    <div class="modal">
+      <button class="modal-close" onclick="${cerrar}">×</button>
+      <h3 class="modal-title">Duplicar notas</h3>
+      <p class="nota-chica" style="margin-top:-6px;">
+        Copia todas las notas de <b>${esc(origAsig?origAsig.nombre:'')} (Período ${info.origPeriodo})</b> a otra asignatura o período de <b>${esc(info.grado)}</b>. Se reemplaza lo que ya tenga la casilla de destino.
+      </p>
+      <div class="field"><label>Asignatura de destino</label>
+        <select id="dup_notas_asig">
+          ${asigsDestino.map(x=>`<option value="${x.id}" ${info.destAsigId===x.id?'selected':''}>${esc(x.nombre)}</option>`).join('')}
+        </select></div>
+      <div class="field"><label>Período de destino</label>
+        <select id="dup_notas_periodo">
+          ${[1,2,3,4].map(p=>`<option value="${p}" ${Number(info.destPeriodo)===p?'selected':''}>Período ${p}</option>`).join('')}
+        </select></div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-primary" onclick="confirmarDuplicarNotas()">Duplicar</button>
+        <button class="btn" onclick="${cerrar}">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+}
 function renderCalificaciones(){
   const gradosVisibles = misGrados(currentUser);
   if(gradosVisibles.length===0){
@@ -10162,8 +10287,8 @@ function renderCalificaciones(){
   ${asignaturasPosibles.length===0 ? `<div class="card"><p class="empty">No tienes asignaturas asignadas en esta aula.</p></div>` : `
   <div class="period-tabs">
     ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="setPref('califPeriodo', ${p})">Período ${p}</div>`).join('')}
-    <button class="btn btn-sm" style="margin-left:auto; align-self:center;"
-      onclick="descargarCalificaciones('${esc(grado)}','${asignatura}',${periodo})">Descargar en PDF</button>
+    ${puedeEditar?`<button class="btn btn-sm" style="margin-left:auto; align-self:center;" onclick="abrirDuplicarNotas()" title="Copiar las notas de esta asignatura/período a otra">Duplicar notas a…</button>`:''}
+    <button class="btn btn-sm" onclick="descargarCalificaciones('${esc(grado)}','${asignatura}',${periodo})">Descargar en PDF</button>
   </div>
 
   <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius); margin-top:0;">
@@ -10303,7 +10428,8 @@ function renderCalificaciones(){
   <div class="note" style="margin-top:12px;">El promedio se calcula desde la primera nota que cargues, repartiendo proporcionalmente entre lo ya calificado; la etiqueta <b>parcial</b> indica que aún faltan notas. En los rubros con recuperación se toma automáticamente la nota más alta.</div>
   ${!puedeEditar ? `<div class="note" style="margin-top:12px;">Solo puedes consultar esta asignatura. La edición está reservada al docente asignado, a su orientador(a) o a administración.</div>`:''}
   `}
-  ${renderObsModal()}`;
+  ${renderObsModal()}
+  ${renderDuplicarNotasModal()}`;
 }
 /* Descarga en PDF el cuadro que está en pantalla, horizontal y con encabezado
    repetido en cada página. */
