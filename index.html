@@ -8181,11 +8181,13 @@ function renderPersonalizar(){
       </div>
     </div>
     <div class="btn-row"><button class="btn btn-primary" onclick="guardarAjustes()">Guardar cambios</button></div>
-  </div>`;
+  </div>
+  ${renderPonderacion()}
+  ${renderCierreAnio()}
+  ${renderCierreModal()}`;
 
   const tabGrados = !soloDir ? '' : `
-  ${renderGrados()}
-  ${renderPonderacion()}`;
+  ${renderGrados()}`;
 
   const tabManual = !soloDir ? '' : renderManualConvivencia();
 
@@ -8245,9 +8247,7 @@ function renderPersonalizar(){
       </tbody>
     </table>
     </div>
-  </div>
-  ${renderCierreAnio()}
-  ${renderCierreModal()}`;
+  </div>`;
 
   const tabsContenido = {mensaje:tabMensaje, identidad:tabIdentidad, grados:tabGrados, manual:tabManual, usuarios:tabUsuarios};
 
@@ -10466,6 +10466,47 @@ function guardarObs(){
   render();
 }
 let ultimoRegistroNota = '';
+/* Navegación con flechas del teclado entre las celdas de notas (como en una
+   hoja de cálculo): arriba/abajo cambia de estudiante en la misma columna;
+   izquierda/derecha pasa a la casilla anterior/siguiente de ese estudiante,
+   solo cuando el cursor ya está al inicio o al final del número escrito
+   (para no interferir con la edición normal del texto). */
+function moverFocoNota(actual, dx, dy){
+  const td = actual.closest('td');
+  const tr = td ? td.closest('tr') : null;
+  if(!td || !tr) return false;
+  if(dy !== 0){
+    const idx = Array.prototype.indexOf.call(tr.children, td);
+    let fila = tr;
+    while(true){
+      fila = dy>0 ? fila.nextElementSibling : fila.previousElementSibling;
+      if(!fila) return false;
+      const celda = fila.children[idx];
+      const destino = celda ? celda.querySelector('.score-input') : null;
+      if(destino){ destino.focus(); try{ destino.select(); }catch(e){} return true; }
+    }
+  }else{
+    let celda = td;
+    while(true){
+      celda = dx>0 ? celda.nextElementSibling : celda.previousElementSibling;
+      if(!celda) return false;
+      const destino = celda.querySelector('.score-input');
+      if(destino){ destino.focus(); try{ destino.select(); }catch(e){} return true; }
+    }
+  }
+}
+document.addEventListener('keydown', function(ev){
+  const el = ev.target;
+  if(!el || !el.classList || !el.classList.contains('score-input')) return;
+  if(ev.key==='ArrowUp'){ if(moverFocoNota(el,0,-1)) ev.preventDefault(); }
+  else if(ev.key==='ArrowDown'){ if(moverFocoNota(el,0,1)) ev.preventDefault(); }
+  else if(ev.key==='ArrowLeft'){
+    if(el.selectionStart===0 && el.selectionEnd===0){ if(moverFocoNota(el,-1,0)) ev.preventDefault(); }
+  }else if(ev.key==='ArrowRight'){
+    const len = el.value.length;
+    if(el.selectionStart===len && el.selectionEnd===len){ if(moverFocoNota(el,1,0)) ev.preventDefault(); }
+  }
+});
 async function updateComp(estId, asigId, periodo, comp, value){
   const asigNom = (DB.asignaturas.find(a=>a.id===asigId)||{}).nombre || '';
   const marca = asigId + '|' + periodo;
@@ -10482,9 +10523,24 @@ async function updateComp(estId, asigId, periodo, comp, value){
   const v = limpio===''? null : Math.max(0, Math.min(100, Number(limpio)));
   const key = estId+'|'+asigId+'|'+periodo+'|'+comp;
   setComp(estId, asigId, periodo, comp, v); // se refleja en pantalla de inmediato
+  // Si la nota queda arriba de 70 y esa entrega tiene selector de estado
+  // (una Actividad, o un rubro marcado "Con fecha") y todavía no se había
+  // elegido ningún estado, se marca "Entregada" sola para ahorrar el clic.
+  // El docente siempre puede cambiarla desde el mismo selector.
+  const tieneEstado = comp.indexOf('act:')===0 || !!(rubrosActivos().find(r=>r.key===comp && r.tarea));
+  const ek = estId+'|'+asigId+'|'+periodo+'|'+comp;
+  const autoEntregada = v!==null && v>70 && tieneEstado && !getEstado(estId, asigId, periodo, comp);
+  if(autoEntregada){
+    if(!DB.estados) DB.estados = {};
+    DB.estados[ek] = 'entregada';
+  }
   render();
   commit(doc=>{
     if(v===null) delete doc.calificaciones[key]; else doc.calificaciones[key] = v;
+    if(autoEntregada){
+      if(!doc.estados) doc.estados = {};
+      if(!doc.estados[ek]) doc.estados[ek] = 'entregada';
+    }
   });
 }
 
