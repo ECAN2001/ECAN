@@ -1591,12 +1591,16 @@ function aplicarEntregasAutomaticas(){
   const aMarcar = [];
   ests.forEach(estId=>{
     cols.forEach(comp=>{
-      const tieneEstado = comp.indexOf('act:')===0 || !!(rubrosActivos().find(r=>r.key===comp && r.tarea));
+      // La nota de una Actividad se guarda como "act:ID", pero su estado se
+      // guarda SIN ese prefijo (misma clave que usa el selector en pantalla).
+      const esActividad = comp.indexOf('act:')===0;
+      const tieneEstado = esActividad || !!(rubrosActivos().find(r=>r.key===comp && r.tarea));
       if(!tieneEstado) return;
+      const idEstado = esActividad ? comp.slice(4) : comp;
       const val = getComp(estId, asigId, periodo, comp);
       if(val===undefined || val<=70) return;
-      if(getEstado(estId, asigId, periodo, comp)) return; // ya tiene un estado elegido, no se toca
-      aMarcar.push(estId+'|'+asigId+'|'+periodo+'|'+comp);
+      if(getEstado(estId, asigId, periodo, idEstado)) return; // ya tiene un estado elegido, no se toca
+      aMarcar.push(estId+'|'+asigId+'|'+periodo+'|'+idEstado);
     });
   });
   if(aMarcar.length===0) return 0;
@@ -10765,9 +10769,15 @@ async function updateComp(estId, asigId, periodo, comp, value){
   // elegido ningún estado, se marca "Entregada" al instante, en el mismo
   // redibujado que ya se hace para mostrar la nota — no espera a "Guardar
   // cambios". El docente siempre puede cambiarla desde su propio selector.
-  const tieneEstado = comp.indexOf('act:')===0 || !!(rubrosActivos().find(r=>r.key===comp && r.tarea));
-  const ek = estId+'|'+asigId+'|'+periodo+'|'+comp;
-  const autoEntregada = v!==null && v>70 && tieneEstado && !getEstado(estId, asigId, periodo, comp);
+  // OJO: la nota de una Actividad se guarda como "act:ID", pero su estado
+  // se guarda SIN ese prefijo (así lo hace celdaAct en toda la pantalla) —
+  // hay que usar la misma clave que usa el selector, si no, se guarda el
+  // estado en una casilla que nadie lee.
+  const esActividad = comp.indexOf('act:')===0;
+  const tieneEstado = esActividad || !!(rubrosActivos().find(r=>r.key===comp && r.tarea));
+  const idEstado = esActividad ? comp.slice(4) : comp;
+  const ek = estId+'|'+asigId+'|'+periodo+'|'+idEstado;
+  const autoEntregada = v!==null && v>70 && tieneEstado && !getEstado(estId, asigId, periodo, idEstado);
   if(autoEntregada){
     if(!DB.estados) DB.estados = {};
     DB.estados[ek] = 'entregada';
