@@ -10228,7 +10228,7 @@ function renderCalificaciones(){
                 onclick="abrirObs('${e.id}','${asignatura}',${periodo},'${comp}')">${obs?'✎':'+'}</button>`;
             const input = puedeEditar
               ? `<input class="score-input ${deficiente?'deficiente':''}" type="text" inputmode="decimal" autocomplete="off"
-                  data-est="${esc(e.id)}" data-comp="${esc(comp)}"
+                  data-est="${esc(e.id)}" data-comp="${esc(comp)}" data-asig="${esc(asignatura)}" data-periodo="${periodo}"
                   value="${val!==undefined?val:''}" placeholder="—"
                   onchange="updateComp('${e.id}','${asignatura}',${periodo},'${comp}',this.value)">`
               : `<span class="mono">${val!==undefined?val:'—'}</span>`;
@@ -10502,10 +10502,13 @@ let ultimoRegistroNota = '';
    solo cuando el cursor ya está al inicio o al final del número escrito
    (para no interferir con la edición normal del texto).
    Se identifica cada casilla por estudiante+columna (no por su posición en
-   el HTML): si al borrar una nota la casilla se guarda y la pantalla se
-   vuelve a dibujar a media jugada, igual se encuentra la casilla correcta
-   después, en vez de perder el foco y dejar las flechas sin efecto. */
-function moverFocoNota(actual, dx, dy){
+   el HTML). Y en vez de dejar que el navegador guarde la nota "solo" al
+   perder el foco (lo cual podía redibujar la pantalla justo a mitad de
+   camino y perder el salto), aquí se guarda la nota actual A PROPÓSITO y
+   se espera a que termine —incluyendo el posible cambio a "Entregada"—
+   ANTES de buscar y enfocar la casilla destino. Así las flechas nunca se
+   quedan sin efecto, ni al borrar una nota ni al escribir una nueva. */
+async function moverFocoNota(actual, dx, dy){
   const cols = window._notasCols || [];
   const ests = window._notasEstIds || [];
   const est = actual.dataset.est, comp = actual.dataset.comp;
@@ -10524,26 +10527,21 @@ function moverFocoNota(actual, dx, dy){
     destComp = cols[j];
   }
   const selector = '.score-input[data-est="'+CSS.escape(destEst)+'"][data-comp="'+CSS.escape(destComp)+'"]';
-  // Si la nota cambió, "actual.blur()" dispara su guardado (y el posible
-  // redibujado) YA, de una vez — así el setTimeout de abajo siempre busca
-  // la casilla destino en la pantalla ya actualizada, nunca en una vieja.
-  actual.blur();
-  setTimeout(()=>{
-    const destino = document.querySelector(selector);
-    if(destino){ destino.focus(); try{ destino.select(); }catch(e){} }
-  }, 0);
+  await updateComp(est, actual.dataset.asig, Number(actual.dataset.periodo), comp, actual.value);
+  const destino = document.querySelector(selector);
+  if(destino){ destino.focus(); try{ destino.select(); }catch(e){} }
   return true;
 }
 document.addEventListener('keydown', function(ev){
   const el = ev.target;
   if(!el || !el.classList || !el.classList.contains('score-input')) return;
-  if(ev.key==='ArrowUp'){ if(moverFocoNota(el,0,-1)) ev.preventDefault(); }
-  else if(ev.key==='ArrowDown'){ if(moverFocoNota(el,0,1)) ev.preventDefault(); }
+  if(ev.key==='ArrowUp'){ ev.preventDefault(); moverFocoNota(el,0,-1); }
+  else if(ev.key==='ArrowDown'){ ev.preventDefault(); moverFocoNota(el,0,1); }
   else if(ev.key==='ArrowLeft'){
-    if(el.selectionStart===0 && el.selectionEnd===0){ if(moverFocoNota(el,-1,0)) ev.preventDefault(); }
+    if(el.selectionStart===0 && el.selectionEnd===0){ ev.preventDefault(); moverFocoNota(el,-1,0); }
   }else if(ev.key==='ArrowRight'){
     const len = el.value.length;
-    if(el.selectionStart===len && el.selectionEnd===len){ if(moverFocoNota(el,1,0)) ev.preventDefault(); }
+    if(el.selectionStart===len && el.selectionEnd===len){ ev.preventDefault(); moverFocoNota(el,1,0); }
   }
 });
 async function updateComp(estId, asigId, periodo, comp, value){
