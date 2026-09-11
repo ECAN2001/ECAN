@@ -103,7 +103,7 @@
   .nav-badge{ margin-left:auto; background:var(--red); color:#fff; font-size:10.5px; font-weight:700;
     border-radius:999px; min-width:18px; height:18px; display:flex; align-items:center; justify-content:center;
     padding:0 5px; line-height:1; }
-  .sidebar-footer{ margin-top:auto; padding:14px 20px 0; border-top:1px solid var(--line); flex-shrink:0; }
+  .sidebar-footer{ margin-top:auto; padding:10px 20px 10px; border-top:1px solid var(--line); flex-shrink:0; }
   .who{ display:flex; align-items:center; gap:10px; margin-bottom:10px;}
   .who .user-name{ font-size:13px; }
   .who .user-role{ font-size:11px; }
@@ -1530,16 +1530,41 @@ function actualizarBotonGuardarManual(){
   const el = document.getElementById('guardar-manual-banner');
   if(el) el.outerHTML = renderGuardarManualBanner();
 }
+/* Lee directamente de la pantalla el valor de CADA casilla de nota (no solo
+   la que tiene el foco) y guarda cualquiera que todavía no coincida con lo
+   que hay en la base de datos. Se usa antes de "Guardar cambios" y antes de
+   revisar los estados automáticos, para no depender de que el navegador
+   dispare a tiempo el evento de "cambio" de la última casilla editada. */
+function sincronizarNotasEnPantalla(){
+  document.querySelectorAll('.score-input[data-est]').forEach(el=>{
+    const estId = el.dataset.est, asigId = el.dataset.asig, comp = el.dataset.comp;
+    const periodo = Number(el.dataset.periodo);
+    if(!estId || !asigId || !comp) return;
+    const limpio = String(el.value||'').trim().replace(',', '.');
+    let v;
+    if(limpio===''){ v = null; }
+    else if(/^\d{1,3}(\.\d+)?$/.test(limpio)){ v = Math.max(0, Math.min(100, Number(limpio))); }
+    else return; // valor no numérico a medio escribir: no se toca
+    const actual = getComp(estId, asigId, periodo, comp);
+    const yaCoincide = (actual===undefined && v===null) || actual===v;
+    if(yaCoincide) return;
+    setComp(estId, asigId, periodo, comp, v);
+    commit(doc=>{
+      const key = estId+'|'+asigId+'|'+periodo+'|'+comp;
+      if(v===null) delete doc.calificaciones[key]; else doc.calificaciones[key] = v;
+    });
+  });
+}
 function guardarCambiosManual(){
   if(guardadoManualEnCurso) return; // ya se está guardando, ignora los clics de más
-  // Si hay un campo con el foco puesto (por ejemplo, la última nota que se
-  // acaba de escribir y todavía no perdió el foco), se fuerza a que suelte
-  // su valor ANTES de seguir. Si no, esa última nota podía quedar fuera del
-  // guardado y del cambio automático a "Entregada", porque el navegador
-  // solo la procesa cuando el campo pierde el foco.
-  const activo = document.activeElement;
-  if(activo && typeof activo.blur === 'function' && activo !== document.body) activo.blur();
   if(currentView === 'calificaciones'){
+    // En vez de esperar a que el navegador "suelte" la última casilla con el
+    // foco (eso a veces no alcanzaba a pasar a tiempo), se leen de una vez
+    // TODAS las casillas de nota que están en pantalla y se guarda cualquier
+    // valor que todavía no coincida con lo guardado. Así ninguna nota recién
+    // escrita se queda fuera, sin importar en cuál te hayas quedado con el
+    // cursor.
+    sincronizarNotasEnPantalla();
     const n = aplicarEntregasAutomaticas();
     if(n>0) render();
   }
@@ -1663,9 +1688,10 @@ function renderSyncIndicator(){
   const avatarColor = sesionEstudiante ? '#2F6F5E' : domainColor(currentUser.dominio);
   const iniciales = sesionEstudiante ? initials(nombreCompleto(currentUser.nombres, currentUser.apellidos)) : initials(currentUser.nombre);
   const accion = necesitaAtencion ? 'reintentarGuardado()' : 'toggleSidebarFooter()';
-  return `<div id="sync-indicator" style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:10px;" onclick="${accion}" title="${necesitaAtencion?'Reintentar / actualizar':'Tocar para ver más opciones'}">
-    <div class="user-avatar" style="width:28px;height:28px;font-size:10px;background:${avatarColor};flex-shrink:0;">${esc(iniciales)}</div>
-    <span style="font-size:11.5px; color:${necesitaAtencion?color:'var(--muted)'};">${esc(texto)}</span>
+  const espacioAbajo = sidebarFooterVisible ? '8px' : '0';
+  return `<div id="sync-indicator" style="display:flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:${espacioAbajo};" onclick="${accion}" title="${necesitaAtencion?'Reintentar / actualizar':'Tocar para ver más opciones'}">
+    <div class="user-avatar" style="width:24px;height:24px;font-size:9px;background:${avatarColor};flex-shrink:0;">${esc(iniciales)}</div>
+    <span style="font-size:11px; color:${necesitaAtencion?color:'var(--muted)'};">${esc(texto)}</span>
   </div>`;
 }
 function renderSincronizacion(){
