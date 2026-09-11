@@ -7846,11 +7846,15 @@ function renderTeacherModal(){
         <p class="nota-chica" style="margin:0 0 10px;">Si se dejan vacíos, ve el mensaje general configurado en "Personalizar → Mensajes para los docentes".</p>
         <div class="field">
           <label>Frase del saludo personal</label>
-          <input type="text" id="t_frase_personal" value="${esc(t.fraseSaludoPersonal||'')}" placeholder="Déjalo vacío para usar la frase general">
+          <div style="display:flex; gap:6px;">
+            <input type="text" id="t_frase_personal" value="${esc(t.fraseSaludoPersonal||'')}" placeholder="Déjalo vacío para usar la frase general" style="flex:1;">
+            <button type="button" class="btn btn-sm" title="Insertar emoticono" onclick="abrirTecladoEmojis('t_frase_personal')">😊</button>
+          </div>
         </div>
         <div class="field">
           <label>Mensaje al ingresar, personal</label>
           <textarea id="t_mensaje_personal" rows="3" placeholder="Déjalo vacío para usar el mensaje general">${esc(t.mensajeBienvenidaPersonal||'')}</textarea>
+          <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('t_mensaje_personal')">😊 Emoticones</button>
         </div>
       </div>
       ${esAdminTarget?'':`
@@ -8038,6 +8042,92 @@ async function deleteTeacher(id){
   render();
 }
 
+
+const EMOJI_CATEGORIAS = [
+  {id:"caritas", nombre:"Caritas", icono:"😀", lista:["😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😗", "😚", "😙", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫", "🤔", "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "🤥", "😌", "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "😎", "🤓", "🧐", "😕", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "😦", "😧", "😨", "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "☠️", "💩", "🤡", "👹", "👺", "👻", "👽", "🤖", "😺", "😸", "😹", "😻", "😼", "😽", "🙀", "😿", "😾"]},
+  {id:"gestos", nombre:"Gestos y personas", icono:"👋", lista:["👋", "🤚", "🖐️", "✋", "🖖", "👌", "🤏", "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "👐", "🤲", "🙏", "✍️", "💅", "🤳", "💪", "👂", "👃", "🧠", "👀", "👄", "💋", "👶", "🧒", "👦", "👧", "🧑", "👨", "🧔", "👩", "🧓", "👴", "👵", "🎓", "👮", "🕵️", "💂", "👷", "🤴", "👸", "👳", "👲", "🧕", "🤵", "👰", "🤰", "🤱", "👼", "🎅", "🦸", "🦹", "🧙", "🧚", "🧛", "🧟"]},
+  {id:"animales", nombre:"Animales y naturaleza", icono:"🐶", lista:["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐽", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒", "🐔", "🐧", "🐦", "🐤", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🕷️", "🐢", "🐍", "🦎", "🦖", "🦕", "🐙", "🦑", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🦓", "🦍", "🐘", "🦒", "🐪", "🐫", "🦌", "🐕", "🐩", "🐈", "🐓", "🦃", "🕊️", "🐇", "🐿️", "🦔", "🌵", "🎄", "🌲", "🌳", "🌴", "🌱", "🌿", "☘️", "🍀", "🍃", "🍂", "🍁", "🍄", "🌾", "💐", "🌷", "🌹", "🌺", "🌸", "🌼", "🌻", "🌞", "🌝", "🌛", "🌙", "🌎", "⭐", "🌟", "✨", "⚡", "☄️", "🔥", "🌈", "☀️", "⛅", "☁️", "⛈️", "❄️", "☃️", "💧", "💦", "☔"]},
+  {id:"comida", nombre:"Comida y bebida", icono:"🍔", lista:["🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶️", "🌽", "🥕", "🧄", "🧅", "🥔", "🍠", "🥐", "🥯", "🍞", "🥖", "🧀", "🥚", "🍳", "🥞", "🧇", "🥓", "🥩", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕", "🥪", "🌮", "🌯", "🥗", "🍝", "🍜", "🍲", "🍛", "🍣", "🍱", "🥟", "🍤", "🍙", "🍚", "🍘", "🥠", "🍢", "🍡", "🍧", "🍨", "🍦", "🥧", "🧁", "🍰", "🎂", "🍮", "🍭", "🍬", "🍫", "🍿", "🍩", "🍪", "🌰", "🥜", "🍯", "🥛", "🍼", "☕", "🍵", "🧃", "🥤", "🧋", "🍶", "🍺", "🍻", "🥂", "🍷", "🥃", "🍸", "🍹", "🍾"]},
+  {id:"actividades", nombre:"Actividades", icono:"⚽", lista:["⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🎱", "🪀", "🏓", "🏸", "🏒", "🏑", "🥍", "🏏", "⛳", "🪁", "🏹", "🎣", "🥊", "🥋", "🎽", "🛹", "🛷", "⛸️", "🎿", "⛷️", "🏂", "🏋️", "🤼", "🤸", "🤺", "🏌️", "🏇", "🧘", "🏄", "🏊", "🚣", "🧗", "🚴", "🏆", "🥇", "🥈", "🥉", "🏅", "🎖️", "🎗️", "🎫", "🎪", "🤹", "🎭", "🎨", "🎬", "🎤", "🎧", "🎼", "🎹", "🥁", "🎷", "🎺", "🎸", "🎻", "🎲", "🎯", "🎳", "🎮", "🎰", "🧩"]},
+  {id:"viajes", nombre:"Viajes y lugares", icono:"✈️", lista:["🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "🚐", "🚚", "🚛", "🚜", "🛵", "🏍️", "🚲", "🛴", "🚨", "🚡", "🚠", "🚃", "🚄", "🚅", "🚈", "🚂", "🚆", "🚇", "🚊", "✈️", "🛫", "🛬", "🚀", "🛸", "🚁", "⛵", "🚤", "🛳️", "⛴️", "🚢", "⚓", "🚧", "🚦", "🚥", "🗺️", "🗽", "🗼", "🏰", "🎡", "🎢", "🎠", "⛲", "🏖️", "🏝️", "🏜️", "🌋", "⛰️", "🏔️", "🏕️", "⛺", "🏠", "🏡", "🏢", "🏬", "🏥", "🏦", "🏨", "🏫", "⛪", "🕌", "🌇", "🌆", "🏙️", "🌃", "🌉"]},
+  {id:"objetos", nombre:"Objetos y símbolos", icono:"💡", lista:["💡", "🔦", "📔", "📖", "📚", "📓", "📰", "🔖", "🏷️", "💰", "💵", "💳", "🧾", "💎", "🔧", "🔨", "🛠️", "🔩", "⚙️", "⛓️", "🔫", "💣", "🔪", "🗡️", "🛡️", "🚬", "🔮", "📿", "🔭", "🔬", "💊", "💉", "🩹", "🩺", "🚪", "🛏️", "🛋️", "🪑", "🚽", "🚿", "🛁", "🧴", "🧹", "🧺", "🧻", "🧼", "🛒", "🚫", "❌", "⭕", "🛑", "⛔", "💯", "💢", "💤", "💬", "💭", "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "✝️", "☪️", "🕉️", "☸️", "✡️", "☯️", "⛎", "✅", "✔️", "☑️", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "🟤", "⚫", "⚪", "⬛", "⬜", "🔶", "🔷", "🔸", "🔹"]},
+  {id:"banderas", nombre:"Banderas", icono:"🚩", lista:["🏳️", "🏴", "🏁", "🚩", "🇸🇻", "🇺🇸", "🇲🇽", "🇬🇹", "🇭🇳", "🇳🇮", "🇨🇷", "🇵🇦", "🇨🇴", "🇪🇨", "🇵🇪", "🇧🇴", "🇨🇱", "🇦🇷", "🇧🇷", "🇪🇸", "🇮🇹", "🇫🇷", "🇩🇪", "🇬🇧", "🇨🇦"]},
+];
+/* --- Teclado de emoticones (como el de WhatsApp): categorías + recientes.
+   Se abre con abrirTecladoEmojis('id_del_campo') y al tocar un emoji lo
+   inserta justo donde estaba el cursor en ese campo. --- */
+function emojisRecientes(){
+  try{ return JSON.parse(window.localStorage.getItem('emojis_recientes')||'[]'); }catch(e){ return []; }
+}
+function guardarEmojiReciente(e){
+  try{
+    let r = emojisRecientes().filter(x=>x!==e);
+    r.unshift(e);
+    window.localStorage.setItem('emojis_recientes', JSON.stringify(r.slice(0,24)));
+  }catch(err){}
+}
+function abrirTecladoEmojis(targetId){
+  const campo = document.getElementById(targetId);
+  viewState.modalEmojis = {
+    targetId: targetId,
+    categoria: emojisRecientes().length ? 'recientes' : 'caritas',
+    cursor: campo && campo.selectionStart!=null ? campo.selectionStart : (campo?campo.value.length:0)
+  };
+  render();
+}
+function cerrarTecladoEmojis(){ viewState.modalEmojis = null; render(); }
+function cambiarCategoriaEmoji(cat){
+  if(!viewState.modalEmojis) return;
+  viewState.modalEmojis.categoria = cat;
+  render();
+}
+function insertarEmoji(emoji){
+  const info = viewState.modalEmojis;
+  if(!info) return;
+  const campo = document.getElementById(info.targetId);
+  let nuevaPos = info.cursor || 0;
+  if(campo){
+    const ini = campo.selectionStart!=null ? campo.selectionStart : campo.value.length;
+    const fin = campo.selectionEnd!=null ? campo.selectionEnd : campo.value.length;
+    campo.value = campo.value.slice(0, ini) + emoji + campo.value.slice(fin);
+    nuevaPos = ini + emoji.length;
+  }
+  guardarEmojiReciente(emoji);
+  info.cursor = nuevaPos;
+  render();
+  // El campo se vuelve a dibujar al hacer render(): se reenfoca y se deja
+  // el cursor donde quedó, para poder seguir eligiendo emoticones seguidos.
+  setTimeout(()=>{
+    const campo2 = document.getElementById(info.targetId);
+    if(campo2){ campo2.focus(); try{ campo2.setSelectionRange(nuevaPos, nuevaPos); }catch(e){} }
+  }, 0);
+}
+function renderTecladoEmojis(){
+  const info = viewState.modalEmojis;
+  if(!info) return '';
+  const cerrar = 'cerrarTecladoEmojis();';
+  const recientes = emojisRecientes();
+  const cat = info.categoria === 'recientes'
+    ? {nombre:'Recientes', lista:recientes}
+    : (EMOJI_CATEGORIAS.find(c=>c.id===info.categoria) || EMOJI_CATEGORIAS[0]);
+  return `
+  <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
+    <div class="modal" style="max-width:340px;">
+      <button class="modal-close" onclick="${cerrar}">×</button>
+      <h3 class="modal-title" style="margin-bottom:10px;">Emoticones</h3>
+      <div style="display:flex; flex-wrap:wrap; gap:2px; border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:8px;">
+        ${recientes.length?`<button class="icon-btn" style="font-size:17px;${info.categoria==='recientes'?'background:var(--panel-2);border-radius:8px;':''}" title="Recientes" onclick="cambiarCategoriaEmoji('recientes')">🕘</button>`:''}
+        ${EMOJI_CATEGORIAS.map(c=>`<button class="icon-btn" style="font-size:17px;${info.categoria===c.id?'background:var(--panel-2);border-radius:8px;':''}" title="${esc(c.nombre)}" onclick="cambiarCategoriaEmoji('${c.id}')">${c.icono}</button>`).join('')}
+      </div>
+      <p class="nota-chica" style="margin:0 0 6px;">${esc(cat.nombre)}</p>
+      <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:2px; max-height:260px; overflow-y:auto;">
+        ${cat.lista.length===0?`<p class="empty" style="grid-column:1/-1;">Todavía no usas emoticones recientes.</p>`:''}
+        ${cat.lista.map(e=>`<button class="icon-btn" style="font-size:21px; padding:5px 2px;" onclick="insertarEmoji('${e}')">${e}</button>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderPersonalizar(){
   if(!canManageAcademicData(currentUser) && !puedePersonalizarMensajes(currentUser)) return renderNoAccess();
   const modalUsuario = renderTeacherModal();
@@ -8045,22 +8135,21 @@ function renderPersonalizar(){
   const aj = DB.ajustes || {};
   const docentes = DB.docentes.filter(t=>!esPropietario(t)).slice().sort((a,b)=>
     (a.tipo===b.tipo?0:(a.tipo==='admin'?-1:1)) || a.nombre.localeCompare(b.nombre,'es'));
-  return `
-  <div class="page-head">
-    <p class="page-eyebrow">Ajustes de Dirección</p>
-    <h1 class="page-title">Personalizar el sistema</h1>
-    <p class="page-desc">Cambia el nombre y el logo del centro escolar, y define la contraseña de cada usuario.</p>
-  </div>
-
+  const vista = getPref('persVista','mensaje');
+  const tabMensaje = `
   <div class="card">
     <p class="card-title">Mensajes para los docentes</p>
     <div class="field">
       <label>Frase del saludo (aparece entre paréntesis junto al "Hola, ...")</label>
-      <input type="text" id="aj_frase" value="${esc(aj.fraseSaludo||'')}" placeholder="Ej.: recuerda que lo haces increíble">
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="aj_frase" value="${esc(aj.fraseSaludo||'')}" placeholder="Ej.: recuerda que lo haces increíble" style="flex:1;">
+        <button type="button" class="btn btn-sm" title="Insertar emoticono" onclick="abrirTecladoEmojis('aj_frase')">😊</button>
+      </div>
     </div>
     <div class="field">
       <label>Mensaje al ingresar (se muestra una vez al día, con botón Aceptar)</label>
       <textarea id="aj_mensaje" rows="4" placeholder="Déjalo vacío si no quieres que aparezca ningún mensaje.">${esc(aj.mensajeBienvenida||'')}</textarea>
+      <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('aj_mensaje')">😊 Emoticones</button>
     </div>
     <div class="note" style="margin-bottom:14px;">
       Si cambias el mensaje, vuelve a aparecer hoy mismo aunque los docentes ya lo hubieran visto.
@@ -8070,8 +8159,9 @@ function renderPersonalizar(){
       <button class="btn" onclick="verMensajeAhora()">Ver cómo se ve</button>
     </div>
   </div>
+  <div class="note">¿Quieres un saludo o mensaje distinto para una sola persona? Edítalo desde la pestaña "Otros ajustes" → Usuarios, contraseñas y accesos → botón "Editar" de esa persona.</div>`;
 
-  ${!soloDir ? '' : `
+  const tabOtros = !soloDir ? '' : `
   <div class="card">
     <p class="card-title">Identidad del centro escolar</p>
     <div class="grid grid-2">
@@ -8100,7 +8190,8 @@ function renderPersonalizar(){
     <div class="note" style="margin-bottom:14px;">
       Si un usuario no tiene contraseña, entra directamente al seleccionar su nombre. Al definirla, el sistema se la pedirá cada vez.
       En "Paneles de acceso" defines qué pantallas ve cada quien: <b>Editar</b> no amplía permisos — el docente sigue editando
-      solo sus asignaturas o su aula de orientación.
+      solo sus asignaturas o su aula de orientación. El botón "Editar" abre además la frase y el mensaje de bienvenida
+      personalizados para esa persona.
     </div>
     <div class="table-wrap">
     <table>
@@ -8138,6 +8229,7 @@ function renderPersonalizar(){
                 (t.soloLectura?'<span class="pill pill-muted" style="margin-top:4px;display:inline-block;">Solo consulta</span>':'') +
                 (t.alcanceTotal?'<span class="pill pill-blue" style="margin-top:4px;display:inline-block;">Todas las aulas</span>':'')}</td>
             <td>
+              <button class="btn btn-sm" onclick="openTeacherModal('${t.id}')">Editar</button>
               <button class="btn btn-sm" onclick="definirClave('${t.id}')">Guardar</button>
               ${tieneClave(t)?`<button class="btn btn-sm btn-danger" onclick="quitarClave('${t.id}')">Quitar</button>`:''}
               ${(soloDir && !isAdmin(t) && !esPropietario(t))?`<button class="btn btn-sm btn-danger" onclick="deleteTeacher('${t.id}')">Eliminar usuario</button>`:''}
@@ -8152,9 +8244,22 @@ function renderPersonalizar(){
   ${renderPonderacion()}
   ${renderCierreAnio()}
   ${renderCierreModal()}
-  `}
+  `;
+
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Ajustes de Dirección</p>
+    <h1 class="page-title">Personalizar el sistema</h1>
+    <p class="page-desc">Cambia el nombre y el logo del centro escolar, y define la contraseña de cada usuario.</p>
+  </div>
+  <div class="period-tabs">
+    <div class="period-tab ${vista==='mensaje'?'active':''}" onclick="setPref('persVista','mensaje')">Personalizar mensaje</div>
+    ${soloDir?`<div class="period-tab ${vista==='otros'?'active':''}" onclick="setPref('persVista','otros')">Otros ajustes</div>`:''}
+  </div>
+  ${vista==='otros' ? tabOtros : tabMensaje}
   ${modalUsuario}
-  ${!soloDir ? `<div class="note">La identidad del centro escolar, los grados, la ponderación, las contraseñas y el cierre de año los administra cualquier cuenta de acceso total.</div>` : ''}`;
+  ${!soloDir ? `<div class="note">La identidad del centro escolar, los grados, la ponderación, las contraseñas y el cierre de año los administra cualquier cuenta de acceso total.</div>` : ''}
+  ${renderTecladoEmojis()}`;
 }
 function renderManualConvivencia(){
   const f1 = opcionesF1(), f2 = opcionesF2();
