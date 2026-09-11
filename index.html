@@ -1622,17 +1622,35 @@ function iniciarSync(){
   syncTimer = setInterval(()=>{ if(currentUser && !document.hidden) refrescar(); }, 15000);
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && currentUser) refrescar(); });
 }
+/* El indicador de sincronización se mantiene oculto (solo un puntito) para
+   no llenar la barra lateral de texto todo el tiempo. Se muestra completo
+   solo cuando: (a) la persona lo toca, o (b) hay algo que realmente
+   necesita su atención — se está guardando, hay cambios sin guardar, o
+   falló el guardado. En esos tres casos aparece solo, sin necesidad de
+   tocarlo. */
+let syncIndicatorVisible = false;
+function toggleSyncIndicator(){
+  syncIndicatorVisible = !syncIndicatorVisible;
+  render();
+}
 function renderSyncIndicator(){
   const hora = lastSync ? lastSync.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'}) : '—';
-  let color = 'var(--primary)', texto;
-  if(syncStatus==='pendiente'){ color = 'var(--gold)'; texto = 'Guardando…'; }
-  else if(syncStatus==='manual'){ color = 'var(--gold)'; texto = 'Cambios sin guardar'; }
-  else if(syncStatus==='error'){ color = 'var(--red)'; texto = 'No se pudo guardar — toca para reintentar'; }
+  let color = 'var(--primary)', texto, necesitaAtencion = false;
+  if(syncStatus==='pendiente'){ color = 'var(--gold)'; texto = 'Guardando…'; necesitaAtencion = true; }
+  else if(syncStatus==='manual'){ color = 'var(--gold)'; texto = 'Cambios sin guardar'; necesitaAtencion = true; }
+  else if(syncStatus==='error'){ color = 'var(--red)'; texto = 'No se pudo guardar — toca para reintentar'; necesitaAtencion = true; }
   else if(motor==='nube'){ texto = 'Sincronizado ' + hora; }
   else if(motor==='compartido'){ texto = 'Sincronizado ' + hora; }
   else if(motor==='local'){ texto = 'Solo este equipo ' + hora; }
-  else { texto = 'Sin guardado — descarga respaldo'; color = 'var(--red)'; }
-  return `<div id="sync-indicator" class="sync-row" onclick="reintentarGuardado()" title="Reintentar / actualizar">
+  else { texto = 'Sin guardado — descarga respaldo'; color = 'var(--red)'; necesitaAtencion = true; }
+
+  if(!necesitaAtencion && !syncIndicatorVisible){
+    return `<div id="sync-indicator" class="sync-row" style="justify-content:center;" onclick="toggleSyncIndicator()" title="Ver estado de sincronización">
+      <span class="sync-dot" style="background:${color}"></span>
+    </div>`;
+  }
+  const accion = necesitaAtencion ? 'reintentarGuardado()' : 'toggleSyncIndicator()';
+  return `<div id="sync-indicator" class="sync-row" onclick="${accion}" title="${necesitaAtencion?'Reintentar / actualizar':'Tocar para ocultar'}">
     <span class="sync-dot" style="background:${color}"></span><span>${texto}</span>
   </div>`;
 }
