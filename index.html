@@ -3988,10 +3988,8 @@ function renderReportes(){
             const abierto = viewState.repAbierto === r.id;
             const tieneAcceso = veTodosReportes(currentUser) || r.docenteId === currentUser.id || esOrientador(currentUser, r.grado);
             // Si el reporte no es de los que esta persona puede gestionar,
-            // solo se le deja ver la primera línea de la descripción, sin
-            // ninguna forma de ampliarla (nada de "Ver más").
-            const primeraLinea = (r.descripcion||'').split('\n')[0];
-            const descTexto = tieneAcceso ? (r.descripcion||'') : primeraLinea;
+            // no se le muestra nada de la descripción.
+            const descTexto = tieneAcceso ? (r.descripcion||'') : '';
             return `<tr>
               <td class="mono"><b>${esc(String(r.numero||'').padStart(3,'0'))}</b></td>
               <td class="mono">${esc(r.fecha||'')}${r.ts?`<div style="font-size:10.5px;color:#888;">${esc(horaDe(r.ts))}</div>`:''}</td>
