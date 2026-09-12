@@ -3988,15 +3988,21 @@ function renderReportes(){
             const abierto = viewState.repAbierto === r.id;
             const tieneAcceso = veTodosReportes(currentUser) || r.docenteId === currentUser.id || esOrientador(currentUser, r.grado);
             // Si el reporte no es de los que esta persona puede gestionar,
-            // no se le muestra nada de la descripción.
-            const descTexto = tieneAcceso ? (r.descripcion||'') : '';
+            // no se le muestra nada de la descripción. Si sí puede, se
+            // muestra solo la primera línea, con un "Ver más" para
+            // desplegar el resto.
+            const descCompleta = r.descripcion||'';
+            const primeraLinea = descCompleta.split('\n')[0];
+            const hayMas = tieneAcceso && descCompleta.length > primeraLinea.length;
+            const descExpandida = !!(viewState.descExpandida && viewState.descExpandida[r.id]);
+            const descTexto = !tieneAcceso ? '' : (descExpandida ? descCompleta : primeraLinea);
             return `<tr>
               <td class="mono"><b>${esc(String(r.numero||'').padStart(3,'0'))}</b></td>
               <td class="mono">${esc(r.fecha||'')}${r.ts?`<div style="font-size:10.5px;color:#888;">${esc(horaDe(r.ts))}</div>`:''}</td>
               <td>${esc(r.estudiante)}</td>
               <td>${esc(r.grado)}</td>
               <td><span class="pill ${n.pill}">${esc(n.nombre)}</span> <span class="pill pill-muted">${esc(n.formato)}</span></td>
-              <td style="font-size:12.5px;">${esc(descTexto)}</td>
+              <td style="font-size:12.5px; white-space:pre-wrap;">${esc(descTexto)}${hayMas?` <a href="#" class="ver-mas" onclick="toggleDescripcion('${r.id}'); return false;">${descExpandida?'Ver menos':'Ver más'}</a>`:''}</td>
               <td style="font-size:12px;">${esc(r.docente)}</td>
               <td><span class="pill ${vistas.length?'pill-blue':'pill-muted'}" title="${esc(vistas.map(v=>v.nombre).join(', ')||'Nadie lo ha abierto')}">${vistas.length}</span></td>
               <td><span class="pill ${segs.length?'pill-primary':'pill-muted'}">${segs.length}</span></td>
