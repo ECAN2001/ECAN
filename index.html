@@ -3894,7 +3894,8 @@ function rotuloPeriodo(tipo, valor){
 }
 function renderReportes(){
   if(!puedeVerPanel(currentUser, 'reportes')) return renderNoAccess();
-  const vista = getPref('repVista','nuevo');
+  let vista = getPref('repVista','nuevo');
+  if(vista==='resumen' && !veTodosReportes(currentUser)) vista = 'historial'; // por si quedó guardado de antes
   const nivel = getPref('repNivel','leve');
   const gradoF = getPref('repGrado','');
   const estF = getPref('repEst','');
@@ -3909,13 +3910,13 @@ function renderReportes(){
     ${NIVELES_FALTA.map(n=>`<div class="period-tab ${vista==='nuevo'&&nivel===n.id?'active':''}"
       onclick="setPref('repVista','nuevo'); setPref('repNivel','${n.id}')">${n.noEsFalta?esc(n.nombre):'Falta '+esc(n.nombre.toLowerCase())}</div>`).join('')}
     <div class="period-tab ${vista==='historial'?'active':''}" onclick="setPref('repVista','historial')">Historial</div>
-    <div class="period-tab ${vista==='resumen'?'active':''}" onclick="setPref('repVista','resumen')">Resumen</div>
+    ${veTodosReportes(currentUser)?`<div class="period-tab ${vista==='resumen'?'active':''}" onclick="setPref('repVista','resumen')">Resumen</div>`:''}
     ${puedeEditar?`<div class="period-tab ${vista==='eliminados'?'active':''}" onclick="setPref('repVista','eliminados')">Eliminados</div>`:''}
   </div>`;
 
   let cuerpo;
   if(vista === 'historial'){
-    let lista = reportesVisibles(currentUser).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
+    let lista = (DB.reportes||[]).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
     if(gradoF) lista = lista.filter(r=>r.grado===gradoF);
     if(estF) lista = lista.filter(r=>r.estId===estF);
     const busca = (getPref('repNum','')||'').replace(/\D/g,'');
@@ -3925,12 +3926,12 @@ function renderReportes(){
     const periodoTipo = getPref('repPeriodo','');
     const periodoValor = getPref('repPeriodoValor','');
     lista = filtrarPorPeriodo(lista, periodoTipo, periodoValor);
-    // Opciones disponibles para el selector de semana/mes, según todo lo
-    // que este usuario puede ver (no solo lo ya filtrado por aula/tipo).
+    // Opciones disponibles para el selector de semana/mes: el historial ya
+    // es visible para todos, así que se calculan sobre TODOS los reportes.
     const opcionesPeriodo = periodoTipo==='mes'
-      ? Array.from(new Set(reportesVisibles(currentUser).map(r=>mesDe(r.fecha)).filter(Boolean))).sort((a,b)=>b.localeCompare(a))
+      ? Array.from(new Set((DB.reportes||[]).map(r=>mesDe(r.fecha)).filter(Boolean))).sort((a,b)=>b.localeCompare(a))
       : periodoTipo==='semana'
-      ? Array.from(new Set(reportesVisibles(currentUser).map(r=>lunesDe(r.fecha)).filter(Boolean))).sort((a,b)=>b.localeCompare(a))
+      ? Array.from(new Set((DB.reportes||[]).map(r=>lunesDe(r.fecha)).filter(Boolean))).sort((a,b)=>b.localeCompare(a))
       : [];
     cuerpo = `
     <div class="filters">
@@ -3971,7 +3972,7 @@ function renderReportes(){
       <button class="btn btn-primary" onclick="descargarReportes()">Descargar en PDF</button>
       <button class="btn" onclick="descargarReportesIndividual()" title="Un archivo PDF por cada reporte, todos juntos en un .zip">Descargar individual (.zip)</button>
     </div>
-    ${!veTodosReportes(currentUser)?`<div class="note">Ves los reportes que tú levantaste y los de tu grado de orientación. Dirección puede ampliarlo desde Personalizar → Paneles de acceso. "Descargar en PDF" arma un solo archivo con todos los reportes filtrados; "Descargar individual" entrega un .zip con un PDF por cada reporte, ya nombrado con su correlativo, el estudiante y el grado.</div>`:'<div class="note">"Descargar en PDF" arma un solo archivo con todos los reportes filtrados; "Descargar individual" entrega un .zip con un PDF por cada reporte, ya nombrado con su correlativo, el estudiante y el grado.</div>'}
+    <div class="note">El historial lo puede ver cualquier persona con acceso a Reportes. Abrir el detalle, ver el PDF o eliminar un reporte sigue reservado a quien lo levantó, a su orientador(a), o a una cuenta de acceso total.</div>
     <div class="card">
       <p class="card-title">Historial <span class="pill pill-muted">${lista.length} reporte(s)</span></p>
       <div class="table-wrap">
@@ -3985,27 +3986,32 @@ function renderReportes(){
             const n = nivelFalta(r.nivel);
             const vistas = r.vistas || [], segs = r.seguimientos || [];
             const abierto = viewState.repAbierto === r.id;
-            const descLarga = (r.descripcion||'').length > 110;
-            const descExpandida = !!(viewState.descExpandida && viewState.descExpandida[r.id]);
-            const descTexto = (descLarga && !descExpandida) ? (r.descripcion||'').slice(0,110).trim() + '…' : (r.descripcion||'');
+            const tieneAcceso = veTodosReportes(currentUser) || r.docenteId === currentUser.id || esOrientador(currentUser, r.grado);
+            // Si el reporte no es de los que esta persona puede gestionar,
+            // solo se le deja ver la primera línea de la descripción, sin
+            // ninguna forma de ampliarla (nada de "Ver más").
+            const primeraLinea = (r.descripcion||'').split('\n')[0];
+            const descTexto = tieneAcceso ? (r.descripcion||'') : primeraLinea;
             return `<tr>
               <td class="mono"><b>${esc(String(r.numero||'').padStart(3,'0'))}</b></td>
               <td class="mono">${esc(r.fecha||'')}${r.ts?`<div style="font-size:10.5px;color:#888;">${esc(horaDe(r.ts))}</div>`:''}</td>
               <td>${esc(r.estudiante)}</td>
               <td>${esc(r.grado)}</td>
               <td><span class="pill ${n.pill}">${esc(n.nombre)}</span> <span class="pill pill-muted">${esc(n.formato)}</span></td>
-              <td style="font-size:12.5px;">${esc(descTexto)}${descLarga?` <a href="#" class="ver-mas" onclick="toggleDescripcion('${r.id}'); return false;">${descExpandida?'Ver menos':'Ver más'}</a>`:''}</td>
+              <td style="font-size:12.5px;">${esc(descTexto)}</td>
               <td style="font-size:12px;">${esc(r.docente)}</td>
               <td><span class="pill ${vistas.length?'pill-blue':'pill-muted'}" title="${esc(vistas.map(v=>v.nombre).join(', ')||'Nadie lo ha abierto')}">${vistas.length}</span></td>
               <td><span class="pill ${segs.length?'pill-primary':'pill-muted'}">${segs.length}</span></td>
               <td class="hj-acciones">
+                ${tieneAcceso ? `
                 <button class="icon-btn" onclick="alternarDetalleReporte('${r.id}')">${abierto?'Cerrar':'Detalle'}</button>
                 <button class="icon-btn" onclick="verReporte('${r.id}')">Ver</button>
                 <button class="icon-btn" onclick="descargarReporte('${r.id}')">PDF</button>
                 ${puedeEditar?`<button class="icon-btn" onclick="eliminarReporte('${r.id}')">Eliminar</button>`:''}
+                ` : ''}
               </td>
             </tr>
-            ${abierto?`<tr><td colspan="10" style="background:var(--panel-2);">
+            ${(abierto && tieneAcceso)?`<tr><td colspan="10" style="background:var(--panel-2);">
               <div class="grid grid-2" style="gap:18px;">
                 <div>
                   <p class="card-title" style="margin-bottom:8px;">Seguimiento</p>
@@ -4040,7 +4046,7 @@ function renderReportes(){
       </table>
       </div>
     </div>`;
-  }else if(vista === 'resumen'){
+  }else if(vista === 'resumen' && veTodosReportes(currentUser)){
     const aj = DB.ajustes || {};
     const periodoTipo = getPref('resPeriodo','semana');
     let periodoValor = getPref('resPeriodoValor','');
@@ -5524,6 +5530,16 @@ function conversacionesDe(userId){
 function contarMensajesNoLeidos(userId){
   return (DB.mensajes||[]).filter(m=>m.paraId===userId && !m.leido).length;
 }
+/* Fecha completa para el hilo de Mensajes: día de la semana, fecha, mes y
+   año escritos, más la hora — como pidieron, en vez del DD/MM/AAAA corto. */
+function fechaLegibleCompleta(iso){
+  try{
+    const d = new Date(iso);
+    const fecha = d.toLocaleDateString('es', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+    const hora = d.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'});
+    return fecha.charAt(0).toUpperCase() + fecha.slice(1) + ' · ' + hora;
+  }catch(e){ return iso; }
+}
 function hiloMensajesHtml(seleccionada, yoId){
   if(!seleccionada) return '<p class="empty">Elige una conversación de la lista.</p>';
   return `
@@ -5534,7 +5550,7 @@ function hiloMensajesHtml(seleccionada, yoId){
           <div style="font-size:12.5px; white-space:pre-wrap;">${esc(m.texto)}</div>
           ${m.imagen?`<img src="${m.imagen}" alt="Imagen adjunta" style="max-width:100%; border-radius:8px; margin-top:6px; cursor:pointer;" onclick="verImagenGrande('${m.imagen.replace(/'/g,"\\'")}')">`:''}
         </div>
-        <p class="nota-chica" style="text-align:${m.deId===yoId?'right':'left'}; margin:2px 4px;">${esc(fechaLegible(m.ts))}${m.deId===yoId?(' · '+(m.leido?'✓✓ Visto':'✓ Enviado')):''}</p>
+        <p class="nota-chica" style="text-align:${m.deId===yoId?'right':'left'}; margin:2px 4px;">${esc(fechaLegibleCompleta(m.ts))}${m.deId===yoId?(' · '+(m.leido?'✓✓ Visto':'✓ Enviado')):''}</p>
       </div>`).join('')}
   </div>`;
 }
@@ -5561,6 +5577,7 @@ function renderMensajes(){
   const hilo = seleccionada ? hiloMensajesHtml(seleccionada, yo.id) + `
     <div class="field" style="margin-top:10px;">
       <textarea id="msg_reply_texto" rows="2" placeholder="Escribe una respuesta… (puedes pegar una imagen con Ctrl+V)" onpaste="manejarPegadoImagen(event, 'msg_reply_imagen')"></textarea>
+      <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('msg_reply_texto')">😊 Emoticones</button>
       <input type="file" id="msg_reply_imagen" accept="image/*" style="margin-top:6px;">
       <div class="btn-row"><button class="btn btn-primary" onclick="responderMensaje()">Enviar</button></div>
     </div>` : '<p class="empty">Elige una conversación, o inicia una nueva.</p>';
@@ -5578,7 +5595,8 @@ function renderMensajes(){
   <div class="grid grid-2" style="gap:16px; align-items:start;">
     <div class="card">${listaConv}</div>
     <div class="card">${hilo}</div>
-  </div>`}`;
+  </div>`}
+  ${renderTecladoEmojis()}`;
 }
 function renderComponerMensaje(){
   const tipo = viewState.msgDestinoTipo || 'docente';
@@ -5624,7 +5642,9 @@ function renderComponerMensaje(){
     </div>
     `}
     <div class="field"><label>Mensaje</label>
-      <textarea id="msg_texto" rows="3" placeholder="Escribe tu mensaje… (puedes pegar una imagen con Ctrl+V)" onpaste="manejarPegadoImagen(event, 'msg_imagen')"></textarea></div>
+      <textarea id="msg_texto" rows="3" placeholder="Escribe tu mensaje… (puedes pegar una imagen con Ctrl+V)" onpaste="manejarPegadoImagen(event, 'msg_imagen')"></textarea>
+      <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('msg_texto')">😊 Emoticones</button>
+    </div>
     <div class="field"><label>Imagen (opcional)</label>
       <input type="file" id="msg_imagen" accept="image/*"></div>
     <div class="btn-row">
@@ -5754,6 +5774,7 @@ function renderMensajesEstudiante(est){
   const hilo = seleccionada ? hiloMensajesHtml(seleccionada, est.id) + `
     <div class="field" style="margin-top:10px;">
       <textarea id="msg_reply_texto" rows="2" placeholder="Escribe una respuesta… (puedes pegar una imagen con Ctrl+V)" onpaste="manejarPegadoImagen(event, 'msg_reply_imagen')"></textarea>
+      <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('msg_reply_texto')">😊 Emoticones</button>
       <input type="file" id="msg_reply_imagen" accept="image/*" style="margin-top:6px;">
       <div class="btn-row"><button class="btn btn-primary" onclick="responderMensajeEstudiante()">Enviar</button></div>
     </div>` : '<p class="empty">Elige una conversación de la lista.</p>';
@@ -5767,7 +5788,8 @@ function renderMensajesEstudiante(est){
   <div class="grid grid-2" style="gap:16px; align-items:start;">
     <div class="card">${listaConv}</div>
     <div class="card">${hilo}</div>
-  </div>`;
+  </div>
+  ${renderTecladoEmojis()}`;
 }
 async function abrirConversacionMensajesEstudiante(otroId){
   const yaAbierta = viewState.mensajeConv === otroId;
