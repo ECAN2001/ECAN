@@ -387,7 +387,7 @@
 
 <script>
 /* ============================= ESTADO ============================= */
-let DB = { estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{}, soporte:[], mensajes:[] };
+let DB = { estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{}, soporte:[], mensajes:[], reuniones:[] };
 let baseCompletaCargada = false;         // true una vez que se descargó la base completa (solo docentes/admin)
 let sesionEstudianteCred = null;         // {usuario, claveHash} en memoria, para reautenticar sin pedir de nuevo
 /* Vista previa de "cómo lo vería un estudiante": no es una sesión real, no
@@ -889,7 +889,7 @@ function docActual(){
     curriculo: DB.curriculo, tareas: DB.tareas, estados: DB.estados,
     observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros,
     boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes, averias: DB.averias,
-    soporte: DB.soporte, mensajes: DB.mensajes, reportesEliminados: DB.reportesEliminados
+    soporte: DB.soporte, mensajes: DB.mensajes, reportesEliminados: DB.reportesEliminados, reuniones: DB.reuniones
   };
 }
 function adoptarDoc(doc){
@@ -912,6 +912,7 @@ function adoptarDoc(doc){
   DB.soporte = doc.soporte || [];
   DB.mensajes = doc.mensajes || [];
   DB.reportesEliminados = doc.reportesEliminados || [];
+  DB.reuniones = doc.reuniones || [];
   DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
   if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
@@ -2212,6 +2213,7 @@ function veTodosReportes(u){
   u = u || currentUser;
   if(!u) return false;
   if(isAdmin(u)) return true;
+  if(u.coordinadorDisciplina) return true;   // acceso total a Reportes disciplinarios, con todas sus pestañas
   return nivelPanel(u, 'reportes') === 'editartodo';
 }
 /* Reportes que este usuario puede ver: los suyos, los de su grado de
@@ -3916,6 +3918,7 @@ function renderReportes(){
       onclick="setPref('repVista','nuevo'); setPref('repNivel','${n.id}')">${n.noEsFalta?esc(n.nombre):'Falta '+esc(n.nombre.toLowerCase())}</div>`).join('')}
     <div class="period-tab ${vista==='historial'?'active':''}" onclick="setPref('repVista','historial')">Historial</div>
     ${veTodosReportes(currentUser)?`<div class="period-tab ${vista==='resumen'?'active':''}" onclick="setPref('repVista','resumen')">Resumen</div>`:''}
+    <div class="period-tab ${vista==='reuniones'?'active':''}" onclick="setPref('repVista','reuniones')">Reuniones</div>
     ${puedeEditar?`<div class="period-tab ${vista==='eliminados'?'active':''}" onclick="setPref('repVista','eliminados')">Eliminados</div>`:''}
   </div>`;
 
@@ -4133,6 +4136,35 @@ function renderReportes(){
       </table>
       </div>
     </div>`;
+  }else if(vista === 'reuniones'){
+    const lista = reunionesVisibles(currentUser).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
+    const detalle = viewState.reunionAbierta ? (DB.reuniones||[]).find(r=>r.id===viewState.reunionAbierta) : null;
+    if(detalle && !puedeVerReunion(currentUser, detalle)) viewState.reunionAbierta = null;
+    cuerpo = `
+    <div class="filters">
+      ${puedeEditar?`<button class="btn btn-primary" onclick="abrirNuevaReunion()">+ Nueva reunión</button>`:''}
+    </div>
+    <div class="note">Aquí queda la evidencia de reuniones con padres de familia: acta, adjuntos y quién estuvo al tanto. Solo la ven quien la creó, las personas etiquetadas, y las cuentas con acceso total a Reportes.</div>
+    ${viewState.reunionAbierta && detalle ? renderReunionDetalle(detalle) : `
+    <div class="card">
+      <p class="card-title">Reuniones <span class="pill pill-muted">${lista.length}</span></p>
+      ${lista.length===0?'<p class="empty">Todavía no hay ninguna reunión registrada.</p>':''}
+      <div class="assign-list">
+        ${lista.map(r=>{
+          const estCount = (r.estudiantesIds||[]).length;
+          const vistoPorMi = (r.vistas||[]).some(v=>v.userId===currentUser.id);
+          return `<div class="assign-list-item" style="cursor:pointer; align-items:flex-start;" onclick="abrirReunion('${r.id}')">
+            <div style="flex:1;">
+              <p style="margin:0; font-weight:600;">${esc(r.asunto||'(sin asunto)')} ${vistoPorMi?'':'<span class="pill pill-gold" style="margin-left:4px;">Nuevo</span>'}</p>
+              <p class="nota-chica" style="margin:2px 0 0;">${esc(rotuloDia(r.fecha))} · ${esc(r.creadaPor)} · ${estCount} estudiante(s)${(r.gradosCompletos||[]).length?' · Aula(s): '+esc(r.gradosCompletos.join(', ')):''}</p>
+            </div>
+            <span class="pill ${(r.respuestas||[]).length?'pill-primary':'pill-muted'}" title="Respuestas">${(r.respuestas||[]).length} resp.</span>
+            <span class="pill ${(r.archivos||[]).length?'pill-blue':'pill-muted'}" title="Adjuntos">${(r.archivos||[]).length} adj.</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`}
+    ${renderReunionModal()}`;
   }else if(vista === 'eliminados' && puedeEditar){
     // Cada quien ve solo los reportes que ELLA MISMA eliminó; las cuentas
     // de acceso total (Dirección/administración) ven todos los eliminados,
@@ -4279,7 +4311,8 @@ function renderReportes(){
     <p class="page-desc">Registro de faltas por estudiante. Los docentes pueden reportar a cualquier estudiante del centro escolar.</p>
   </div>
   ${pestanas}
-  ${cuerpo}`;
+  ${cuerpo}
+  ${renderTecladoEmojis()}`;
 }
 /* Número correlativo del centro escolar: 001, 002… sin importar el docente.
    Una vez asignado, un número queda reservado para siempre, incluso si el
@@ -4512,6 +4545,270 @@ function actualizarBotonGuardarReporte(){
   const listo = !!desc.trim();
   btn.disabled = !listo;
   btn.title = listo ? '' : 'Escribe la descripción para poder guardar';
+}
+/* ============================= REUNIONES (evidencia de reuniones con padres) ============================= */
+function reunionesVisibles(u){
+  u = u || currentUser;
+  if(!u) return [];
+  if(veTodosReportes(u)) return (DB.reuniones||[]).slice();
+  return (DB.reuniones||[]).filter(r => r.creadaPorId===u.id || (r.etiquetados||[]).some(e=>e.id===u.id));
+}
+function puedeVerReunion(u, r){
+  u = u || currentUser;
+  if(!u || !r) return false;
+  return veTodosReportes(u) || r.creadaPorId===u.id || (r.etiquetados||[]).some(e=>e.id===u.id);
+}
+function formatoTamano(bytes){
+  if(!bytes) return '';
+  if(bytes < 1024*1024) return Math.round(bytes/1024) + ' KB';
+  return (bytes/1024/1024).toFixed(1) + ' MB';
+}
+function iconoAdjunto(tipo, nombre){
+  const ext = (nombre||'').split('.').pop().toLowerCase();
+  if(/^image\//.test(tipo||'')) return '🖼️';
+  if(ext==='pdf') return '📕';
+  if(['doc','docx'].indexOf(ext)>=0) return '📄';
+  if(['xls','xlsx'].indexOf(ext)>=0) return '📊';
+  if(['ppt','pptx'].indexOf(ext)>=0) return '📽️';
+  return '📎';
+}
+/* Lee todos los archivos elegidos en un <input type="file" multiple>: las
+   imágenes se comprimen igual que en el resto del sistema; los documentos
+   (Word, PDF, Excel, PowerPoint, etc.) se guardan tal cual, en base64. Si
+   algún archivo pesa demasiado, se avisa y se omite (para no inflar la
+   base de datos compartida). */
+async function leerAdjuntosDeInput(inputId, limiteMB){
+  limiteMB = limiteMB || 8;
+  const el = document.getElementById(inputId);
+  const files = el && el.files ? Array.prototype.slice.call(el.files) : [];
+  const adjuntos = [];
+  const omitidos = [];
+  for(const file of files){
+    if(file.size > limiteMB * 1024 * 1024){ omitidos.push(file.name); continue; }
+    try{
+      let datos;
+      if(/^image\//.test(file.type)){
+        datos = await comprimirImagen(file, 1400);
+      }else{
+        datos = await new Promise((resolve, reject)=>{
+          const lector = new FileReader();
+          lector.onload = ()=>resolve(lector.result);
+          lector.onerror = ()=>reject(new Error('No se pudo leer ' + file.name));
+          lector.readAsDataURL(file);
+        });
+      }
+      adjuntos.push({nombre: file.name, tipo: file.type || 'application/octet-stream', datos: datos, tamano: file.size});
+    }catch(e){
+      console.error('adjunto', file.name, e);
+      omitidos.push(file.name);
+    }
+  }
+  if(omitidos.length) showToast('No se pudieron adjuntar: ' + omitidos.join(', ') + ' (muy pesados o con error).');
+  return adjuntos;
+}
+function renderAdjuntosLista(archivos){
+  if(!archivos || !archivos.length) return '<p class="nota-chica">Sin adjuntos.</p>';
+  return `<div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;">
+    ${archivos.map(a=>{
+      if(/^image\//.test(a.tipo||'')){
+        return `<a href="${a.datos}" target="_blank" title="${esc(a.nombre)}"><img src="${a.datos}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line);"></a>`;
+      }
+      return `<a href="${a.datos}" download="${esc(a.nombre)}" class="btn btn-sm" style="text-decoration:none;">${iconoAdjunto(a.tipo,a.nombre)} ${esc(a.nombre)} <span class="nota-chica">(${formatoTamano(a.tamano)})</span></a>`;
+    }).join('')}
+  </div>`;
+}
+function abrirNuevaReunion(){
+  viewState.modalReunion = {fecha: new Date().toISOString().slice(0,10), asunto:'', gradosCompletos:[], estudiantesIds:[], etiquetadosIds:[]};
+  render();
+}
+function cerrarModalReunion(){ viewState.modalReunion = null; render(); }
+async function guardarReunion(){
+  const info = viewState.modalReunion;
+  if(!info) return;
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const fecha = val('reu_fecha');
+  const asunto = val('reu_asunto');
+  const detalleTexto = val('reu_detalle');
+  if(!fecha || !asunto){ showToast('Completa la fecha y el asunto.'); return; }
+  const gradosCompletos = [];
+  DB.config.grados.forEach((g,i)=>{
+    const chk = document.getElementById('reu_grado_'+i);
+    if(chk && chk.checked) gradosCompletos.push(g);
+  });
+  const selEst = document.getElementById('reu_estudiantes');
+  const estudiantesIndividuales = selEst ? Array.prototype.slice.call(selEst.selectedOptions).map(o=>o.value) : [];
+  const idsDeAulas = DB.estudiantes.filter(e=>gradosCompletos.indexOf(e.grado)>=0).map(e=>e.id);
+  const estudiantesIds = Array.from(new Set(idsDeAulas.concat(estudiantesIndividuales)));
+  if(estudiantesIds.length===0){ showToast('Elige al menos un estudiante o un aula completa.'); return; }
+  const selDoc = document.getElementById('reu_etiquetados');
+  const etiquetadosIds = selDoc ? Array.prototype.slice.call(selDoc.selectedOptions).map(o=>o.value) : [];
+  const etiquetados = etiquetadosIds.map(id=>{
+    const t = DB.docentes.find(x=>x.id===id);
+    return t ? {id: t.id, nombre: t.nombre} : null;
+  }).filter(Boolean);
+  const btn = document.getElementById('reu_btn_guardar');
+  if(btn){ btn.disabled = true; btn.textContent = 'Guardando…'; }
+  let archivos = [];
+  try{ archivos = await leerAdjuntosDeInput('reu_archivos'); }
+  catch(e){ console.error(e); }
+  const reunion = {
+    id: uid('reu'), ts: new Date().toISOString(), fecha: fecha, asunto: asunto, detalle: detalleTexto,
+    gradosCompletos: gradosCompletos, estudiantesIds: estudiantesIds, etiquetados: etiquetados,
+    archivos: archivos, creadaPor: currentUser.nombre, creadaPorId: currentUser.id,
+    vistas: [{userId: currentUser.id, nombre: currentUser.nombre, ts: new Date().toISOString()}],
+    respuestas: []
+  };
+  commit(doc=>{
+    doc.reuniones = doc.reuniones || [];
+    doc.reuniones.push(reunion);
+  });
+  registrar('Reuniones', 'Registró la reunión "' + asunto + '"');
+  viewState.modalReunion = null;
+  showToast('Reunión guardada.');
+  render();
+}
+function abrirReunion(id){
+  const r = (DB.reuniones||[]).find(x=>x.id===id);
+  if(!r || !puedeVerReunion(currentUser, r)){ showToast('No tienes acceso a esa reunión.'); return; }
+  viewState.reunionAbierta = id;
+  if(!(r.vistas||[]).some(v=>v.userId===currentUser.id)){
+    commit(doc=>{
+      const rr = (doc.reuniones||[]).find(x=>x.id===id);
+      if(rr){
+        rr.vistas = rr.vistas || [];
+        if(!rr.vistas.some(v=>v.userId===currentUser.id)) rr.vistas.push({userId: currentUser.id, nombre: currentUser.nombre, ts: new Date().toISOString()});
+      }
+    });
+  }
+  render();
+}
+function cerrarReunion(){ viewState.reunionAbierta = null; render(); }
+async function agregarRespuestaReunion(id){
+  const campo = document.getElementById('reu_resp_texto');
+  const texto = campo ? campo.value.trim() : '';
+  if(!texto){ showToast('Escribe una respuesta.'); return; }
+  const btn = document.getElementById('reu_btn_responder');
+  if(btn){ btn.disabled = true; btn.textContent = 'Enviando…'; }
+  let archivos = [];
+  try{ archivos = await leerAdjuntosDeInput('reu_resp_archivos'); }
+  catch(e){ console.error(e); }
+  commit(doc=>{
+    const r = (doc.reuniones||[]).find(x=>x.id===id);
+    if(!r) return;
+    r.respuestas = r.respuestas || [];
+    r.respuestas.push({id: uid('rr'), ts: new Date().toISOString(), userId: currentUser.id, nombre: currentUser.nombre, texto: texto, archivos: archivos});
+  });
+  registrar('Reuniones', 'Respondió en una reunión');
+  showToast('Respuesta agregada. Todos los que estén etiquetados la pueden ver.');
+  render();
+}
+function eliminarReunion(id){
+  const r = (DB.reuniones||[]).find(x=>x.id===id);
+  if(!r) return;
+  const puede = veTodosReportes(currentUser) || r.creadaPorId === currentUser.id;
+  if(!puede){ showToast('Solo quien creó la reunión, o una cuenta de acceso total, puede eliminarla.'); return; }
+  if(!confirm('¿Eliminar esta reunión y toda su evidencia? Esta acción no se puede deshacer.')) return;
+  commit(doc=>{
+    doc.reuniones = (doc.reuniones||[]).filter(x=>x.id!==id);
+  });
+  registrar('Reuniones', 'Eliminó la reunión "' + (r.asunto||'') + '"');
+  viewState.reunionAbierta = null;
+  showToast('Reunión eliminada.');
+  render();
+}
+function renderReunionModal(){
+  const info = viewState.modalReunion;
+  if(!info) return '';
+  const cerrar = 'cerrarModalReunion();';
+  const docentesDisponibles = DB.docentes.filter(t=>t.id!==currentUser.id && !esPropietario(t)).slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const estudiantesOrdenados = DB.estudiantes.slice().sort((a,b)=>a.grado.localeCompare(b.grado,'es') || apellidosDe(a).localeCompare(apellidosDe(b),'es'));
+  return `
+  <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
+    <div class="modal" style="max-width:560px;">
+      <button class="modal-close" onclick="${cerrar}">×</button>
+      <h3 class="modal-title">Nueva reunión</h3>
+      <div class="grid grid-2">
+        <div class="field"><label>Fecha</label><input type="date" id="reu_fecha" value="${esc(info.fecha||'')}"></div>
+        <div class="field"><label>Asunto</label><input type="text" id="reu_asunto" placeholder="Ej.: Seguimiento de conducta" value="${esc(info.asunto||'')}"></div>
+      </div>
+      <div class="field"><label>Detalle / acta de la reunión</label>
+        <textarea id="reu_detalle" rows="4" placeholder="Qué se conversó, acuerdos, compromisos…"></textarea>
+        <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('reu_detalle')">😊 Emoticones</button>
+      </div>
+      <div class="field">
+        <label>Padres de aula(s) completa(s)</label>
+        <div class="tag-row">
+          ${DB.config.grados.map((g,i)=>`<label class="check-chip"><input type="checkbox" id="reu_grado_${i}" value="${esc(g)}"> ${esc(g)}</label>`).join('')}
+        </div>
+      </div>
+      <div class="field">
+        <label>Padres de estudiantes específicos (Ctrl/Cmd+clic para elegir varios)</label>
+        <select id="reu_estudiantes" multiple size="6">
+          ${estudiantesOrdenados.map(e=>`<option value="${e.id}">${esc(e.grado)} — ${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Etiquetar docentes (verán esta reunión y sus respuestas, como en copia de un correo)</label>
+        <select id="reu_etiquetados" multiple size="6">
+          ${docentesDisponibles.map(t=>`<option value="${t.id}">${esc(t.nombre)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Adjuntos (varias imágenes, Word, PDF, Excel, PowerPoint u otro documento)</label>
+        <input type="file" id="reu_archivos" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt">
+      </div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-primary" id="reu_btn_guardar" onclick="guardarReunion()">Guardar reunión</button>
+        <button class="btn" onclick="${cerrar}">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+}
+function renderReunionDetalle(r){
+  const estudiantes = (r.estudiantesIds||[]).map(id=>DB.estudiantes.find(e=>e.id===id)).filter(Boolean);
+  const puedeGestionar = veTodosReportes(currentUser) || r.creadaPorId === currentUser.id;
+  const puedeResponder = puedeEditarPanel(currentUser, 'reportes') && !currentUser.soloLectura;
+  return `
+  <div class="card">
+    <button class="icon-btn" onclick="cerrarReunion()">← Volver a la lista</button>
+    <p class="card-title" style="margin-top:10px;">${esc(r.asunto||'')}</p>
+    <p class="nota-chica">${esc(rotuloDia(r.fecha))} · Registró: ${esc(r.creadaPor)}</p>
+    <div class="grid grid-2" style="margin-top:10px;">
+      <div>
+        <p class="card-title" style="font-size:13px;">Padres de</p>
+        ${(r.gradosCompletos||[]).length?`<p class="nota-chica">Aula(s) completa(s): ${esc(r.gradosCompletos.join(', '))}</p>`:''}
+        <p style="font-size:12.5px;">${estudiantes.map(e=>esc(apellidosDe(e))+', '+esc(nombresDe(e))+' ('+esc(e.grado)+')').join('<br>') || '—'}</p>
+      </div>
+      <div>
+        <p class="card-title" style="font-size:13px;">Etiquetados</p>
+        <p style="font-size:12.5px;">${(r.etiquetados||[]).map(t=>esc(t.nombre)).join('<br>') || 'Nadie etiquetado.'}</p>
+        <p class="card-title" style="font-size:13px; margin-top:10px;">Visto por</p>
+        <p style="font-size:12.5px;">${(r.vistas||[]).map(v=>esc(v.nombre)).join(', ') || '—'}</p>
+      </div>
+    </div>
+    <p class="card-title" style="margin-top:14px; font-size:13px;">Detalle / acta</p>
+    <p style="font-size:13px; white-space:pre-wrap;">${esc(r.detalle||'—')}</p>
+    <p class="card-title" style="font-size:13px;">Adjuntos</p>
+    ${renderAdjuntosLista(r.archivos)}
+    <p class="card-title" style="margin-top:16px;">Respuestas</p>
+    ${(r.respuestas||[]).length===0?'<p class="empty" style="padding:6px 0;">Todavía no hay respuestas.</p>':''}
+    ${(r.respuestas||[]).map(resp=>`
+      <div class="assign-list-item" style="display:block;">
+        <div style="font-size:13px; white-space:pre-wrap;">${esc(resp.texto)}</div>
+        ${renderAdjuntosLista(resp.archivos)}
+        <div class="nota-chica" style="margin:4px 0 0;">${esc(resp.nombre)} · ${esc(fechaLegibleCompleta(resp.ts))}</div>
+      </div>`).join('')}
+    <div class="field" style="margin-top:10px;">
+      ${puedeResponder ? `
+      <textarea id="reu_resp_texto" rows="2" placeholder="Escribe una respuesta…"></textarea>
+      <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('reu_resp_texto')">😊 Emoticones</button>
+      <input type="file" id="reu_resp_archivos" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" style="margin-top:6px;">
+      <div class="btn-row">
+        <button class="btn btn-primary" id="reu_btn_responder" onclick="agregarRespuestaReunion('${r.id}')">Enviar</button>
+        ${puedeGestionar?`<button class="btn btn-danger" onclick="eliminarReunion('${r.id}')">Eliminar reunión</button>`:''}
+      </div>` : (puedeGestionar?`<div class="btn-row"><button class="btn btn-danger" onclick="eliminarReunion('${r.id}')">Eliminar reunión</button></div>`:'')}
+    </div>
+  </div>`;
 }
 function eliminarReporte(id){
   if(!confirm('¿Eliminar este reporte del historial?')) return;
@@ -7998,8 +8295,9 @@ function renderTeacherModal(){
         <div class="tag-row">
           <label class="check-chip"><input type="checkbox" id="t_lectura" ${t.soloLectura?'checked':''}> Solo consulta (no puede editar nada)</label>
           <label class="check-chip"><input type="checkbox" id="t_alcance" ${t.alcanceTotal?'checked':''}> Ve todas las aulas y materias</label>
+          <label class="check-chip"><input type="checkbox" id="t_coord_disciplina" ${t.coordinadorDisciplina?'checked':''}> Coordinador(a) de disciplina</label>
         </div>
-        <p class="nota-chica">Para un puesto como Recepción, marca las dos: verá todo el centro escolar sin poder modificar nada.</p>
+        <p class="nota-chica">Para un puesto como Recepción, marca las dos primeras: verá todo el centro escolar sin poder modificar nada. "Coordinador(a) de disciplina" le da acceso total a Reportes disciplinarios — todas sus pestañas (Historial completo, Resumen, Reuniones, Eliminados), sin importar los "Paneles de acceso" que tenga abajo.</p>
       </div>
       <div class="field">
         <label>Paneles a los que tendrá acceso</label>
@@ -8112,8 +8410,10 @@ async function saveTeacher(esAdmin){
   const cargo = campoCargo ? campoCargo.value.trim() : '';
   const chkLectura = leerEl('t_lectura');
   const chkAlcance = leerEl('t_alcance');
+  const chkCoordDisciplina = leerEl('t_coord_disciplina');
   const soloLectura = chkLectura ? !!chkLectura.checked : false;
   const alcanceTotal = chkAlcance ? !!chkAlcance.checked : false;
+  const coordDisciplina = chkCoordDisciplina ? !!chkCoordDisciplina.checked : false;
   const paneles = {};
   PANELES.forEach(p=>{
     const sel = leerEl('t_pan_'+p.id);
@@ -8139,6 +8439,7 @@ async function saveTeacher(esAdmin){
           t.cargo = cargo;
           if(soloLectura) t.soloLectura = true; else delete t.soloLectura;
           if(alcanceTotal) t.alcanceTotal = true; else delete t.alcanceTotal;
+          if(coordDisciplina) t.coordinadorDisciplina = true; else delete t.coordinadorDisciplina;
           if(Object.keys(paneles).length) t.paneles = paneles;
         }
       }
@@ -8149,6 +8450,7 @@ async function saveTeacher(esAdmin){
     nuevo.usuario = generarUsuarioDocente(nombre, nuevo.id);
     if(soloLectura) nuevo.soloLectura = true;
     if(alcanceTotal) nuevo.alcanceTotal = true;
+    if(coordDisciplina) nuevo.coordinadorDisciplina = true;
     commit(doc=>{ doc.docentes.push(nuevo); });
   }
   registrar('Usuario', (editingId?'Editó a ':'Creó a ') + nombre);
@@ -8363,7 +8665,8 @@ function renderPersonalizar(){
                   </select>
                 </div>`).join('') +
                 (t.soloLectura?'<span class="pill pill-muted" style="margin-top:4px;display:inline-block;">Solo consulta</span>':'') +
-                (t.alcanceTotal?'<span class="pill pill-blue" style="margin-top:4px;display:inline-block;">Todas las aulas</span>':'')}</td>
+                (t.alcanceTotal?'<span class="pill pill-blue" style="margin-top:4px;display:inline-block;">Todas las aulas</span>':'') +
+                (t.coordinadorDisciplina?'<span class="pill pill-primary" style="margin-top:4px;display:inline-block;">Coordinador(a) de disciplina</span>':'')}</td>
             <td>
               <button class="btn btn-sm" onclick="openTeacherModal('${t.id}')">Editar</button>
               <button class="btn btn-sm" onclick="definirClave('${t.id}')">Guardar</button>
