@@ -635,10 +635,16 @@ function conLimite(promesa, ms){
    3. memoria     -> nada se conserva al cerrar; se avisa en pantalla
    --------------------------------------------------------------- */
 /* =====================================================================
-   ENLACE DE SINCRONIZACIÓN DEL CENTRO ESCOLAR
-   Pega aquí, entre las comillas, el enlace que termina en /exec.
-   Al hacerlo, cualquiera que abra esta página verá los datos del centro
-   escolar sin tener que configurar nada.
+   ENLACE Y TOKEN DE SINCRONIZACIÓN DEL CENTRO ESCOLAR
+   Vuelve a traer integrados el enlace y el token del centro escolar, para
+   que ningún docente tenga que configurar nada — se conecta solo, como
+   antes. El token de abajo es uno NUEVO (el anterior quedó expuesto
+   públicamente y ya no sirve). Aun así, sigue siendo cierto que, si este
+   repositorio es público, cualquiera que lo revise puede ver este mismo
+   token. Eso no tiene arreglo por código: es la conversación de convivencia
+   y de acceso a datos que hablamos aparte. Dirección puede seguir yendo a
+   Sincronización para "Generar nuevo" token si alguna vez hace falta
+   rotarlo otra vez, sin tener que volver a pedirme el archivo.
    ===================================================================== */
 const ENLACE_FIJO = 'https://script.google.com/macros/s/AKfycbytmM1DpIgOrdDj_rhCP5WRBL-tDEAxQnTI2r51FjZnNUVASw4wItBKIWPlHPBmdUmnUQ/exec';
 
@@ -652,15 +658,34 @@ function getSyncUrl(){
 function setSyncUrl(u){
   try{ if(u) window.localStorage.setItem('sync_url', u); else window.localStorage.removeItem('sync_url'); }catch(e){}
 }
+/* Token del centro escolar. Si un equipo guardó el suyo propio (por
+   ejemplo, tras "Generar nuevo"), ese manda; si no, se usa el integrado
+   de abajo, igual que con el enlace. */
+const TOKEN_FIJO = '4977d966f9a319e134e74923a8d76928b67cbe1a';
+function getSyncToken(){
+  try{
+    const guardado = window.localStorage.getItem('sync_token');
+    if(guardado) return guardado;
+  }catch(e){}
+  return TOKEN_FIJO;
+}
+function setSyncToken(t){
+  try{ if(t) window.localStorage.setItem('sync_token', t); else window.localStorage.removeItem('sync_token'); }catch(e){}
+}
+/* Token nuevo, al azar, de 40 caracteres — para "rotarlo" si alguna vez se
+   sospecha que alguien más lo tiene. */
+function generarTokenAleatorio(){
+  const bytes = new Uint8Array(20);
+  (window.crypto || window.msCrypto).getRandomValues(bytes);
+  return Array.prototype.map.call(bytes, b=>b.toString(16).padStart(2,'0')).join('');
+}
 /* Lee el documento común alojado en el Google Drive del centro escolar */
 /* Versión de esta copia del sistema. El Apps Script del centro escolar
    puede exigir una versión mínima y así dejar fuera las copias viejas. */
 const VERSION_APP = 5;
 /* Token compartido con el Apps Script del centro escolar: sin esto, nadie
-   puede leer ni escribir el archivo de datos aunque conozca la URL.
-   No es un secreto perfecto (está en este mismo código, visible para quien
-   lo busque), pero bloquea a quien solo tenga la URL suelta sin más. */
-const TOKEN_SYNC = 'd4ae7102ac20122b55670a6b41aa3cae46e73138';
+   puede leer ni escribir el archivo de datos aunque conozca la URL. */
+let TOKEN_SYNC = getSyncToken();
 let versionRechazada = false;
 
 async function nubePing(){
@@ -1892,24 +1917,35 @@ function responder(texto) {
     .setMimeType(ContentService.MimeType.JSON);
 }`;
   const admin = canManageAcademicData(currentUser);
-  const integrado = !!ENLACE_FIJO && !((()=>{ try{ return window.localStorage.getItem('sync_url'); }catch(e){ return ''; } })());
+  const tokenActual = getSyncToken();
   return `
   <div class="page-head">
     <p class="page-eyebrow">Ajustes</p>
     <h1 class="page-title">Sincronización entre dispositivos</h1>
     <p class="page-desc">${admin
       ? 'Conecta el sistema a una carpeta de Google Drive del centro escolar para que todos los docentes vean los mismos datos desde cualquier equipo o teléfono.'
-      : 'Pega aquí el enlace que te dio Dirección para que este equipo comparta la información con los demás docentes. Solo se hace una vez.'}</p>
+      : 'Pega aquí el enlace y el token que te dio Dirección para que este equipo comparta la información con los demás docentes. Solo se hace una vez.'}</p>
   </div>
 
   <div class="card">
     <p class="card-title">Estado actual <span class="pill ${pill}">${esc(etiqueta)}</span></p>
-    ${integrado?`<div class="note" style="margin-bottom:12px;">Este sistema ya trae integrado el enlace del centro escolar: no hace falta configurar nada en cada equipo.</div>`:''}
+    <div class="note" style="margin-bottom:12px;">Este sistema ya trae integrado el enlace y el token del centro escolar: no hace falta configurar nada en cada equipo, se conecta solo.</div>
     <p style="font-size:13.5px; color:var(--muted); margin:0 0 14px;">${esc(detalle)}</p>
     <div class="field">
       <label>Enlace de sincronización (termina en /exec)</label>
-      <input type="text" id="sync_input" value="${esc(url)}" placeholder="https://script.google.com/macros/s/…/exec">
+      <input type="${admin?'text':'password'}" id="sync_input" value="${esc(admin ? url : '')}" placeholder="${admin?'https://script.google.com/macros/s/…/exec':(url?'•••• (ya conectado — pídelo a Dirección si lo necesitas)':'https://script.google.com/macros/s/…/exec')}" autocomplete="off">
     </div>
+    <div class="field">
+      <label>Token de seguridad</label>
+      <div style="display:flex; gap:6px;">
+        <input type="${admin?'text':'password'}" id="sync_token_input" value="${esc(admin ? tokenActual : '')}" placeholder="${admin?'Pégalo aquí, o genera uno nuevo →':'Pégalo aquí (te lo da Dirección)'}" style="flex:1; font-family:'JetBrains Mono',monospace;" autocomplete="off">
+        ${admin?`<button class="btn btn-sm" onclick="generarNuevoTokenSincronizacion()" title="Crea un token nuevo al azar">Generar nuevo</button>`:''}
+      </div>
+      <p class="nota-chica">${admin
+        ? 'Ya no viene escrito en el código del sistema — cada equipo lo guarda solo en su propio navegador. Es tan necesario como el enlace: sin los dos juntos, nadie puede leer ni escribir los datos reales.'
+        : 'Por seguridad, este campo se ve oculto (como una contraseña) y no muestra el valor ya guardado — solo Dirección puede consultarlo. Si necesitas cambiarlo, pídeselo a Dirección.'}</p>
+    </div>
+    ${!admin && url ? `<div class="note">Este equipo ya está conectado. El enlace y el token están guardados aquí, ocultos — no hace falta volver a escribirlos a menos que Dirección te pida cambiarlos.</div>`:''}
     <div class="btn-row">
       <button class="btn btn-primary" onclick="guardarSyncUrl()">Conectar</button>
       ${url?`<button class="btn btn-danger" onclick="quitarSyncUrl()">Desconectar</button>`:''}
@@ -1917,20 +1953,22 @@ function responder(texto) {
   </div>
 
   ${!admin ? `<div class="card">
-    <p class="card-title">¿No tienes el enlace?</p>
-    <p style="font-size:13.5px; color:var(--muted); margin:0;">Pídeselo a Dirección: es el mismo para todo el centro escolar y termina en <b>/exec</b>. Mientras no lo conectes, puedes trabajar normal, pero tus datos se guardan solo en este equipo.</p>
+    <p class="card-title">¿No tienes el enlace o el token?</p>
+    <p style="font-size:13.5px; color:var(--muted); margin:0;">Pídeselos a Dirección: son los mismos para todo el centro escolar. El enlace termina en <b>/exec</b>. Mientras no los conectes, puedes trabajar normal, pero tus datos se guardan solo en este equipo.</p>
   </div>` : `
   <div class="card">
     <p class="card-title">Cómo obtener el enlace (una sola vez, lo hace Dirección)</p>
     <ol style="font-size:13.5px; line-height:1.85; padding-left:20px; margin:0;">
+      <li>Si es la primera vez, pulsa "Generar nuevo" arriba para crear el token del centro escolar.</li>
       <li>Entra a <b>script.google.com</b> con la cuenta de Google del centro escolar y crea un proyecto nuevo.</li>
-      <li>Borra lo que aparezca y pega el código de abajo. Guarda.</li>
+      <li>Borra lo que aparezca y pega el código de abajo (ya trae tu token incluido). Guarda.</li>
       <li>Pulsa <b>Implementar → Nueva implementación</b>. En el engranaje elige <b>Aplicación web</b>.</li>
       <li>En "Ejecutar como" deja tu cuenta. En "Quién tiene acceso" elige <b>Cualquier usuario</b>. Implementa y autoriza.</li>
-      <li>Copia el enlace que termina en <b>/exec</b> y pégalo aquí arriba.</li>
-      <li>En los demás dispositivos, abre el sistema, ve a esta pantalla y pega el mismo enlace.</li>
+      <li>Copia el enlace que termina en <b>/exec</b> y pégalo arriba, junto con el token. Pulsa "Conectar".</li>
+      <li>En los demás dispositivos, abre el sistema, ve a esta pantalla, y pega ahí el mismo enlace y el mismo token (compártelos tú con cada docente por un medio privado — nunca los publiques ni los subas a un repositorio público).</li>
     </ol>
     <div class="note" style="margin:14px 0 0;">El archivo <b>datos_escolares.json</b> se crea solo en tu Drive. Ahí viven todos los datos: puedes respaldarlo o revisarlo cuando quieras.</div>
+    <div class="note" style="margin:10px 0 0;">Si sospechas que alguien más tiene tu token actual (por ejemplo, porque estuvo en una copia pública del sistema), pulsa "Generar nuevo", vuelve a pegar el código actualizado en Apps Script, y comparte el token nuevo con tus docentes — el anterior deja de servir en cuanto guardes el código nuevo.</div>
   </div>
 
   <div class="card">
@@ -1939,6 +1977,16 @@ function responder(texto) {
     </p>
     <textarea id="codigo_gs" readonly style="width:100%; height:270px; font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.5; resize:vertical;">${esc(codigo)}</textarea>
   </div>`}`;
+}
+function generarNuevoTokenSincronizacion(){
+  const nuevo = generarTokenAleatorio();
+  TOKEN_SYNC = nuevo;   // así el código de Apps Script de abajo ya muestra el token nuevo
+  showToast('Token nuevo generado. Todavía falta pulsar "Conectar" y actualizar el código en Apps Script.');
+  render();
+  setTimeout(()=>{
+    const campo = document.getElementById('sync_token_input');
+    if(campo){ campo.value = nuevo; campo.focus(); }
+  }, 0);
 }
 function copiarCodigo(){
   const t = document.getElementById('codigo_gs');
@@ -2026,9 +2074,13 @@ function combinarDocs(local, nube){
 
 async function guardarSyncUrl(){
   const v = document.getElementById('sync_input').value.trim();
+  const tok = (document.getElementById('sync_token_input')||{}).value ? document.getElementById('sync_token_input').value.trim() : '';
   if(!v){ showToast('Pega el enlace que termina en /exec.'); return; }
   if(!/^https:\/\/.+\/exec$/.test(v)){ showToast('El enlace debe empezar con https:// y terminar en /exec.'); return; }
+  if(!tok){ showToast('Pega también el token de seguridad (o genera uno nuevo si es la primera vez).'); return; }
   setSyncUrl(v);
+  setSyncToken(tok);
+  TOKEN_SYNC = tok;
   showToast('Conectando…');
   try{
     const doc = await nubeLeer();
@@ -2066,14 +2118,17 @@ async function guardarSyncUrl(){
   }catch(e){
     console.error(e);
     setSyncUrl('');
-    showToast('No se pudo conectar. Revisa que el acceso sea "Cualquier usuario".');
+    setSyncToken('');
+    TOKEN_SYNC = '';
+    showToast('No se pudo conectar. Revisa el enlace, el token, y que el acceso sea "Cualquier usuario".');
     render();
   }
 }
 function quitarSyncUrl(){
   if(!confirm('¿Desconectar este equipo? Los datos dejarán de compartirse.')) return;
   setSyncUrl('');
-  if(ENLACE_FIJO){ showToast('Este sistema trae el enlace del centro escolar integrado: volverá a conectarse solo.'); }
+  setSyncToken('');
+  TOKEN_SYNC = '';
   motor = null;
   detectarMotor().then(()=>{ setSyncStatus('ok'); render(); });
 }
@@ -2887,7 +2942,7 @@ function render(){
    navegador lo recuerda para siempre en ese dispositivo — por eso no hace
    falta guardar nada aparte en la plataforma. */
 function activarOrtografia(){
-  const EXCLUIR_IDS = new Set(['codigo_gs', 'sync_input', 'est_usuario_input', 'doc_usuario_input']);
+  const EXCLUIR_IDS = new Set(['codigo_gs', 'sync_input', 'sync_token_input', 'est_usuario_input', 'doc_usuario_input']);
   const EXCLUIR_PREFIJOS = ['cl_'];   // campos para restablecer contraseñas
   document.querySelectorAll('#app textarea, #app input[type="text"]').forEach(el=>{
     if(EXCLUIR_IDS.has(el.id)) return;
@@ -2961,6 +3016,22 @@ function renderLogin(){
       ${!appYaInstalada()?`<div class="btn-row" style="margin-top:14px; border-top:1px solid var(--line); padding-top:14px;">
         <button class="btn btn-sm" onclick="instalarApp()">📲 Instalar esta app</button>
       </div>`:''}
+      <div style="margin-top:14px; border-top:1px solid var(--line); padding-top:12px; text-align:center;">
+        <a href="#" class="nota-chica" onclick="viewState.configurarSyncLogin = !viewState.configurarSyncLogin; render(); return false;">
+          ${viewState.configurarSyncLogin ? 'Ocultar' : (getSyncUrl() ? 'Este equipo ya está conectado — cambiar enlace/token' : '¿Primera vez en este equipo? Configúralo aquí')}
+        </a>
+      </div>
+      ${viewState.configurarSyncLogin ? `
+      <div class="field" style="margin-top:10px;">
+        <label>Enlace de sincronización (te lo da Dirección, termina en /exec)</label>
+        <input type="password" id="sync_input" value="" placeholder="${getSyncUrl()?'•••• (ya conectado — pídelo a Dirección si lo necesitas)':'https://script.google.com/macros/s/…/exec'}" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Token de seguridad (también te lo da Dirección)</label>
+        <input type="password" id="sync_token_input" value="" placeholder="Pégalo aquí" style="font-family:'JetBrains Mono',monospace;" autocomplete="off">
+      </div>
+      <div class="btn-row"><button class="btn btn-primary" onclick="guardarSyncUrl()">Conectar este equipo</button></div>
+      ` : ''}
     </div>
   </div>`;
 }
@@ -4617,6 +4688,71 @@ function renderAdjuntosLista(archivos){
     }).join('')}
   </div>`;
 }
+/* Texto sin tildes ni mayúsculas, para que buscar "jose" también encuentre
+   "José" — se usa en los buscadores de estudiantes y docentes de Reuniones. */
+function normalizarBusqueda(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function filtrarBusquedaEstReunion(term){
+  const cont = document.getElementById('reu_resultados_est');
+  if(!cont) return;
+  const t = normalizarBusqueda(term).trim();
+  if(!t){ cont.style.display = 'none'; cont.innerHTML = ''; return; }
+  const yaElegidos = new Set((viewState.modalReunion && viewState.modalReunion.estudiantesIds) || []);
+  const coincidencias = DB.estudiantes.filter(e=>{
+    if(yaElegidos.has(e.id)) return false;
+    const nombreCompleto = normalizarBusqueda(apellidosDe(e) + ' ' + nombresDe(e));
+    return nombreCompleto.indexOf(t) >= 0;
+  }).slice(0, 15);
+  cont.style.display = 'block';
+  cont.innerHTML = coincidencias.length ? coincidencias.map(e=>
+    `<div class="assign-list-item" style="cursor:pointer; margin-bottom:0; border-radius:0;" onclick="agregarEstudianteReunion('${e.id}')">
+      <span>${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</span><span class="pill pill-muted">${esc(e.grado)}</span>
+    </div>`
+  ).join('') : '<p class="empty" style="padding:8px;">Sin coincidencias.</p>';
+}
+function agregarEstudianteReunion(id){
+  if(!viewState.modalReunion) return;
+  viewState.modalReunion.estudiantesIds = viewState.modalReunion.estudiantesIds || [];
+  if(viewState.modalReunion.estudiantesIds.indexOf(id)<0) viewState.modalReunion.estudiantesIds.push(id);
+  render();
+  setTimeout(()=>{ const c = document.getElementById('reu_buscar_est'); if(c){ c.value=''; c.focus(); } }, 0);
+}
+function quitarEstudianteReunion(id){
+  if(!viewState.modalReunion) return;
+  viewState.modalReunion.estudiantesIds = (viewState.modalReunion.estudiantesIds||[]).filter(x=>x!==id);
+  render();
+}
+function filtrarBusquedaDocReunion(term){
+  const cont = document.getElementById('reu_resultados_doc');
+  if(!cont) return;
+  const t = normalizarBusqueda(term).trim();
+  if(!t){ cont.style.display = 'none'; cont.innerHTML = ''; return; }
+  const yaElegidos = new Set((viewState.modalReunion && viewState.modalReunion.etiquetadosIds) || []);
+  const coincidencias = DB.docentes.filter(doc=>{
+    if(doc.id === currentUser.id || esPropietario(doc)) return false;
+    if(yaElegidos.has(doc.id)) return false;
+    return normalizarBusqueda(doc.nombre).indexOf(t) >= 0;
+  }).slice(0, 15);
+  cont.style.display = 'block';
+  cont.innerHTML = coincidencias.length ? coincidencias.map(doc=>
+    `<div class="assign-list-item" style="cursor:pointer; margin-bottom:0; border-radius:0;" onclick="agregarDocenteReunion('${doc.id}')">
+      <span>${esc(doc.nombre)}</span>
+    </div>`
+  ).join('') : '<p class="empty" style="padding:8px;">Sin coincidencias.</p>';
+}
+function agregarDocenteReunion(id){
+  if(!viewState.modalReunion) return;
+  viewState.modalReunion.etiquetadosIds = viewState.modalReunion.etiquetadosIds || [];
+  if(viewState.modalReunion.etiquetadosIds.indexOf(id)<0) viewState.modalReunion.etiquetadosIds.push(id);
+  render();
+  setTimeout(()=>{ const c = document.getElementById('reu_buscar_doc'); if(c){ c.value=''; c.focus(); } }, 0);
+}
+function quitarDocenteReunion(id){
+  if(!viewState.modalReunion) return;
+  viewState.modalReunion.etiquetadosIds = (viewState.modalReunion.etiquetadosIds||[]).filter(x=>x!==id);
+  render();
+}
 function abrirNuevaReunion(){
   viewState.modalReunion = {fecha: new Date().toISOString().slice(0,10), asunto:'', gradosCompletos:[], estudiantesIds:[], etiquetadosIds:[]};
   render();
@@ -4635,13 +4771,11 @@ async function guardarReunion(){
     const chk = document.getElementById('reu_grado_'+i);
     if(chk && chk.checked) gradosCompletos.push(g);
   });
-  const selEst = document.getElementById('reu_estudiantes');
-  const estudiantesIndividuales = selEst ? Array.prototype.slice.call(selEst.selectedOptions).map(o=>o.value) : [];
+  const estudiantesIndividuales = (info.estudiantesIds || []).slice();
   const idsDeAulas = DB.estudiantes.filter(e=>gradosCompletos.indexOf(e.grado)>=0).map(e=>e.id);
   const estudiantesIds = Array.from(new Set(idsDeAulas.concat(estudiantesIndividuales)));
   if(estudiantesIds.length===0){ showToast('Elige al menos un estudiante o un aula completa.'); return; }
-  const selDoc = document.getElementById('reu_etiquetados');
-  const etiquetadosIds = selDoc ? Array.prototype.slice.call(selDoc.selectedOptions).map(o=>o.value) : [];
+  const etiquetadosIds = (info.etiquetadosIds || []).slice();
   const etiquetados = etiquetadosIds.map(id=>{
     const t = DB.docentes.find(x=>x.id===id);
     return t ? {id: t.id, nombre: t.nombre} : null;
@@ -4720,8 +4854,6 @@ function renderReunionModal(){
   const info = viewState.modalReunion;
   if(!info) return '';
   const cerrar = 'cerrarModalReunion();';
-  const docentesDisponibles = DB.docentes.filter(t=>t.id!==currentUser.id && !esPropietario(t)).slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
-  const estudiantesOrdenados = DB.estudiantes.slice().sort((a,b)=>a.grado.localeCompare(b.grado,'es') || apellidosDe(a).localeCompare(apellidosDe(b),'es'));
   return `
   <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
     <div class="modal" style="max-width:560px;">
@@ -4742,16 +4874,30 @@ function renderReunionModal(){
         </div>
       </div>
       <div class="field">
-        <label>Padres de estudiantes específicos (Ctrl/Cmd+clic para elegir varios)</label>
-        <select id="reu_estudiantes" multiple size="6">
-          ${estudiantesOrdenados.map(e=>`<option value="${e.id}">${esc(e.grado)} — ${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</option>`).join('')}
-        </select>
+        <label>Padres de estudiantes específicos — busca por nombre o apellido</label>
+        <input type="text" id="reu_buscar_est" placeholder="Escribe un nombre o apellido…" autocomplete="off" oninput="filtrarBusquedaEstReunion(this.value)">
+        <div id="reu_resultados_est" style="display:none; max-height:180px; overflow-y:auto; margin-top:4px; border:1px solid var(--line); border-radius:8px;"></div>
+        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
+          ${(info.estudiantesIds||[]).map(id=>{
+            const e = DB.estudiantes.find(x=>x.id===id);
+            if(!e) return '';
+            return `<span class="pill pill-blue" style="display:inline-flex; align-items:center; gap:5px;">${esc(apellidosDe(e))}, ${esc(nombresDe(e))} (${esc(e.grado)})
+              <a href="#" onclick="quitarEstudianteReunion('${id}'); return false;" style="color:inherit; font-weight:bold;">×</a></span>`;
+          }).join('') || '<span class="nota-chica">Todavía no has elegido a nadie individual.</span>'}
+        </div>
       </div>
       <div class="field">
-        <label>Etiquetar docentes (verán esta reunión y sus respuestas, como en copia de un correo)</label>
-        <select id="reu_etiquetados" multiple size="6">
-          ${docentesDisponibles.map(t=>`<option value="${t.id}">${esc(t.nombre)}</option>`).join('')}
-        </select>
+        <label>Etiquetar docentes — busca por nombre o apellido (verán esta reunión y sus respuestas, como en copia de un correo)</label>
+        <input type="text" id="reu_buscar_doc" placeholder="Escribe un nombre o apellido…" autocomplete="off" oninput="filtrarBusquedaDocReunion(this.value)">
+        <div id="reu_resultados_doc" style="display:none; max-height:180px; overflow-y:auto; margin-top:4px; border:1px solid var(--line); border-radius:8px;"></div>
+        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
+          ${(info.etiquetadosIds||[]).map(id=>{
+            const t = DB.docentes.find(x=>x.id===id);
+            if(!t) return '';
+            return `<span class="pill pill-primary" style="display:inline-flex; align-items:center; gap:5px;">${esc(t.nombre)}
+              <a href="#" onclick="quitarDocenteReunion('${id}'); return false;" style="color:inherit; font-weight:bold;">×</a></span>`;
+          }).join('') || '<span class="nota-chica">Nadie etiquetado todavía.</span>'}
+        </div>
       </div>
       <div class="field">
         <label>Adjuntos (varias imágenes, Word, PDF, Excel, PowerPoint u otro documento)</label>
