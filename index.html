@@ -635,16 +635,13 @@ function conLimite(promesa, ms){
    3. memoria     -> nada se conserva al cerrar; se avisa en pantalla
    --------------------------------------------------------------- */
 /* =====================================================================
-   ENLACE Y TOKEN DE SINCRONIZACIÓN DEL CENTRO ESCOLAR
-   Vuelve a traer integrados el enlace y el token del centro escolar, para
-   que ningún docente tenga que configurar nada — se conecta solo, como
-   antes. El token de abajo es uno NUEVO (el anterior quedó expuesto
-   públicamente y ya no sirve). Aun así, sigue siendo cierto que, si este
-   repositorio es público, cualquiera que lo revise puede ver este mismo
-   token. Eso no tiene arreglo por código: es la conversación de convivencia
-   y de acceso a datos que hablamos aparte. Dirección puede seguir yendo a
-   Sincronización para "Generar nuevo" token si alguna vez hace falta
-   rotarlo otra vez, sin tener que volver a pedirme el archivo.
+   ENLACE DE SINCRONIZACIÓN DEL CENTRO ESCOLAR
+   Trae integrado el enlace del centro escolar, para que ningún docente
+   tenga que configurar nada — se conecta solo. Por decisión explícita de
+   Dirección, el sistema ya NO exige ningún token: cualquiera con este
+   enlace puede leer y escribir los datos. Si en algún momento se quiere
+   restringir el acceso otra vez, hay que volver a agregar esa verificación
+   aquí y en el Apps Script del centro escolar.
    ===================================================================== */
 const ENLACE_FIJO = 'https://script.google.com/macros/s/AKfycbytmM1DpIgOrdDj_rhCP5WRBL-tDEAxQnTI2r51FjZnNUVASw4wItBKIWPlHPBmdUmnUQ/exec';
 
@@ -658,46 +655,22 @@ function getSyncUrl(){
 function setSyncUrl(u){
   try{ if(u) window.localStorage.setItem('sync_url', u); else window.localStorage.removeItem('sync_url'); }catch(e){}
 }
-/* Token del centro escolar. Si un equipo guardó el suyo propio (por
-   ejemplo, tras "Generar nuevo"), ese manda; si no, se usa el integrado
-   de abajo, igual que con el enlace. */
-const TOKEN_FIJO = '4977d966f9a319e134e74923a8d76928b67cbe1a';
-function getSyncToken(){
-  try{
-    const guardado = window.localStorage.getItem('sync_token');
-    if(guardado) return guardado;
-  }catch(e){}
-  return TOKEN_FIJO;
-}
-function setSyncToken(t){
-  try{ if(t) window.localStorage.setItem('sync_token', t); else window.localStorage.removeItem('sync_token'); }catch(e){}
-}
-/* Token nuevo, al azar, de 40 caracteres — para "rotarlo" si alguna vez se
-   sospecha que alguien más lo tiene. */
-function generarTokenAleatorio(){
-  const bytes = new Uint8Array(20);
-  (window.crypto || window.msCrypto).getRandomValues(bytes);
-  return Array.prototype.map.call(bytes, b=>b.toString(16).padStart(2,'0')).join('');
-}
 /* Lee el documento común alojado en el Google Drive del centro escolar */
 /* Versión de esta copia del sistema. El Apps Script del centro escolar
    puede exigir una versión mínima y así dejar fuera las copias viejas. */
 const VERSION_APP = 5;
-/* Token compartido con el Apps Script del centro escolar: sin esto, nadie
-   puede leer ni escribir el archivo de datos aunque conozca la URL. */
-let TOKEN_SYNC = getSyncToken();
 let versionRechazada = false;
 
 async function nubePing(){
   const url = getSyncUrl();
-  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=ping' + '&t=' + Date.now(),
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=ping' + '&t=' + Date.now(),
     {method:'GET', redirect:'follow'}), 8000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   return true;
 }
 async function nubeLeer(){
   const url = getSyncUrl();
-  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&t=' + Date.now(),
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&t=' + Date.now(),
     {method:'GET', redirect:'follow'}), 12000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
@@ -716,7 +689,7 @@ async function nubeLeer(){
 async function nubeEscribir(valor){
   const url = getSyncUrl();
   // text/plain evita la petición previa de CORS, que Apps Script no responde
-  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC, {method:'POST', redirect:'follow',
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP, {method:'POST', redirect:'follow',
     headers:{'Content-Type':'text/plain;charset=utf-8'}, body: valor}), 15000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const resp = await r.text();
@@ -734,7 +707,7 @@ async function nubeEscribir(valor){
    —con las notas y reportes de todos los demás— nunca llega a este navegador. */
 async function nubeLeerEstudiante(usuario, claveHash){
   const url = getSyncUrl();
-  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=estudiante',
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=estudiante',
     {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
      body: JSON.stringify({usuario, clave: claveHash})}), 12000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
@@ -751,7 +724,7 @@ async function nubeLeerEstudiante(usuario, claveHash){
 async function registrarEventoNube(usuario, claveHash, accion, detalle){
   try{
     const url = getSyncUrl();
-    await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=evento',
+    await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=evento',
       {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
        body: JSON.stringify({usuario, clave: claveHash, accion, detalle})}), 10000);
   }catch(e){ console.warn('no se pudo registrar el evento', e); }
@@ -761,7 +734,7 @@ async function registrarEventoNube(usuario, claveHash, accion, detalle){
    reportes de los demás— viaje nunca a su dispositivo. */
 async function enviarSoporteEstudiante(usuario, claveHash, titulo, descripcion, imagen){
   const url = getSyncUrl();
-  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=soporte',
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=soporte',
     {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
      body: JSON.stringify({usuario, clave: claveHash, titulo, descripcion, imagen})}), 12000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
@@ -772,7 +745,7 @@ async function enviarSoporteEstudiante(usuario, claveHash, titulo, descripcion, 
 }
 async function enviarMensajeNube(usuario, claveHash, paraId, paraNombre, texto, imagen){
   const url = getSyncUrl();
-  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=mensaje',
+  const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=mensaje',
     {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
      body: JSON.stringify({usuario, clave: claveHash, paraId, paraNombre, texto, imagen})}), 12000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
@@ -784,7 +757,7 @@ async function enviarMensajeNube(usuario, claveHash, paraId, paraNombre, texto, 
 async function marcarMensajesLeidosNube(usuario, claveHash, deId){
   try{
     const url = getSyncUrl();
-    await conLimite(fetch(url + '?v=' + VERSION_APP + '&tok=' + TOKEN_SYNC + '&accion=leerMensajes',
+    await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=leerMensajes',
       {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
        body: JSON.stringify({usuario, clave: claveHash, deId})}), 10000);
   }catch(e){ console.warn('no se pudo marcar como leído', e); }
@@ -1738,16 +1711,13 @@ function renderSincronizacion(){
     memoria: ['Sin guardado', 'Este navegador bloquea el almacenamiento. Descarga un respaldo antes de cerrar.', 'pill-muted']
   };
   const [etiqueta, detalle, pill] = estados[motor] || estados.local;
-  const codigo = `var TOKEN = '${TOKEN_SYNC}';
-
-function doGet(e) {
-  if (!e || e.parameter.tok !== TOKEN) return responder('{"sinAutorizacion":true}');
-  if (e.parameter.accion === 'ping') return responder('{"ok":true}');
+  const codigo = `function doGet(e) {
+  if (e && e.parameter.accion === 'ping') return responder('{"ok":true}');
   return responder(leerDatos());
 }
 
 function doPost(e) {
-  if (!e || e.parameter.tok !== TOKEN) return responder('{"sinAutorizacion":true}');
+  if (!e) return responder('{"error":true}');
   var accion = e.parameter.accion || 'guardar';
   var bloqueo = LockService.getScriptLock();
   bloqueo.waitLock(20000);
@@ -1917,35 +1887,23 @@ function responder(texto) {
     .setMimeType(ContentService.MimeType.JSON);
 }`;
   const admin = canManageAcademicData(currentUser);
-  const tokenActual = getSyncToken();
   return `
   <div class="page-head">
     <p class="page-eyebrow">Ajustes</p>
     <h1 class="page-title">Sincronización entre dispositivos</h1>
     <p class="page-desc">${admin
       ? 'Conecta el sistema a una carpeta de Google Drive del centro escolar para que todos los docentes vean los mismos datos desde cualquier equipo o teléfono.'
-      : 'Pega aquí el enlace y el token que te dio Dirección para que este equipo comparta la información con los demás docentes. Solo se hace una vez.'}</p>
+      : 'Pega aquí el enlace que te dio Dirección para que este equipo comparta la información con los demás docentes. Solo se hace una vez.'}</p>
   </div>
 
   <div class="card">
     <p class="card-title">Estado actual <span class="pill ${pill}">${esc(etiqueta)}</span></p>
-    <div class="note" style="margin-bottom:12px;">Este sistema ya trae integrado el enlace y el token del centro escolar: no hace falta configurar nada en cada equipo, se conecta solo.</div>
+    <div class="note" style="margin-bottom:12px;">Este sistema ya trae integrado el enlace del centro escolar: no hace falta configurar nada en cada equipo, se conecta solo.</div>
     <p style="font-size:13.5px; color:var(--muted); margin:0 0 14px;">${esc(detalle)}</p>
     <div class="field">
       <label>Enlace de sincronización (termina en /exec)</label>
-      <input type="${admin?'text':'password'}" id="sync_input" value="${esc(admin ? url : '')}" placeholder="${admin?'https://script.google.com/macros/s/…/exec':(url?'•••• (ya conectado — pídelo a Dirección si lo necesitas)':'https://script.google.com/macros/s/…/exec')}" autocomplete="off">
+      <input type="text" id="sync_input" value="${esc(url)}" placeholder="https://script.google.com/macros/s/…/exec">
     </div>
-    <div class="field">
-      <label>Token de seguridad</label>
-      <div style="display:flex; gap:6px;">
-        <input type="${admin?'text':'password'}" id="sync_token_input" value="${esc(admin ? tokenActual : '')}" placeholder="${admin?'Pégalo aquí, o genera uno nuevo →':'Pégalo aquí (te lo da Dirección)'}" style="flex:1; font-family:'JetBrains Mono',monospace;" autocomplete="off">
-        ${admin?`<button class="btn btn-sm" onclick="generarNuevoTokenSincronizacion()" title="Crea un token nuevo al azar">Generar nuevo</button>`:''}
-      </div>
-      <p class="nota-chica">${admin
-        ? 'Ya no viene escrito en el código del sistema — cada equipo lo guarda solo en su propio navegador. Es tan necesario como el enlace: sin los dos juntos, nadie puede leer ni escribir los datos reales.'
-        : 'Por seguridad, este campo se ve oculto (como una contraseña) y no muestra el valor ya guardado — solo Dirección puede consultarlo. Si necesitas cambiarlo, pídeselo a Dirección.'}</p>
-    </div>
-    ${!admin && url ? `<div class="note">Este equipo ya está conectado. El enlace y el token están guardados aquí, ocultos — no hace falta volver a escribirlos a menos que Dirección te pida cambiarlos.</div>`:''}
     <div class="btn-row">
       <button class="btn btn-primary" onclick="guardarSyncUrl()">Conectar</button>
       ${url?`<button class="btn btn-danger" onclick="quitarSyncUrl()">Desconectar</button>`:''}
@@ -1953,22 +1911,21 @@ function responder(texto) {
   </div>
 
   ${!admin ? `<div class="card">
-    <p class="card-title">¿No tienes el enlace o el token?</p>
-    <p style="font-size:13.5px; color:var(--muted); margin:0;">Pídeselos a Dirección: son los mismos para todo el centro escolar. El enlace termina en <b>/exec</b>. Mientras no los conectes, puedes trabajar normal, pero tus datos se guardan solo en este equipo.</p>
+    <p class="card-title">¿No tienes el enlace?</p>
+    <p style="font-size:13.5px; color:var(--muted); margin:0;">Pídeselo a Dirección: es el mismo para todo el centro escolar y termina en <b>/exec</b>. Mientras no lo conectes, puedes trabajar normal, pero tus datos se guardan solo en este equipo.</p>
   </div>` : `
   <div class="card">
     <p class="card-title">Cómo obtener el enlace (una sola vez, lo hace Dirección)</p>
     <ol style="font-size:13.5px; line-height:1.85; padding-left:20px; margin:0;">
-      <li>Si es la primera vez, pulsa "Generar nuevo" arriba para crear el token del centro escolar.</li>
       <li>Entra a <b>script.google.com</b> con la cuenta de Google del centro escolar y crea un proyecto nuevo.</li>
-      <li>Borra lo que aparezca y pega el código de abajo (ya trae tu token incluido). Guarda.</li>
+      <li>Borra lo que aparezca y pega el código de abajo. Guarda.</li>
       <li>Pulsa <b>Implementar → Nueva implementación</b>. En el engranaje elige <b>Aplicación web</b>.</li>
       <li>En "Ejecutar como" deja tu cuenta. En "Quién tiene acceso" elige <b>Cualquier usuario</b>. Implementa y autoriza.</li>
-      <li>Copia el enlace que termina en <b>/exec</b> y pégalo arriba, junto con el token. Pulsa "Conectar".</li>
-      <li>En los demás dispositivos, abre el sistema, ve a esta pantalla, y pega ahí el mismo enlace y el mismo token (compártelos tú con cada docente por un medio privado — nunca los publiques ni los subas a un repositorio público).</li>
+      <li>Copia el enlace que termina en <b>/exec</b> y pégalo arriba. Pulsa "Conectar".</li>
+      <li>En los demás dispositivos, abre el sistema: se conecta solo, no hace falta pegar nada.</li>
     </ol>
     <div class="note" style="margin:14px 0 0;">El archivo <b>datos_escolares.json</b> se crea solo en tu Drive. Ahí viven todos los datos: puedes respaldarlo o revisarlo cuando quieras.</div>
-    <div class="note" style="margin:10px 0 0;">Si sospechas que alguien más tiene tu token actual (por ejemplo, porque estuvo en una copia pública del sistema), pulsa "Generar nuevo", vuelve a pegar el código actualizado en Apps Script, y comparte el token nuevo con tus docentes — el anterior deja de servir en cuanto guardes el código nuevo.</div>
+    <div class="note" style="margin:10px 0 0;">Por decisión de Dirección, este sistema ya no pide ningún token: cualquiera con el enlace puede leer y escribir los datos. Si más adelante quieren restringirlo de nuevo, avísenme y lo agregamos otra vez.</div>
   </div>
 
   <div class="card">
@@ -1977,16 +1934,6 @@ function responder(texto) {
     </p>
     <textarea id="codigo_gs" readonly style="width:100%; height:270px; font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.5; resize:vertical;">${esc(codigo)}</textarea>
   </div>`}`;
-}
-function generarNuevoTokenSincronizacion(){
-  const nuevo = generarTokenAleatorio();
-  TOKEN_SYNC = nuevo;   // así el código de Apps Script de abajo ya muestra el token nuevo
-  showToast('Token nuevo generado. Todavía falta pulsar "Conectar" y actualizar el código en Apps Script.');
-  render();
-  setTimeout(()=>{
-    const campo = document.getElementById('sync_token_input');
-    if(campo){ campo.value = nuevo; campo.focus(); }
-  }, 0);
 }
 function copiarCodigo(){
   const t = document.getElementById('codigo_gs');
@@ -2074,13 +2021,9 @@ function combinarDocs(local, nube){
 
 async function guardarSyncUrl(){
   const v = document.getElementById('sync_input').value.trim();
-  const tok = (document.getElementById('sync_token_input')||{}).value ? document.getElementById('sync_token_input').value.trim() : '';
   if(!v){ showToast('Pega el enlace que termina en /exec.'); return; }
   if(!/^https:\/\/.+\/exec$/.test(v)){ showToast('El enlace debe empezar con https:// y terminar en /exec.'); return; }
-  if(!tok){ showToast('Pega también el token de seguridad (o genera uno nuevo si es la primera vez).'); return; }
   setSyncUrl(v);
-  setSyncToken(tok);
-  TOKEN_SYNC = tok;
   showToast('Conectando…');
   try{
     const doc = await nubeLeer();
@@ -2118,17 +2061,13 @@ async function guardarSyncUrl(){
   }catch(e){
     console.error(e);
     setSyncUrl('');
-    setSyncToken('');
-    TOKEN_SYNC = '';
-    showToast('No se pudo conectar. Revisa el enlace, el token, y que el acceso sea "Cualquier usuario".');
+    showToast('No se pudo conectar. Revisa el enlace, y que el acceso sea "Cualquier usuario".');
     render();
   }
 }
 function quitarSyncUrl(){
   if(!confirm('¿Desconectar este equipo? Los datos dejarán de compartirse.')) return;
   setSyncUrl('');
-  setSyncToken('');
-  TOKEN_SYNC = '';
   motor = null;
   detectarMotor().then(()=>{ setSyncStatus('ok'); render(); });
 }
@@ -2942,7 +2881,7 @@ function render(){
    navegador lo recuerda para siempre en ese dispositivo — por eso no hace
    falta guardar nada aparte en la plataforma. */
 function activarOrtografia(){
-  const EXCLUIR_IDS = new Set(['codigo_gs', 'sync_input', 'sync_token_input', 'est_usuario_input', 'doc_usuario_input']);
+  const EXCLUIR_IDS = new Set(['codigo_gs', 'sync_input', 'est_usuario_input', 'doc_usuario_input']);
   const EXCLUIR_PREFIJOS = ['cl_'];   // campos para restablecer contraseñas
   document.querySelectorAll('#app textarea, #app input[type="text"]').forEach(el=>{
     if(EXCLUIR_IDS.has(el.id)) return;
@@ -3018,17 +2957,13 @@ function renderLogin(){
       </div>`:''}
       <div style="margin-top:14px; border-top:1px solid var(--line); padding-top:12px; text-align:center;">
         <a href="#" class="nota-chica" onclick="viewState.configurarSyncLogin = !viewState.configurarSyncLogin; render(); return false;">
-          ${viewState.configurarSyncLogin ? 'Ocultar' : (getSyncUrl() ? 'Este equipo ya está conectado — cambiar enlace/token' : '¿Primera vez en este equipo? Configúralo aquí')}
+          ${viewState.configurarSyncLogin ? 'Ocultar' : (getSyncUrl() ? 'Este equipo ya está conectado — cambiar enlace' : '¿Primera vez en este equipo? Configúralo aquí')}
         </a>
       </div>
       ${viewState.configurarSyncLogin ? `
       <div class="field" style="margin-top:10px;">
         <label>Enlace de sincronización (te lo da Dirección, termina en /exec)</label>
-        <input type="password" id="sync_input" value="" placeholder="${getSyncUrl()?'•••• (ya conectado — pídelo a Dirección si lo necesitas)':'https://script.google.com/macros/s/…/exec'}" autocomplete="off">
-      </div>
-      <div class="field">
-        <label>Token de seguridad (también te lo da Dirección)</label>
-        <input type="password" id="sync_token_input" value="" placeholder="Pégalo aquí" style="font-family:'JetBrains Mono',monospace;" autocomplete="off">
+        <input type="text" id="sync_input" value="${esc(getSyncUrl())}" placeholder="https://script.google.com/macros/s/…/exec">
       </div>
       <div class="btn-row"><button class="btn btn-primary" onclick="guardarSyncUrl()">Conectar este equipo</button></div>
       ` : ''}
