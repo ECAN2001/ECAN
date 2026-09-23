@@ -3986,7 +3986,7 @@ function renderReportes(){
       <button class="btn btn-primary" onclick="descargarReportes()">Descargar en PDF</button>
       <button class="btn" onclick="descargarReportesIndividual()" title="Un archivo PDF por cada reporte, todos juntos en un .zip">Descargar individual (.zip)</button>
     </div>
-    <div class="note">El historial lo puede ver cualquier persona con acceso a Reportes. Abrir el detalle, ver el PDF o eliminar un reporte sigue reservado a quien lo levantó, a su orientador(a), o a una cuenta de acceso total.</div>
+    <div class="note">El historial lo puede ver cualquier persona con acceso a Reportes. Abrir el detalle o ver el PDF sigue reservado a quien lo levantó, a su orientador(a), o a una cuenta de acceso total. Ningún reporte se puede eliminar ni editar una vez guardado — ni siquiera con acceso total.</div>
     <div class="card">
       <p class="card-title">Historial <span class="pill pill-muted">${lista.length} reporte(s)</span></p>
       <div class="table-wrap">
@@ -4025,7 +4025,6 @@ function renderReportes(){
                 <button class="icon-btn" onclick="alternarDetalleReporte('${r.id}')">${abierto?'Cerrar':'Detalle'}</button>
                 <button class="icon-btn" onclick="verReporte('${r.id}')">Ver</button>
                 <button class="icon-btn" onclick="descargarReporte('${r.id}')">PDF</button>
-                ${puedeEditar?`<button class="icon-btn" onclick="eliminarReporte('${r.id}')">Eliminar</button>`:''}
                 ` : ''}
               </td>
             </tr>
@@ -4150,7 +4149,7 @@ function renderReportes(){
     <div class="filters">
       ${puedeEditar?`<button class="btn btn-primary" onclick="abrirNuevaReunion()">+ Nueva reunión</button>`:''}
     </div>
-    <div class="note">Aquí queda la evidencia de reuniones con padres de familia: acta, adjuntos y quién estuvo al tanto. Solo la ven quien la creó, las personas etiquetadas, y las cuentas con acceso total a Reportes.</div>
+    <div class="note">Aquí queda la evidencia de reuniones con padres de familia: acta, adjuntos y quién estuvo al tanto. Solo la ven quien la creó, las personas etiquetadas, y las cuentas con acceso total a Reportes. Son historial permanente: ninguna reunión se puede eliminar ni editar una vez guardada — ni siquiera con acceso total.</div>
     ${viewState.reunionAbierta && detalle ? renderReunionDetalle(detalle) : `
     <div class="card">
       <p class="card-title">Reuniones <span class="pill pill-muted">${lista.length}</span></p>
@@ -4179,7 +4178,7 @@ function renderReportes(){
       .filter(r => veTodosReportes(currentUser) || r.eliminadoPorId === currentUser.id)
       .slice().sort((a,b)=>(b.eliminadoTs||'').localeCompare(a.eliminadoTs||''));
     cuerpo = `
-    <div class="note">Reportes que fueron eliminados del historial activo. Se conservan aquí como respaldo — puedes restaurarlos si fue un error.${veTodosReportes(currentUser)?'':' Solo ves los que tú eliminaste; las cuentas de acceso total ven todos.'}</div>
+    <div class="note">Ahora los reportes disciplinarios son historial permanente: ya nadie puede eliminar uno nuevo, ni con acceso total. Lo que ves aquí abajo son reportes que se habían eliminado <b>antes</b> de este cambio — se conservan como respaldo y se pueden restaurar si fue un error.${veTodosReportes(currentUser)?'':' Solo ves los que tú eliminaste; las cuentas de acceso total ven todos.'}</div>
     <div class="card">
       <p class="card-title">Eliminados <span class="pill pill-muted">${listaElim.length} reporte(s)</span></p>
       <div class="table-wrap">
@@ -4771,19 +4770,11 @@ async function agregarRespuestaReunion(id){
   showToast('Respuesta agregada. Todos los que estén etiquetados la pueden ver.');
   render();
 }
+/* Por decisión de Dirección, las reuniones son historial permanente: nadie
+   —ni siquiera una cuenta de acceso total— puede eliminarlas. Se deja esta
+   función solo para explicar por qué, por si algún botón viejo la llama. */
 function eliminarReunion(id){
-  const r = (DB.reuniones||[]).find(x=>x.id===id);
-  if(!r) return;
-  const puede = veTodosReportes(currentUser) || r.creadaPorId === currentUser.id;
-  if(!puede){ showToast('Solo quien creó la reunión, o una cuenta de acceso total, puede eliminarla.'); return; }
-  if(!confirm('¿Eliminar esta reunión y toda su evidencia? Esta acción no se puede deshacer.')) return;
-  commit(doc=>{
-    doc.reuniones = (doc.reuniones||[]).filter(x=>x.id!==id);
-  });
-  registrar('Reuniones', 'Eliminó la reunión "' + (r.asunto||'') + '"');
-  viewState.reunionAbierta = null;
-  showToast('Reunión eliminada.');
-  render();
+  showToast('Las reuniones son un historial permanente: no se pueden eliminar, ni con acceso total.');
 }
 function renderReunionModal(){
   const info = viewState.modalReunion;
@@ -4847,7 +4838,6 @@ function renderReunionModal(){
 }
 function renderReunionDetalle(r){
   const estudiantes = (r.estudiantesIds||[]).map(id=>DB.estudiantes.find(e=>e.id===id)).filter(Boolean);
-  const puedeGestionar = veTodosReportes(currentUser) || r.creadaPorId === currentUser.id;
   const puedeResponder = puedeEditarPanel(currentUser, 'reportes') && !currentUser.soloLectura;
   return `
   <div class="card">
@@ -4886,29 +4876,16 @@ function renderReunionDetalle(r){
       <input type="file" id="reu_resp_archivos" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" style="margin-top:6px;">
       <div class="btn-row">
         <button class="btn btn-primary" id="reu_btn_responder" onclick="agregarRespuestaReunion('${r.id}')">Enviar</button>
-        ${puedeGestionar?`<button class="btn btn-danger" onclick="eliminarReunion('${r.id}')">Eliminar reunión</button>`:''}
-      </div>` : (puedeGestionar?`<div class="btn-row"><button class="btn btn-danger" onclick="eliminarReunion('${r.id}')">Eliminar reunión</button></div>`:'')}
+      </div>` : ''}
     </div>
   </div>`;
 }
+/* Por decisión de Dirección, los reportes disciplinarios son historial
+   permanente: nadie —ni siquiera una cuenta de acceso total— puede
+   eliminarlos. Se deja esta función solo para explicar por qué, por si
+   algún botón viejo la llama. */
 function eliminarReporte(id){
-  if(!confirm('¿Eliminar este reporte del historial?')) return;
-  commit(doc=>{
-    const i = (doc.reportes||[]).findIndex(r=>r.id===id);
-    if(i>=0){
-      const [reporte] = doc.reportes.splice(i,1);
-      doc.reportesEliminados = doc.reportesEliminados || [];
-      doc.reportesEliminados.push({
-        ...reporte,
-        eliminadoTs: new Date().toISOString(),
-        eliminadoPor: currentUser.nombre,
-        eliminadoPorId: currentUser.id
-      });
-      if(doc.reportesEliminados.length > 500) doc.reportesEliminados = doc.reportesEliminados.slice(-500);
-    }
-  });
-  registrar('Reporte disciplinario', 'Eliminó un reporte');
-  render();
+  showToast('Los reportes son un historial permanente: no se pueden eliminar, ni con acceso total.');
 }
 function cabReporte(r, aj, q, codigo){
   return `
