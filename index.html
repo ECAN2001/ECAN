@@ -664,14 +664,14 @@ let versionRechazada = false;
 async function nubePing(){
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=ping' + '&t=' + Date.now(),
-    {method:'GET', redirect:'follow'}), 8000);
+    {method:'GET', redirect:'follow'}), 25000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   return true;
 }
 async function nubeLeer(){
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&t=' + Date.now(),
-    {method:'GET', redirect:'follow'}), 12000);
+    {method:'GET', redirect:'follow'}), 60000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
   if(!txt || txt.trim()==='' || txt.trim()==='null') return null;
@@ -690,7 +690,7 @@ async function nubeEscribir(valor){
   const url = getSyncUrl();
   // text/plain evita la petición previa de CORS, que Apps Script no responde
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP, {method:'POST', redirect:'follow',
-    headers:{'Content-Type':'text/plain;charset=utf-8'}, body: valor}), 15000);
+    headers:{'Content-Type':'text/plain;charset=utf-8'}, body: valor}), 60000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const resp = await r.text();
   if(resp && resp.indexOf('sinAutorizacion') >= 0){
@@ -709,7 +709,7 @@ async function nubeLeerEstudiante(usuario, claveHash){
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=estudiante',
     {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
-     body: JSON.stringify({usuario, clave: claveHash})}), 12000);
+     body: JSON.stringify({usuario, clave: claveHash})}), 45000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
   if(!txt) return null;
@@ -736,7 +736,7 @@ async function enviarSoporteEstudiante(usuario, claveHash, titulo, descripcion, 
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=soporte',
     {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
-     body: JSON.stringify({usuario, clave: claveHash, titulo, descripcion, imagen})}), 12000);
+     body: JSON.stringify({usuario, clave: claveHash, titulo, descripcion, imagen})}), 45000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
   const datos = txt ? JSON.parse(txt) : null;
@@ -747,7 +747,7 @@ async function enviarMensajeNube(usuario, claveHash, paraId, paraNombre, texto, 
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=mensaje',
     {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
-     body: JSON.stringify({usuario, clave: claveHash, paraId, paraNombre, texto, imagen})}), 12000);
+     body: JSON.stringify({usuario, clave: claveHash, paraId, paraNombre, texto, imagen})}), 45000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
   const datos = txt ? JSON.parse(txt) : null;
@@ -849,7 +849,10 @@ async function intentarPromocion(){
 async function leerCrudo(clave, compartido){
   if(motor === 'nube' && clave === DOC_KEY){
     const doc = await nubeLeer();
-    return doc ? JSON.stringify(doc) : null;
+    if(!doc) return null;
+    const txt = JSON.stringify(doc);
+    try{ window.localStorage.setItem(DOC_KEY, txt); }catch(e){}  // copia de respaldo en este equipo
+    return txt;
   }
   if(motor === 'nube'){  // sesión y ajustes siguen siendo de cada equipo
     try{ return window.localStorage.getItem(clave); }catch(e){ return null; }
@@ -959,8 +962,26 @@ async function loadAll(){
     doc = null;
   }
   if(huboErrorDeLectura){
+    // Segundo intento: a veces el servidor de Google solo tarda en "despertar".
+    try{ doc = await leerDoc(); huboErrorDeLectura = false; }catch(e){ console.warn('segundo intento de lectura', e); }
+  }
+  let entroConCopia = false;
+  if(huboErrorDeLectura){
+    // Si aun así no respondió, se entra con la última copia guardada en este
+    // equipo. Es seguro: antes de guardar cualquier cambio, el sistema vuelve
+    // a leer los datos reales del Drive (ver flush), así que una copia vieja
+    // nunca pisa el trabajo de otras personas.
+    let copia = null;
+    try{ const v = window.localStorage.getItem(DOC_KEY); if(v) copia = JSON.parse(v); }catch(e){}
+    if(copia && Array.isArray(copia.docentes) && copia.docentes.length){
+      doc = copia;
+      entroConCopia = true;
+      huboErrorDeLectura = false;
+    }
+  }
+  if(huboErrorDeLectura){
     setSyncStatus('error');
-    showToast('No se pudo conectar para traer tus datos. Tus datos NO se tocaron — revisa tu internet e intenta de nuevo.');
+    showToast('El servidor está tardando en responder. Tus datos NO se tocaron — espera unos segundos e intenta de nuevo.');
     baseCompletaCargada = false;
     return;
   }
@@ -1008,6 +1029,14 @@ async function loadAll(){
   }
   if(!DB.curriculo) DB.curriculo = {};
   if(!DB.ajustes) DB.ajustes = {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
+  if(entroConCopia){
+    // Con la copia no se escribe nada directo en el Drive; se actualiza sola.
+    baseCompletaCargada = true;
+    setSyncStatus('error');
+    showToast('La conexión está lenta: entraste con la última copia de este equipo. Se actualizará sola en unos segundos.');
+    setTimeout(()=>{ pullCambios(true); }, 5000);
+    return;
+  }
   asegurarPropietaria();
   asegurarUsuariosDocentes();
   baseCompletaCargada = true;
