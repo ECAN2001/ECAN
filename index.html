@@ -643,17 +643,17 @@ function conLimite(promesa, ms){
    restringir el acceso otra vez, hay que volver a agregar esa verificación
    aquí y en el Apps Script del centro escolar.
    ===================================================================== */
-const ENLACE_FIJO = 'https://script.google.com/macros/s/AKfycbziVkpggpOIaYRmwJF1zum9Ezr8bdeIpGpJKusZeegEZp2mCfqv1hS6jtdW4aFhhKxpvg/exec';
+const ENLACE_FIJO = 'https://script.google.com/macros/s/AKfycbytmM1DpIgOrdDj_rhCP5WRBL-tDEAxQnTI2r51FjZnNUVASw4wItBKIWPlHPBmdUmnUQ/exec';
 
 function getSyncUrl(){
   try{
-    const guardado = window.localStorage.getItem('sync_url2');
+    const guardado = window.localStorage.getItem('sync_url');
     if(guardado) return guardado;              // lo que el usuario haya puesto manda
   }catch(e){}
   return ENLACE_FIJO;                          // si no, el del centro escolar
 }
 function setSyncUrl(u){
-  try{ if(u) window.localStorage.setItem('sync_url2', u); else window.localStorage.removeItem('sync_url2'); }catch(e){}
+  try{ if(u) window.localStorage.setItem('sync_url', u); else window.localStorage.removeItem('sync_url'); }catch(e){}
 }
 /* Lee el documento común alojado en el Google Drive del centro escolar */
 /* Versión de esta copia del sistema. El Apps Script del centro escolar
@@ -664,14 +664,14 @@ let versionRechazada = false;
 async function nubePing(){
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=ping' + '&t=' + Date.now(),
-    {method:'GET', redirect:'follow'}), 25000);
+    {method:'GET', redirect:'follow'}), 8000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   return true;
 }
 async function nubeLeer(){
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&t=' + Date.now(),
-    {method:'GET', redirect:'follow'}), 60000);
+    {method:'GET', redirect:'follow'}), 12000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
   if(!txt || txt.trim()==='' || txt.trim()==='null') return null;
@@ -690,7 +690,7 @@ async function nubeEscribir(valor){
   const url = getSyncUrl();
   // text/plain evita la petición previa de CORS, que Apps Script no responde
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP, {method:'POST', redirect:'follow',
-    headers:{'Content-Type':'text/plain;charset=utf-8'}, body: valor}), 60000);
+    headers:{'Content-Type':'text/plain;charset=utf-8'}, body: valor}), 15000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const resp = await r.text();
   if(resp && resp.indexOf('sinAutorizacion') >= 0){
@@ -709,7 +709,7 @@ async function nubeLeerEstudiante(usuario, claveHash){
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=estudiante',
     {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
-     body: JSON.stringify({usuario, clave: claveHash})}), 45000);
+     body: JSON.stringify({usuario, clave: claveHash})}), 12000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
   if(!txt) return null;
@@ -736,7 +736,7 @@ async function enviarSoporteEstudiante(usuario, claveHash, titulo, descripcion, 
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=soporte',
     {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
-     body: JSON.stringify({usuario, clave: claveHash, titulo, descripcion, imagen})}), 45000);
+     body: JSON.stringify({usuario, clave: claveHash, titulo, descripcion, imagen})}), 12000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
   const datos = txt ? JSON.parse(txt) : null;
@@ -747,7 +747,7 @@ async function enviarMensajeNube(usuario, claveHash, paraId, paraNombre, texto, 
   const url = getSyncUrl();
   const r = await conLimite(fetch(url + '?v=' + VERSION_APP + '&accion=mensaje',
     {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'},
-     body: JSON.stringify({usuario, clave: claveHash, paraId, paraNombre, texto, imagen})}), 45000);
+     body: JSON.stringify({usuario, clave: claveHash, paraId, paraNombre, texto, imagen})}), 12000);
   if(!r.ok) throw new Error('HTTP ' + r.status);
   const txt = await r.text();
   const datos = txt ? JSON.parse(txt) : null;
@@ -849,10 +849,7 @@ async function intentarPromocion(){
 async function leerCrudo(clave, compartido){
   if(motor === 'nube' && clave === DOC_KEY){
     const doc = await nubeLeer();
-    if(!doc) return null;
-    const txt = JSON.stringify(doc);
-    try{ window.localStorage.setItem(DOC_KEY, txt); }catch(e){}  // copia de respaldo en este equipo
-    return txt;
+    return doc ? JSON.stringify(doc) : null;
   }
   if(motor === 'nube'){  // sesión y ajustes siguen siendo de cada equipo
     try{ return window.localStorage.getItem(clave); }catch(e){ return null; }
@@ -890,7 +887,8 @@ function docActual(){
     curriculo: DB.curriculo, tareas: DB.tareas, estados: DB.estados,
     observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros,
     boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes, averias: DB.averias,
-    soporte: DB.soporte, mensajes: DB.mensajes, reportesEliminados: DB.reportesEliminados, reuniones: DB.reuniones
+    soporte: DB.soporte, mensajes: DB.mensajes, reportesEliminados: DB.reportesEliminados, reuniones: DB.reuniones,
+    reunionesEliminadas: DB.reunionesEliminadas
   };
 }
 function adoptarDoc(doc){
@@ -914,6 +912,7 @@ function adoptarDoc(doc){
   DB.mensajes = doc.mensajes || [];
   DB.reportesEliminados = doc.reportesEliminados || [];
   DB.reuniones = doc.reuniones || [];
+  DB.reunionesEliminadas = doc.reunionesEliminadas || [];
   DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
   if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
@@ -962,26 +961,8 @@ async function loadAll(){
     doc = null;
   }
   if(huboErrorDeLectura){
-    // Segundo intento: a veces el servidor de Google solo tarda en "despertar".
-    try{ doc = await leerDoc(); huboErrorDeLectura = false; }catch(e){ console.warn('segundo intento de lectura', e); }
-  }
-  let entroConCopia = false;
-  if(huboErrorDeLectura){
-    // Si aun así no respondió, se entra con la última copia guardada en este
-    // equipo. Es seguro: antes de guardar cualquier cambio, el sistema vuelve
-    // a leer los datos reales del Drive (ver flush), así que una copia vieja
-    // nunca pisa el trabajo de otras personas.
-    let copia = null;
-    try{ const v = window.localStorage.getItem(DOC_KEY); if(v) copia = JSON.parse(v); }catch(e){}
-    if(copia && Array.isArray(copia.docentes) && copia.docentes.length){
-      doc = copia;
-      entroConCopia = true;
-      huboErrorDeLectura = false;
-    }
-  }
-  if(huboErrorDeLectura){
     setSyncStatus('error');
-    showToast('El servidor está tardando en responder. Tus datos NO se tocaron — espera unos segundos e intenta de nuevo.');
+    showToast('No se pudo conectar para traer tus datos. Tus datos NO se tocaron — revisa tu internet e intenta de nuevo.');
     baseCompletaCargada = false;
     return;
   }
@@ -1029,14 +1010,6 @@ async function loadAll(){
   }
   if(!DB.curriculo) DB.curriculo = {};
   if(!DB.ajustes) DB.ajustes = {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
-  if(entroConCopia){
-    // Con la copia no se escribe nada directo en el Drive; se actualiza sola.
-    baseCompletaCargada = true;
-    setSyncStatus('error');
-    showToast('La conexión está lenta: entraste con la última copia de este equipo. Se actualizará sola en unos segundos.');
-    setTimeout(()=>{ pullCambios(true); }, 5000);
-    return;
-  }
   asegurarPropietaria();
   asegurarUsuariosDocentes();
   baseCompletaCargada = true;
@@ -4015,7 +3988,7 @@ function renderReportes(){
       <button class="btn btn-primary" onclick="descargarReportes()">Descargar en PDF</button>
       <button class="btn" onclick="descargarReportesIndividual()" title="Un archivo PDF por cada reporte, todos juntos en un .zip">Descargar individual (.zip)</button>
     </div>
-    <div class="note">El historial lo puede ver cualquier persona con acceso a Reportes. Abrir el detalle o ver el PDF sigue reservado a quien lo levantó, a su orientador(a), o a una cuenta de acceso total. Ningún reporte se puede eliminar ni editar una vez guardado — ni siquiera con acceso total.</div>
+    <div class="note">El historial lo puede ver cualquier persona con acceso a Reportes. Abrir el detalle, ver el PDF o eliminar un reporte sigue reservado a quien lo levantó, a su orientador(a), o a una cuenta de acceso total. Un reporte eliminado nunca se pierde: queda en "Eliminados", y de ahí ya no se puede borrar por completo, solo restaurar.</div>
     <div class="card">
       <p class="card-title">Historial <span class="pill pill-muted">${lista.length} reporte(s)</span></p>
       <div class="table-wrap">
@@ -4054,6 +4027,7 @@ function renderReportes(){
                 <button class="icon-btn" onclick="alternarDetalleReporte('${r.id}')">${abierto?'Cerrar':'Detalle'}</button>
                 <button class="icon-btn" onclick="verReporte('${r.id}')">Ver</button>
                 <button class="icon-btn" onclick="descargarReporte('${r.id}')">PDF</button>
+                ${puedeEditar?`<button class="icon-btn" onclick="eliminarReporte('${r.id}')">Eliminar</button>`:''}
                 ` : ''}
               </td>
             </tr>
@@ -4171,29 +4145,34 @@ function renderReportes(){
       </div>
     </div>`;
   }else if(vista === 'reuniones'){
-    const lista = reunionesVisibles(currentUser).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
-    const detalle = viewState.reunionAbierta ? (DB.reuniones||[]).find(r=>r.id===viewState.reunionAbierta) : null;
+    const verEliminadas = !!viewState.reunionesVerEliminadas;
+    const lista = verEliminadas
+      ? (DB.reunionesEliminadas||[]).filter(r=>puedeVerReunion(currentUser, r)).slice().sort((a,b)=>(b.eliminadaTs||'').localeCompare(a.eliminadaTs||''))
+      : reunionesVisibles(currentUser).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
+    const detalle = (!verEliminadas && viewState.reunionAbierta) ? (DB.reuniones||[]).find(r=>r.id===viewState.reunionAbierta) : null;
     if(detalle && !puedeVerReunion(currentUser, detalle)) viewState.reunionAbierta = null;
     cuerpo = `
     <div class="filters">
-      ${puedeEditar?`<button class="btn btn-primary" onclick="abrirNuevaReunion()">+ Nueva reunión</button>`:''}
+      ${puedeEditar && !verEliminadas?`<button class="btn btn-primary" onclick="abrirNuevaReunion()">+ Nueva reunión</button>`:''}
+      <button class="btn btn-sm" onclick="viewState.reunionesVerEliminadas = ${verEliminadas?'false':'true'}; viewState.reunionAbierta = null; render();">${verEliminadas?'← Ver reuniones activas':'Ver eliminadas ('+(DB.reunionesEliminadas||[]).filter(r=>puedeVerReunion(currentUser,r)).length+')'}</button>
     </div>
-    <div class="note">Aquí queda la evidencia de reuniones con padres de familia: acta, adjuntos y quién estuvo al tanto. Solo la ven quien la creó, las personas etiquetadas, y las cuentas con acceso total a Reportes. Son historial permanente: ninguna reunión se puede eliminar ni editar una vez guardada — ni siquiera con acceso total.</div>
+    <div class="note">Aquí queda la evidencia de reuniones con padres de familia: acta, adjuntos y quién estuvo al tanto. Solo la ven quien la creó, las personas etiquetadas, y las cuentas con acceso total a Reportes. Una reunión eliminada nunca se pierde: queda en "Eliminadas", y de ahí ya no se puede borrar por completo, solo restaurar.</div>
     ${viewState.reunionAbierta && detalle ? renderReunionDetalle(detalle) : `
     <div class="card">
-      <p class="card-title">Reuniones <span class="pill pill-muted">${lista.length}</span></p>
-      ${lista.length===0?'<p class="empty">Todavía no hay ninguna reunión registrada.</p>':''}
+      <p class="card-title">${verEliminadas?'Eliminadas':'Reuniones'} <span class="pill pill-muted">${lista.length}</span></p>
+      ${lista.length===0?`<p class="empty">${verEliminadas?'No hay reuniones eliminadas.':'Todavía no hay ninguna reunión registrada.'}</p>`:''}
       <div class="assign-list">
         ${lista.map(r=>{
           const estCount = (r.estudiantesIds||[]).length;
           const vistoPorMi = (r.vistas||[]).some(v=>v.userId===currentUser.id);
-          return `<div class="assign-list-item" style="cursor:pointer; align-items:flex-start;" onclick="abrirReunion('${r.id}')">
+          return `<div class="assign-list-item" style="${verEliminadas?'':'cursor:pointer;'} align-items:flex-start;" ${verEliminadas?'':`onclick="abrirReunion('${r.id}')"`}>
             <div style="flex:1;">
-              <p style="margin:0; font-weight:600;">${esc(r.asunto||'(sin asunto)')} ${vistoPorMi?'':'<span class="pill pill-gold" style="margin-left:4px;">Nuevo</span>'}</p>
-              <p class="nota-chica" style="margin:2px 0 0;">${esc(rotuloDia(r.fecha))} · ${esc(r.creadaPor)} · ${estCount} estudiante(s)${(r.gradosCompletos||[]).length?' · Aula(s): '+esc(r.gradosCompletos.join(', ')):''}</p>
+              <p style="margin:0; font-weight:600;">${esc(r.asunto||'(sin asunto)')} ${(!verEliminadas && !vistoPorMi)?'<span class="pill pill-gold" style="margin-left:4px;">Nuevo</span>':''}</p>
+              <p class="nota-chica" style="margin:2px 0 0;">${esc(rotuloDia(r.fecha))} · ${esc(r.creadaPor)} · ${estCount} estudiante(s)${(r.gradosCompletos||[]).length?' · Aula(s): '+esc(r.gradosCompletos.join(', ')):''}${verEliminadas?' · Eliminó: '+esc(r.eliminadaPor||''):''}</p>
             </div>
             <span class="pill ${(r.respuestas||[]).length?'pill-primary':'pill-muted'}" title="Respuestas">${(r.respuestas||[]).length} resp.</span>
             <span class="pill ${(r.archivos||[]).length?'pill-blue':'pill-muted'}" title="Adjuntos">${(r.archivos||[]).length} adj.</span>
+            ${verEliminadas?`<button class="btn btn-sm" onclick="restaurarReunionEliminada('${r.id}')">Restaurar</button>`:''}
           </div>`;
         }).join('')}
       </div>
@@ -4207,7 +4186,7 @@ function renderReportes(){
       .filter(r => veTodosReportes(currentUser) || r.eliminadoPorId === currentUser.id)
       .slice().sort((a,b)=>(b.eliminadoTs||'').localeCompare(a.eliminadoTs||''));
     cuerpo = `
-    <div class="note">Ahora los reportes disciplinarios son historial permanente: ya nadie puede eliminar uno nuevo, ni con acceso total. Lo que ves aquí abajo son reportes que se habían eliminado <b>antes</b> de este cambio — se conservan como respaldo y se pueden restaurar si fue un error.${veTodosReportes(currentUser)?'':' Solo ves los que tú eliminaste; las cuentas de acceso total ven todos.'}</div>
+    <div class="note">Reportes que fueron eliminados del historial activo. Se conservan aquí como respaldo permanente — puedes restaurarlos si fue un error, pero ya no se pueden borrar de aquí, ni con acceso total.${veTodosReportes(currentUser)?'':' Solo ves los que tú eliminaste; las cuentas de acceso total ven todos.'}</div>
     <div class="card">
       <p class="card-title">Eliminados <span class="pill pill-muted">${listaElim.length} reporte(s)</span></p>
       <div class="table-wrap">
@@ -4802,8 +4781,49 @@ async function agregarRespuestaReunion(id){
 /* Por decisión de Dirección, las reuniones son historial permanente: nadie
    —ni siquiera una cuenta de acceso total— puede eliminarlas. Se deja esta
    función solo para explicar por qué, por si algún botón viejo la llama. */
+/* Mueve la reunión a "Eliminadas" (no la borra de verdad, queda como
+   respaldo recuperable). Desde ahí nunca hay forma de borrarla por
+   completo — solo "Restaurar". */
 function eliminarReunion(id){
-  showToast('Las reuniones son un historial permanente: no se pueden eliminar, ni con acceso total.');
+  const r = (DB.reuniones||[]).find(x=>x.id===id);
+  if(!r) return;
+  const puede = veTodosReportes(currentUser) || r.creadaPorId === currentUser.id;
+  if(!puede){ showToast('Solo quien creó la reunión, o una cuenta de acceso total, puede eliminarla.'); return; }
+  if(!confirm('¿Eliminar esta reunión? Queda guardada en "Eliminadas" y se puede restaurar si fue un error.')) return;
+  commit(doc=>{
+    const i = (doc.reuniones||[]).findIndex(x=>x.id===id);
+    if(i>=0){
+      const [reunion] = doc.reuniones.splice(i,1);
+      doc.reunionesEliminadas = doc.reunionesEliminadas || [];
+      doc.reunionesEliminadas.push({
+        ...reunion,
+        eliminadaTs: new Date().toISOString(),
+        eliminadaPor: currentUser.nombre,
+        eliminadaPorId: currentUser.id
+      });
+      if(doc.reunionesEliminadas.length > 500) doc.reunionesEliminadas = doc.reunionesEliminadas.slice(-500);
+    }
+  });
+  registrar('Reuniones', 'Eliminó la reunión "' + (r.asunto||'') + '"');
+  viewState.reunionAbierta = null;
+  showToast('Reunión movida a Eliminadas.');
+  render();
+}
+function restaurarReunionEliminada(id){
+  const r = (DB.reunionesEliminadas||[]).find(x=>x.id===id);
+  if(!r || !puedeVerReunion(currentUser, r)){ showToast('No tienes acceso a esa reunión.'); return; }
+  commit(doc=>{
+    const i = (doc.reunionesEliminadas||[]).findIndex(x=>x.id===id);
+    if(i>=0){
+      const [reunion] = doc.reunionesEliminadas.splice(i,1);
+      delete reunion.eliminadaTs; delete reunion.eliminadaPor; delete reunion.eliminadaPorId;
+      doc.reuniones = doc.reuniones || [];
+      doc.reuniones.push(reunion);
+    }
+  });
+  registrar('Reuniones', 'Restauró la reunión "' + (r.asunto||'') + '"');
+  showToast('Reunión restaurada.');
+  render();
 }
 function renderReunionModal(){
   const info = viewState.modalReunion;
@@ -4867,6 +4887,7 @@ function renderReunionModal(){
 }
 function renderReunionDetalle(r){
   const estudiantes = (r.estudiantesIds||[]).map(id=>DB.estudiantes.find(e=>e.id===id)).filter(Boolean);
+  const puedeGestionar = veTodosReportes(currentUser) || r.creadaPorId === currentUser.id;
   const puedeResponder = puedeEditarPanel(currentUser, 'reportes') && !currentUser.soloLectura;
   return `
   <div class="card">
@@ -4905,7 +4926,8 @@ function renderReunionDetalle(r){
       <input type="file" id="reu_resp_archivos" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" style="margin-top:6px;">
       <div class="btn-row">
         <button class="btn btn-primary" id="reu_btn_responder" onclick="agregarRespuestaReunion('${r.id}')">Enviar</button>
-      </div>` : ''}
+        ${puedeGestionar?`<button class="btn btn-danger" onclick="eliminarReunion('${r.id}')">Eliminar reunión</button>`:''}
+      </div>` : (puedeGestionar?`<div class="btn-row"><button class="btn btn-danger" onclick="eliminarReunion('${r.id}')">Eliminar reunión</button></div>`:'')}
     </div>
   </div>`;
 }
@@ -4913,8 +4935,27 @@ function renderReunionDetalle(r){
    permanente: nadie —ni siquiera una cuenta de acceso total— puede
    eliminarlos. Se deja esta función solo para explicar por qué, por si
    algún botón viejo la llama. */
+/* Mueve el reporte a "Eliminados" (no lo borra de verdad, queda como
+   respaldo recuperable). Desde Eliminados nunca hay forma de borrarlo
+   por completo — solo "Restaurar". */
 function eliminarReporte(id){
-  showToast('Los reportes son un historial permanente: no se pueden eliminar, ni con acceso total.');
+  if(!confirm('¿Eliminar este reporte del historial? Queda guardado en "Eliminados" y se puede restaurar si fue un error.')) return;
+  commit(doc=>{
+    const i = (doc.reportes||[]).findIndex(r=>r.id===id);
+    if(i>=0){
+      const [reporte] = doc.reportes.splice(i,1);
+      doc.reportesEliminados = doc.reportesEliminados || [];
+      doc.reportesEliminados.push({
+        ...reporte,
+        eliminadoTs: new Date().toISOString(),
+        eliminadoPor: currentUser.nombre,
+        eliminadoPorId: currentUser.id
+      });
+      if(doc.reportesEliminados.length > 500) doc.reportesEliminados = doc.reportesEliminados.slice(-500);
+    }
+  });
+  registrar('Reporte disciplinario', 'Eliminó un reporte');
+  render();
 }
 function cabReporte(r, aj, q, codigo){
   return `
