@@ -643,17 +643,17 @@ function conLimite(promesa, ms){
    restringir el acceso otra vez, hay que volver a agregar esa verificación
    aquí y en el Apps Script del centro escolar.
    ===================================================================== */
-const ENLACE_FIJO = 'https://script.google.com/macros/s/AKfycbytmM1DpIgOrdDj_rhCP5WRBL-tDEAxQnTI2r51FjZnNUVASw4wItBKIWPlHPBmdUmnUQ/exec';
+const ENLACE_FIJO = 'https://script.google.com/macros/s/AKfycbziVkpggpOIaYRmwJF1zum9Ezr8bdeIpGpJKusZeegEZp2mCfqv1hS6jtdW4aFhhKxpvg/exec';
 
 function getSyncUrl(){
   try{
-    const guardado = window.localStorage.getItem('sync_url');
+    const guardado = window.localStorage.getItem('sync_url2');
     if(guardado) return guardado;              // lo que el usuario haya puesto manda
   }catch(e){}
   return ENLACE_FIJO;                          // si no, el del centro escolar
 }
 function setSyncUrl(u){
-  try{ if(u) window.localStorage.setItem('sync_url', u); else window.localStorage.removeItem('sync_url'); }catch(e){}
+  try{ if(u) window.localStorage.setItem('sync_url2', u); else window.localStorage.removeItem('sync_url2'); }catch(e){}
 }
 /* Lee el documento común alojado en el Google Drive del centro escolar */
 /* Versión de esta copia del sistema. El Apps Script del centro escolar
