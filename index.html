@@ -4830,57 +4830,80 @@ function renderReunionModal(){
   if(!info) return '';
   const cerrar = 'cerrarModalReunion();';
   return `
-  <div class="modal-bg" style="padding:0; align-items:stretch;" onclick="if(event.target===this){ ${cerrar} }">
-    <div class="modal" style="max-width:none; width:100%; min-height:100vh; border-radius:0; box-shadow:none;">
-      <button class="modal-close" onclick="${cerrar}">×</button>
-      <h3 class="modal-title">Nueva reunión</h3>
-      <div class="field">
-        <label>Padres de aula(s) completa(s)</label>
-        <div class="tag-row">
-          ${DB.config.grados.map((g,i)=>`<label class="check-chip"><input type="checkbox" id="reu_grado_${i}" value="${esc(g)}"> ${esc(g)}</label>`).join('')}
+  <div class="modal-bg" style="padding:0; align-items:stretch; background:var(--bg);" onclick="if(event.target===this){ ${cerrar} }">
+    <div class="modal" style="max-width:none; width:100%; min-height:100vh; border-radius:0; box-shadow:none; padding:0; background:var(--bg);">
+      <div style="position:sticky; top:0; z-index:5; background:var(--panel); border-bottom:1px solid var(--line); padding:16px 20px; display:flex; align-items:center; gap:14px;">
+        <button class="icon-btn" onclick="${cerrar}" style="flex-shrink:0;">← Volver</button>
+        <div style="min-width:0;">
+          <p class="login-eyebrow" style="margin:0;">Reuniones</p>
+          <h3 style="margin:2px 0 0; font-size:19px;">Nueva reunión</h3>
         </div>
       </div>
-      <div class="field">
-        <label>Padres de estudiantes específicos — busca por nombre o apellido</label>
-        <input type="text" id="reu_buscar_est" placeholder="Escribe un nombre o apellido…" autocomplete="off" oninput="filtrarBusquedaEstReunion(this.value)">
-        <div id="reu_resultados_est" style="display:none; max-height:180px; overflow-y:auto; margin-top:4px; border:1px solid var(--line); border-radius:8px;"></div>
-        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
-          ${(info.estudiantesIds||[]).map(id=>{
-            const e = DB.estudiantes.find(x=>x.id===id);
-            if(!e) return '';
-            return `<span class="pill pill-blue" style="display:inline-flex; align-items:center; gap:5px;">${esc(apellidosDe(e))}, ${esc(nombresDe(e))} (${esc(e.grado)})
-              <a href="#" onclick="quitarEstudianteReunion('${id}'); return false;" style="color:inherit; font-weight:bold;">×</a></span>`;
-          }).join('') || '<span class="nota-chica">Todavía no has elegido a nadie individual.</span>'}
+      <div style="max-width:640px; margin:0 auto; padding:20px 20px 100px;">
+
+        <div class="card">
+          <p class="card-title">¿Cuándo y sobre qué?</p>
+          <div class="grid grid-2">
+            <div class="field"><label>Fecha</label><input type="date" id="reu_fecha" value="${esc(info.fecha||'')}"></div>
+            <div class="field" style="margin-bottom:0;"><label>Asunto</label><input type="text" id="reu_asunto" placeholder="Ej.: Seguimiento de conducta" value="${esc(info.asunto||'')}"></div>
+          </div>
         </div>
-      </div>
-      <div class="field">
-        <label>Etiquetar docentes — busca por nombre o apellido (verán esta reunión y sus respuestas, como en copia de un correo)</label>
-        <input type="text" id="reu_buscar_doc" placeholder="Escribe un nombre o apellido…" autocomplete="off" oninput="filtrarBusquedaDocReunion(this.value)">
-        <div id="reu_resultados_doc" style="display:none; max-height:180px; overflow-y:auto; margin-top:4px; border:1px solid var(--line); border-radius:8px;"></div>
-        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
-          ${(info.etiquetadosIds||[]).map(id=>{
-            const t = DB.docentes.find(x=>x.id===id);
-            if(!t) return '';
-            return `<span class="pill pill-primary" style="display:inline-flex; align-items:center; gap:5px;">${esc(t.nombre)}
-              <a href="#" onclick="quitarDocenteReunion('${id}'); return false;" style="color:inherit; font-weight:bold;">×</a></span>`;
-          }).join('') || '<span class="nota-chica">Nadie etiquetado todavía.</span>'}
+
+        <div class="card">
+          <p class="card-title">¿Con quién es la reunión?</p>
+          <div class="field">
+            <label>Padres de aula(s) completa(s)</label>
+            <div class="tag-row">
+              ${DB.config.grados.map((g,i)=>`<label class="check-chip"><input type="checkbox" id="reu_grado_${i}" value="${esc(g)}"> ${esc(g)}</label>`).join('')}
+            </div>
+          </div>
+          <div class="field">
+            <label>Padres de estudiantes específicos — busca por nombre o apellido</label>
+            <input type="text" id="reu_buscar_est" placeholder="Escribe un nombre o apellido…" autocomplete="off" oninput="filtrarBusquedaEstReunion(this.value)">
+            <div id="reu_resultados_est" style="display:none; max-height:180px; overflow-y:auto; margin-top:4px; border:1px solid var(--line); border-radius:8px;"></div>
+            <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
+              ${(info.estudiantesIds||[]).map(id=>{
+                const e = DB.estudiantes.find(x=>x.id===id);
+                if(!e) return '';
+                return `<span class="pill pill-blue" style="display:inline-flex; align-items:center; gap:5px;">${esc(apellidosDe(e))}, ${esc(nombresDe(e))} (${esc(e.grado)})
+                  <a href="#" onclick="quitarEstudianteReunion('${id}'); return false;" style="color:inherit; font-weight:bold;">×</a></span>`;
+              }).join('') || '<span class="nota-chica">Todavía no has elegido a nadie individual.</span>'}
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label>Etiquetar docentes — verán esta reunión y sus respuestas, como en copia de un correo</label>
+            <input type="text" id="reu_buscar_doc" placeholder="Escribe un nombre o apellido…" autocomplete="off" oninput="filtrarBusquedaDocReunion(this.value)">
+            <div id="reu_resultados_doc" style="display:none; max-height:180px; overflow-y:auto; margin-top:4px; border:1px solid var(--line); border-radius:8px;"></div>
+            <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
+              ${(info.etiquetadosIds||[]).map(id=>{
+                const t = DB.docentes.find(x=>x.id===id);
+                if(!t) return '';
+                return `<span class="pill pill-primary" style="display:inline-flex; align-items:center; gap:5px;">${esc(t.nombre)}
+                  <a href="#" onclick="quitarDocenteReunion('${id}'); return false;" style="color:inherit; font-weight:bold;">×</a></span>`;
+              }).join('') || '<span class="nota-chica">Nadie etiquetado todavía.</span>'}
+            </div>
+          </div>
         </div>
+
+        <div class="card">
+          <p class="card-title">Acta y adjuntos</p>
+          <div class="field">
+            <label>Detalle / acta de la reunión</label>
+            <textarea id="reu_detalle" rows="4" placeholder="Qué se conversó, acuerdos, compromisos…"></textarea>
+            <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('reu_detalle')">😊 Emoticones</button>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label>Adjuntos (varias imágenes, Word, PDF, Excel, PowerPoint u otro documento)</label>
+            <input type="file" id="reu_archivos" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt">
+          </div>
+        </div>
+
       </div>
-      <div class="grid grid-2">
-        <div class="field"><label>Fecha</label><input type="date" id="reu_fecha" value="${esc(info.fecha||'')}"></div>
-        <div class="field"><label>Asunto</label><input type="text" id="reu_asunto" placeholder="Ej.: Seguimiento de conducta" value="${esc(info.asunto||'')}"></div>
-      </div>
-      <div class="field"><label>Detalle / acta de la reunión</label>
-        <textarea id="reu_detalle" rows="4" placeholder="Qué se conversó, acuerdos, compromisos…"></textarea>
-        <button type="button" class="btn btn-sm" style="margin-top:6px;" title="Insertar emoticono" onclick="abrirTecladoEmojis('reu_detalle')">😊 Emoticones</button>
-      </div>
-      <div class="field">
-        <label>Adjuntos (varias imágenes, Word, PDF, Excel, PowerPoint u otro documento)</label>
-        <input type="file" id="reu_archivos" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt">
-      </div>
-      <div class="btn-row" style="margin-top:12px;">
-        <button class="btn btn-primary" id="reu_btn_guardar" onclick="guardarReunion()">Guardar reunión</button>
-        <button class="btn" onclick="${cerrar}">Cancelar</button>
+      <div style="position:sticky; bottom:0; background:var(--panel); border-top:1px solid var(--line); padding:14px 20px;">
+        <div class="btn-row" style="max-width:640px; margin:0 auto;">
+          <button class="btn btn-primary" id="reu_btn_guardar" onclick="guardarReunion()">Guardar reunión</button>
+          <button class="btn" onclick="${cerrar}">Cancelar</button>
+        </div>
       </div>
     </div>
   </div>`;
