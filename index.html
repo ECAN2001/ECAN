@@ -4830,8 +4830,8 @@ function renderReunionModal(){
   if(!info) return '';
   const cerrar = 'cerrarModalReunion();';
   return `
-  <div class="modal-bg" onclick="if(event.target===this){ ${cerrar} }">
-    <div class="modal" style="max-width:560px;">
+  <div class="modal-bg" style="padding:0; align-items:stretch;" onclick="if(event.target===this){ ${cerrar} }">
+    <div class="modal" style="max-width:none; width:100%; min-height:100vh; border-radius:0; box-shadow:none;">
       <button class="modal-close" onclick="${cerrar}">×</button>
       <h3 class="modal-title">Nueva reunión</h3>
       <div class="grid grid-2">
