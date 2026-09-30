@@ -643,17 +643,14 @@ function conLimite(promesa, ms){
    restringir el acceso otra vez, hay que volver a agregar esa verificación
    aquí y en el Apps Script del centro escolar.
    ===================================================================== */
-const ENLACE_FIJO = 'https://script.google.com/macros/s/AKfycbytmM1DpIgOrdDj_rhCP5WRBL-tDEAxQnTI2r51FjZnNUVASw4wItBKIWPlHPBmdUmnUQ/exec';
+const ENLACE_FIJO = 'https://script.google.com/macros/s/AKfycbziVkpggpOIaYRmwJF1zum9Ezr8bdeIpGpJKusZeegEZp2mCfqv1hS6jtdW4aFhhKxpvg/exec';
 
 function getSyncUrl(){
-  try{
-    const guardado = window.localStorage.getItem('sync_url');
-    if(guardado) return guardado;              // lo que el usuario haya puesto manda
-  }catch(e){}
-  return ENLACE_FIJO;                          // si no, el del centro escolar
+  return ENLACE_FIJO;   // todos los equipos usan siempre el enlace fijo del centro escolar
 }
 function setSyncUrl(u){
-  try{ if(u) window.localStorage.setItem('sync_url', u); else window.localStorage.removeItem('sync_url'); }catch(e){}
+  // Ya no se permite guardar un enlace distinto por equipo: se ignora a propósito
+  // para que nadie quede apuntando a un enlace viejo sin darse cuenta.
 }
 /* Lee el documento común alojado en el Google Drive del centro escolar */
 /* Versión de esta copia del sistema. El Apps Script del centro escolar
@@ -1900,16 +1897,8 @@ function responder(texto) {
 
   <div class="card">
     <p class="card-title">Estado actual <span class="pill ${pill}">${esc(etiqueta)}</span></p>
-    <div class="note" style="margin-bottom:12px;">Este sistema ya trae integrado el enlace del centro escolar: no hace falta configurar nada en cada equipo, se conecta solo.</div>
-    <p style="font-size:13.5px; color:var(--muted); margin:0 0 14px;">${esc(detalle)}</p>
-    <div class="field">
-      <label>Enlace de sincronización (termina en /exec)</label>
-      <input type="text" id="sync_input" value="${esc(url)}" placeholder="https://script.google.com/macros/s/…/exec">
-    </div>
-    <div class="btn-row">
-      <button class="btn btn-primary" onclick="guardarSyncUrl()">Conectar</button>
-      ${url?`<button class="btn btn-danger" onclick="quitarSyncUrl()">Desconectar</button>`:''}
-    </div>
+    <div class="note" style="margin-bottom:12px;">Este sistema ya trae integrado el enlace del centro escolar: no hace falta configurar nada en cada equipo, se conecta solo. Ya no es posible cambiarlo manualmente desde aquí (se quitó esa opción para que ningún equipo quede apuntando por error a un enlace distinto).</div>
+    <p style="font-size:13.5px; color:var(--muted); margin:0;">${esc(detalle)}</p>
   </div>
 
   ${!admin ? `<div class="card">
@@ -2883,7 +2872,7 @@ function render(){
    navegador lo recuerda para siempre en ese dispositivo — por eso no hace
    falta guardar nada aparte en la plataforma. */
 function activarOrtografia(){
-  const EXCLUIR_IDS = new Set(['codigo_gs', 'sync_input', 'est_usuario_input', 'doc_usuario_input']);
+  const EXCLUIR_IDS = new Set(['codigo_gs', 'est_usuario_input', 'doc_usuario_input']);
   const EXCLUIR_PREFIJOS = ['cl_'];   // campos para restablecer contraseñas
   document.querySelectorAll('#app textarea, #app input[type="text"]').forEach(el=>{
     if(EXCLUIR_IDS.has(el.id)) return;
@@ -2957,18 +2946,6 @@ function renderLogin(){
       ${!appYaInstalada()?`<div class="btn-row" style="margin-top:14px; border-top:1px solid var(--line); padding-top:14px;">
         <button class="btn btn-sm" onclick="instalarApp()">📲 Instalar esta app</button>
       </div>`:''}
-      <div style="margin-top:14px; border-top:1px solid var(--line); padding-top:12px; text-align:center;">
-        <a href="#" class="nota-chica" onclick="viewState.configurarSyncLogin = !viewState.configurarSyncLogin; render(); return false;">
-          ${viewState.configurarSyncLogin ? 'Ocultar' : (getSyncUrl() ? 'Este equipo ya está conectado — cambiar enlace' : '¿Primera vez en este equipo? Configúralo aquí')}
-        </a>
-      </div>
-      ${viewState.configurarSyncLogin ? `
-      <div class="field" style="margin-top:10px;">
-        <label>Enlace de sincronización (te lo da Dirección, termina en /exec)</label>
-        <input type="text" id="sync_input" value="${esc(getSyncUrl())}" placeholder="https://script.google.com/macros/s/…/exec">
-      </div>
-      <div class="btn-row"><button class="btn btn-primary" onclick="guardarSyncUrl()">Conectar este equipo</button></div>
-      ` : ''}
     </div>
   </div>`;
 }
