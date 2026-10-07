@@ -1664,6 +1664,7 @@ function hayEdicionEnCurso(){
   // corregido — por eso se bloquea el redibujado mientras este modal esté
   // abierto, igual que con los otros modales de arriba.
   if(viewState.modalCargarArchivo) return true;
+  if(viewState.modalNotasArchivo) return true;
   return false;
 }
 async function pullCambios(silencioso){
@@ -10864,8 +10865,7 @@ function renderCalificaciones(){
     ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="setPref('califPeriodo', ${p})">Período ${p}</div>`).join('')}
     ${puedeEditar?`<button class="btn btn-sm" style="margin-left:auto; align-self:center;" onclick="abrirDuplicarNotas()" title="Copiar las notas de esta asignatura/período a otra">Duplicar notas a…</button>`:''}
     <button class="btn btn-sm" onclick="descargarCalificaciones('${esc(grado)}','${asignatura}',${periodo})">Descargar en PDF</button>
-    ${puedeEditar?`<button class="btn btn-sm" onclick="document.getElementById('input_subir_notas').click()" title="Sube una hoja con notas y se ponen solas en esta tabla">Subir notas</button>
-    <input type="file" id="input_subir_notas" accept=".csv,text/csv" style="display:none;" onchange="subirNotasCsv(this)">`:''}
+    ${puedeEditar?`<button class="btn btn-sm" onclick="abrirCargarNotasArchivo()" title="Sube un .csv, un PDF de calificaciones o una foto/captura, y las notas se ponen solas en esta tabla">Subir notas</button>`:''}
   </div>
 
   <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius); margin-top:0;">
@@ -11006,7 +11006,8 @@ function renderCalificaciones(){
   ${!puedeEditar ? `<div class="note" style="margin-top:12px;">Solo puedes consultar esta asignatura. La edición está reservada al docente asignado, a su orientador(a) o a administración.</div>`:''}
   `}
   ${renderObsModal()}
-  ${renderDuplicarNotasModal()}`;
+  ${renderDuplicarNotasModal()}
+  ${renderModalNotasArchivo()}`;
 }
 /* Descarga en PDF el cuadro que está en pantalla, horizontal y con encabezado
    repetido en cada página. */
@@ -11139,81 +11140,201 @@ function parsearCsv(texto){
   if(campo!=='' || fila.length){ fila.push(campo); filas.push(fila); }
   return filas.filter(f=>!(f.length<=1 && (f[0]||'').trim()===''));
 }
-function descargarNotasCsv(grado, asigId, periodo){
-  const asig = DB.asignaturas.find(a=>a.id===asigId);
-  if(!asig){ showToast('Selecciona una asignatura.'); return; }
-  const cols = columnasNotas(grado, asigId, periodo);
-  if(cols.length===0){ showToast('No hay casillas de actividades ni rubros configurados todavía.'); return; }
-  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
-  const encabezado = ['ID (no borrar)','Estudiante', ...cols.map(c=>c.titulo)];
-  const filas = estudiantes.map(e=>{
-    const vals = cols.map(c=>{ const v = getComp(e.id, asigId, periodo, c.comp); return v===undefined?'':v; });
-    return [e.id, e.nombre, ...vals];
-  });
-  const texto = [encabezado, ...filas].map(f=>f.map(campoCsv).join(',')).join('\r\n');
-  const blob = new Blob(['﻿' + texto], {type:'text/csv;charset=utf-8'});
-  const nombreArchivo = ('Notas ' + asig.nombre + ' - ' + grado + ' - Periodo ' + periodo)
-    .replace(/[\\\/:\*\?"<>\|]/g,' ').trim();
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = nombreArchivo + '.csv';
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
-  showToast('Descargado: ' + nombreArchivo + '.csv — puedes abrirlo y editarlo en Excel.');
+/* ===================== NOTAS: cargar desde .csv, PDF o foto/captura =====================
+   Siempre pasa por una rejilla de revisión editable antes de guardar nada —
+   ni la lectura del PDF ni, sobre todo, el reconocimiento de una foto son
+   perfectos, así que nunca se escribe una nota sin que la persona la vea
+   primero. */
+function abrirCargarNotasArchivo(){
+  const grado = getPref('califGrado','');
+  const asignatura = getPref('califAsig','');
+  if(!grado || !asignatura){ showToast('Selecciona aula y asignatura primero.'); return; }
+  if(!canEditGrades(currentUser, grado, asignatura)){ showToast('No tienes permiso para editar las notas de esta asignatura.'); return; }
+  viewState.modalNotasArchivo = {paso:1, cargando:false, error:''};
+  render();
 }
-/* Lee el .csv ya lleno y pone las notas directamente en la tabla de
-   Calificaciones (misma aula/asignatura/período que están seleccionados en
-   pantalla en ese momento). No toca las casillas que vengan vacías en el
-   archivo, para no borrar notas sin querer. Identifica a cada estudiante por
-   su ID (primera columna); si esa columna se borró o no coincide, intenta
-   por el nombre completo como respaldo. */
-async function subirNotasCsv(inputEl){
-  const file = inputEl.files && inputEl.files[0];
-  inputEl.value = '';
+function cerrarCargarNotasArchivo(){ viewState.modalNotasArchivo = null; render(); }
+async function manejarPegadoNotasArchivo(ev){
+  const info = viewState.modalNotasArchivo;
+  if(!info || info.paso!==1) return;
+  const items = ev.clipboardData && ev.clipboardData.items;
+  if(!items) return;
+  for(let i=0;i<items.length;i++){
+    if(items[i].type.indexOf('image')===0){
+      ev.preventDefault();
+      await procesarArchivoNotas(items[i].getAsFile());
+      return;
+    }
+  }
+  showToast('No se detectó ninguna imagen en lo que pegaste (Ctrl+V).');
+}
+/* Agrupa palabras de una página por renglón, según su altura (lo que está a
+   la misma altura es la misma fila de la tabla), y las ordena de izquierda
+   a derecha dentro de cada una. */
+function agruparPorFilas(items, tolerancia){
+  const filas = [];
+  items.forEach(it=>{
+    let fila = filas.find(f=>Math.abs(f.y - it.y) <= tolerancia);
+    if(!fila){ fila = {y: it.y, items: []}; filas.push(fila); }
+    fila.items.push(it);
+  });
+  filas.sort((a,b)=> b.y - a.y);
+  filas.forEach(f=> f.items.sort((a,b)=> a.x - b.x));
+  return filas;
+}
+/* Lee un PDF como el que genera "Descargar en PDF" (u otro con la misma
+   forma) y reconstruye filas y columnas según la posición de cada palabra:
+   busca el renglón de encabezados (el que trae "N°" y "Estudiante") para
+   anclar dónde empieza cada columna, y asigna cada palabra de las filas
+   siguientes a la columna cuya ancla tenga más cerca. */
+async function extraerFilasNotasPdf(file){
+  await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  if(typeof pdfjsLib !== 'undefined'){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  const buf = await leerArchivoComoArrayBuffer(file);
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  let anclas = null;
+  const filasDatos = [];
+  for(let p=1; p<=pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const contenido = await page.getTextContent();
+    const items = contenido.items
+      .map(it=>({str: it.str, x: it.transform[4], y: it.transform[5]}))
+      .filter(it=>it.str.trim()!=='');
+    const filas = agruparPorFilas(items, 3);
+    filas.forEach(fila=>{
+      const todo = fila.items.map(it=>it.str.trim()).join(' ');
+      if(!anclas){
+        if(/estudiante/i.test(todo) && /n[°º]/i.test(todo)) anclas = fila.items.map(it=>it.x);
+        return;   // antes del encabezado: nombre del colegio, título, etc.
+      }
+      if(/^(prom\.|nota per\.)/i.test(todo)) return;   // encabezado repetido en otra página
+      const celdas = anclas.map(()=>[]);
+      fila.items.forEach(it=>{
+        let mejor = 0, mejorDist = Infinity;
+        anclas.forEach((ax,i)=>{ const d = Math.abs(ax-it.x); if(d<mejorDist){ mejorDist=d; mejor=i; } });
+        celdas[mejor].push(it.str);
+      });
+      const vals = celdas.map(c=>c.join(' ').trim());
+      const nombre = (vals[1]||'').trim();
+      if(!nombre) return;
+      filasDatos.push({nombre, valores: vals.slice(2, vals.length-2)});  // sin N°, sin Nota per./Prom. final
+    });
+  }
+  return filasDatos;
+}
+/* El OCR de una foto no reconoce columnas, solo texto línea por línea —
+   por eso cada renglón se interpreta como "nombre + los números que
+   aparecen en él, en ese orden", y el paso de revisión es obligatorio. */
+function interpretarLineaNotasOcr(linea){
+  const nums = [];
+  const nombreTxt = linea.replace(/-?\d+(?:[.,]\d+)?/g, m=>{ nums.push(m.replace(',', '.')); return ' '; })
+    .replace(/\s+/g,' ').trim();
+  return {nombre: nombreTxt, numeros: nums};
+}
+/* Empareja un nombre detectado (PDF u OCR) con el estudiante más parecido
+   de la lista: exacto primero, y si no, por palabras en común (para que
+   "Gomez Perez Ana" case con "Pérez Gómez, Ana" aunque el orden cambie). */
+function mejorEstudiante(nombreDetectado, estudiantes){
+  const norm = normalizarComparacion(nombreDetectado);
+  if(!norm) return '';
+  const exacto = estudiantes.find(e=>normalizarComparacion(e.nombre)===norm);
+  if(exacto) return exacto.id;
+  const palabrasDet = norm.split(' ').filter(w=>w.length>2);
+  let mejor = '', mejorPuntaje = 0;
+  estudiantes.forEach(e=>{
+    const palabrasEst = normalizarComparacion(e.nombre).split(' ').filter(w=>w.length>2);
+    const coincide = palabrasEst.filter(w=>palabrasDet.includes(w)).length;
+    if(coincide > mejorPuntaje && coincide >= Math.min(2, palabrasEst.length)){ mejorPuntaje = coincide; mejor = e.id; }
+  });
+  return mejor;
+}
+async function procesarArchivoNotas(file){
   if(!file) return;
   const grado = getPref('califGrado','');
   const asignatura = getPref('califAsig','');
   const periodo = Number(getPref('califPeriodo',1)) || 1;
-  if(!grado || !asignatura){ showToast('Selecciona aula y asignatura antes de subir notas.'); return; }
-  if(!canEditGrades(currentUser, grado, asignatura)){ showToast('No tienes permiso para editar las notas de esta asignatura.'); return; }
-  let texto;
-  try{ texto = await file.text(); }
-  catch(e){ showToast('No se pudo leer el archivo.'); return; }
-  const filas = parsearCsv(texto);
-  if(filas.length < 2){ showToast('El archivo está vacío o no tiene filas de estudiantes.'); return; }
-  const cols = columnasNotas(grado, asignatura, periodo);
-  const estudiantes = DB.estudiantes.filter(e=>e.grado===grado);
+  viewState.modalNotasArchivo = {paso:1, cargando:true, error:''};
+  render();
+  try{
+    const cols = columnasNotas(grado, asignatura, periodo);
+    if(cols.length===0) throw new Error('No hay casillas de actividades ni rubros configurados en este período.');
+    const estudiantes = DB.estudiantes.filter(e=>e.grado===grado);
+    const nombreArch = (file.name||'').toLowerCase();
+    let filasDetectadas = [];   // [{nombre, estIdForzado?, numeros:[string...]}]
+    let avisoOcr = false;
+    if(nombreArch.endsWith('.csv') || file.type==='text/csv'){
+      const texto = await file.text();
+      const filas = parsearCsv(texto);
+      if(filas.length < 2) throw new Error('El archivo está vacío.');
+      for(let i=1;i<filas.length;i++){
+        const f = filas[i];
+        if(!f || f.every(x=>(x||'').trim()==='')) continue;
+        const id = (f[0]||'').trim();
+        const est = estudiantes.find(e=>e.id===id);
+        filasDetectadas.push({
+          nombre: (f[1]||'').trim(),
+          estIdForzado: est ? est.id : '',
+          numeros: cols.map((c,idx)=> f[2+idx]===undefined ? '' : String(f[2+idx]).trim())
+        });
+      }
+    }else if(nombreArch.endsWith('.pdf') || file.type==='application/pdf'){
+      const filas = await extraerFilasNotasPdf(file);
+      if(filas.length===0) throw new Error('No se encontró una tabla de notas reconocible en ese PDF.');
+      filasDetectadas = filas.map(f=>({nombre:f.nombre, numeros: cols.map((c,idx)=> (f.valores[idx]||'').trim())}));
+    }else if(/^image\//.test(file.type)){
+      avisoOcr = true;
+      const texto = await extraerTextoImagen(file);
+      if(!texto || !texto.trim()) throw new Error('No se pudo leer texto en esa imagen.');
+      texto.split(/\n+/).map(l=>l.trim()).filter(Boolean).forEach(l=>{
+        const {nombre, numeros} = interpretarLineaNotasOcr(l);
+        if(!nombre || numeros.length===0) return;
+        if(/^(n[°º]|estudiante|per[ií]odo|prom)/i.test(normalizarComparacion(nombre))) return;
+        filasDetectadas.push({nombre, numeros: cols.map((c,idx)=> numeros[idx]!==undefined ? numeros[idx] : '')});
+      });
+      if(filasDetectadas.length===0) throw new Error('No se reconoció ninguna fila de estudiante en la imagen. Prueba con una foto más clara, derecha y bien iluminada, o usa el PDF.');
+    }else{
+      throw new Error('Ese tipo de archivo no se reconoce. Usa el .csv o el .pdf de "Descargar en PDF", o una foto/captura.');
+    }
+    const filasRevision = filasDetectadas.map(f=>({
+      nombreDetectado: f.nombre,
+      estId: f.estIdForzado || mejorEstudiante(f.nombre, estudiantes),
+      valores: f.numeros.slice(0, cols.length)
+    }));
+    viewState.modalNotasArchivo = {paso:2, cargando:false, error:'', cols, filas: filasRevision, grado, asignatura, periodo, avisoOcr};
+  }catch(e){
+    console.error(e);
+    viewState.modalNotasArchivo = {paso:1, cargando:false, error: e.message || 'No se pudo procesar el archivo.'};
+  }
+  render();
+}
+function aplicarNotasDesdeArchivo(){
+  const info = viewState.modalNotasArchivo;
+  if(!info || info.paso!==2) return;
+  const { grado, asignatura, periodo, cols } = info;
   const cambios = [];
-  let sinReconocer = 0;
-  for(let i=1; i<filas.length; i++){
-    const f = filas[i];
-    if(!f || f.every(x=>(x||'').trim()==='')) continue;
-    const id = (f[0]||'').trim();
-    const nombre = (f[1]||'').trim();
-    let est = estudiantes.find(e=>e.id===id);
-    if(!est && nombre) est = estudiantes.find(e=>normalizarComparacion(e.nombre)===normalizarComparacion(nombre));
-    if(!est){ sinReconocer++; continue; }
+  info.filas.forEach((f,i)=>{
+    const sel = document.getElementById('nf_est_' + i);
+    const estId = sel ? sel.value : f.estId;
+    if(!estId) return;
     cols.forEach((c, idx)=>{
-      const crudo = (f[2+idx]===undefined ? '' : String(f[2+idx])).trim();
-      if(crudo==='') return;   // casilla vacía en el archivo: no se toca lo que ya había
+      const inp = document.getElementById('nf_val_' + i + '_' + idx);
+      const crudo = inp ? inp.value.trim() : '';
+      if(crudo==='') return;
       const limpio = crudo.replace(',', '.');
       if(!/^\d{1,3}(\.\d+)?$/.test(limpio)) return;
       const val = Math.max(0, Math.min(100, Math.round(Number(limpio)*10)/10));
-      cambios.push({estId: est.id, comp: c.comp, valor: val});
+      cambios.push({estId, comp:c.comp, valor: val});
     });
-  }
-  if(cambios.length===0){
-    showToast(sinReconocer ? ('No se reconoció a ningún estudiante (' + sinReconocer + ' fila(s)). No borres la columna "ID".') : 'No se encontraron notas nuevas que aplicar.');
-    return;
-  }
+  });
+  if(cambios.length===0){ showToast('No hay notas para aplicar — revisa que cada fila tenga un estudiante elegido y números.'); return; }
   commit(doc=>{
     doc.calificaciones = doc.calificaciones || {};
     doc.estados = doc.estados || {};
     cambios.forEach(ch=>{
       const key = ch.estId + '|' + asignatura + '|' + periodo + '|' + ch.comp;
       doc.calificaciones[key] = ch.valor;
-      // Igual que al escribir una nota a mano: si queda arriba de 70 y la
-      // casilla tiene selector de estado, se marca "Entregada" sola.
       const esActividad = ch.comp.indexOf('act:')===0;
       const tieneEstado = esActividad || !!(rubrosActivos().find(r=>r.key===ch.comp && r.tarea));
       if(tieneEstado && ch.valor>70){
@@ -11223,8 +11344,69 @@ async function subirNotasCsv(inputEl){
       }
     });
   });
+  viewState.modalNotasArchivo = null;
   render();
-  showToast('Notas aplicadas: ' + cambios.length + (sinReconocer ? ('. ' + sinReconocer + ' fila(s) no se reconocieron.') : '') + '. Recuerda pulsar "Guardar cambios".');
+  showToast('Notas aplicadas: ' + cambios.length + '. Recuerda pulsar "Guardar cambios".');
+}
+function renderModalNotasArchivo(){
+  const info = viewState.modalNotasArchivo;
+  if(!info) return '';
+  if(info.paso===1){
+    return `<div class="modal-bg" onclick="if(event.target===this) cerrarCargarNotasArchivo()">
+      <div class="modal">
+        <button class="modal-close" onclick="cerrarCargarNotasArchivo()">×</button>
+        <h3 class="modal-title">Cargar notas desde archivo</h3>
+        <p class="nota-chica" style="margin-top:-6px;">Sube el <b>.csv</b> o el <b>.pdf</b> que descargaste de "Descargar en PDF", o una foto/captura de una tabla de notas. Vas a poder revisar y corregir todo antes de guardar.</p>
+        ${info.cargando ? `<div class="note">Procesando el archivo, un momento…</div>` : `
+        <div class="field"><label>Subir un .csv, un PDF o una foto</label>
+          <input type="file" accept=".csv,text/csv,.pdf,image/*" onchange="procesarArchivoNotas(this.files[0])"></div>
+        <div class="field">
+          <label>O pega una captura de pantalla</label>
+          <div tabindex="0" onpaste="manejarPegadoNotasArchivo(event)"
+            style="border:2px dashed var(--line-strong); border-radius:10px; padding:22px; text-align:center; color:var(--muted); font-size:13px; cursor:text;">
+            Hacé clic acá adentro y presioná Ctrl+V para pegar una imagen
+          </div>
+        </div>
+        ${info.error?`<p style="color:var(--red); font-size:13px;">${esc(info.error)}</p>`:''}
+        `}
+      </div>
+    </div>`;
+  }
+  const estudiantesGrado = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===info.grado), getPref('ordenEst','apellidos'));
+  return `<div class="modal-bg" onclick="if(event.target===this) cerrarCargarNotasArchivo()">
+    <div class="modal" style="max-width:96vw; width:980px;">
+      <button class="modal-close" onclick="cerrarCargarNotasArchivo()">×</button>
+      <h3 class="modal-title">Revisa antes de guardar</h3>
+      <p class="nota-chica" style="margin-top:-6px;">
+        ${info.avisoOcr?'El reconocimiento de fotos no es exacto, sobre todo con celdas en blanco — revisa número por número antes de guardar. ':''}
+        Confirma el estudiante de cada fila (si no se adivinó bien, elígelo en la lista) y corrige lo que falte. Una celda vacía no se guarda ni borra nada.
+      </p>
+      <div class="table-wrap" style="max-height:60vh;">
+      <table class="ledger-table">
+        <thead><tr>
+          <th>Detectado</th><th style="width:190px;">Estudiante</th>
+          ${info.cols.map(c=>`<th style="width:70px;" title="${esc(c.titulo)}">${esc(c.titulo)}</th>`).join('')}
+        </tr></thead>
+        <tbody>
+          ${info.filas.map((f,i)=>`<tr>
+            <td style="font-size:12px; color:var(--muted);">${esc(f.nombreDetectado)}</td>
+            <td>
+              <select id="nf_est_${i}" class="estado-sel">
+                <option value="">— Ignorar fila —</option>
+                ${estudiantesGrado.map(e=>`<option value="${e.id}" ${f.estId===e.id?'selected':''}>${esc(e.nombre)}</option>`).join('')}
+              </select>
+            </td>
+            ${info.cols.map((c,idx)=>`<td><input type="text" inputmode="decimal" style="width:56px;" id="nf_val_${i}_${idx}" value="${esc(f.valores[idx]||'')}"></td>`).join('')}
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:16px;">
+        <button class="btn btn-primary" onclick="aplicarNotasDesdeArchivo()">Aplicar notas</button>
+        <button class="btn" onclick="cerrarCargarNotasArchivo()">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 /* Descarga en PDF la tabla de notas por aula, horizontal y con encabezado repetido */
