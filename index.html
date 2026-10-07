@@ -1130,9 +1130,48 @@ async function flush(){
 async function reintentarGuardado(){
   if(sesionEstudiante){ await actualizarDatosEstudiante(); return; }
   intentosFallidos = 0;
-  await intentarPromocion();
-  if(pendientes.length>0){ programarGuardado(0); showToast('Reintentando…'); }
-  else pullCambios(false);
+  const motorPrevio = motor;
+  const promovido = await intentarPromocion();
+  if(pendientes.length>0){ programarGuardado(0); showToast('Reintentando…'); return; }
+  if(promovido && (motorPrevio==='local' || motorPrevio==='memoria')){
+    showToast('Conectado con el centro escolar — sincronizando.');
+    return;
+  }
+  if(!promovido && (motorPrevio==='local' || motorPrevio==='memoria')){
+    showToast('Sigue sin conectar. Se seguirá intentando solo; revisa tu internet o el enlace.');
+    return;
+  }
+  pullCambios(false);
+}
+/* Botón explícito de "Reintentar conexión" en Ajustes → Sincronización.
+   Da información aunque no haya nada pendiente de guardar (a diferencia
+   del punto de la barra lateral, que solo llama la atención cuando algo
+   necesita el ojo de la persona). */
+async function reintentarConexionManual(){
+  showToast('Probando conexión…');
+  await reintentarGuardado();
+  render();
+}
+/* Mientras el equipo quedó "Solo este equipo" o "Sin guardado" (no se pudo
+   hablar con el centro escolar al abrir, o se perdió a media sesión), se
+   sigue intentando conectar solo, de fondo, sin que la persona tenga que
+   hacer nada ni recargar la página. Se detiene en cuanto queda conectado. */
+let promocionTimer = null;
+function vigilarPromocion(){
+  if(promocionTimer) clearInterval(promocionTimer);
+  if(motor === 'nube' || motor === 'compartido') return;
+  promocionTimer = setInterval(async ()=>{
+    if(document.hidden) return;
+    if(motor === 'nube' || motor === 'compartido'){
+      clearInterval(promocionTimer); promocionTimer = null;
+      return;
+    }
+    const ok = await intentarPromocion();
+    if(ok){
+      clearInterval(promocionTimer); promocionTimer = null;
+      showToast('Conectado con el centro escolar — sincronizando.');
+    }
+  }, 20000);
 }
 /* Actualización periódica y manual para sesiones de estudiante: repite la
    misma consulta filtrada al servidor, nunca la base completa. */
@@ -1684,21 +1723,22 @@ function renderSyncIndicator(){
   if(syncStatus==='pendiente'){ color = 'var(--gold)'; texto = 'Guardando…'; necesitaAtencion = true; }
   else if(syncStatus==='manual'){ color = 'var(--gold)'; texto = 'Cambios sin guardar'; necesitaAtencion = true; }
   else if(syncStatus==='error'){ color = 'var(--red)'; texto = 'No se pudo guardar — toca para reintentar'; necesitaAtencion = true; }
-  else if(motor==='nube'){ texto = 'Sincronizado ' + hora; }
+  let sinSincronizar = false;
+  if(motor==='nube'){ texto = 'Sincronizado ' + hora; }
   else if(motor==='compartido'){ texto = 'Sincronizado ' + hora; }
-  else if(motor==='local'){ texto = 'Solo este equipo ' + hora; }
-  else { texto = 'Sin guardado — descarga respaldo'; color = 'var(--red)'; necesitaAtencion = true; }
+  else if(motor==='local'){ texto = 'Solo este equipo ' + hora + ' · toca para conectar'; color = 'var(--gold)'; sinSincronizar = true; }
+  else { texto = 'Sin guardado — descarga respaldo · toca para reintentar'; color = 'var(--red)'; necesitaAtencion = true; sinSincronizar = true; }
   // El avatar chiquito de la persona va a la par del estado, siempre visible
   // (no hace falta tocar nada para verlo). El resto de la tarjeta (nombre,
   // Instalar app, Notificaciones, Cambiar de usuario) se despliega aparte,
   // solo si se toca esta fila.
   const avatarColor = sesionEstudiante ? '#2F6F5E' : domainColor(currentUser.dominio);
   const iniciales = sesionEstudiante ? initials(nombreCompleto(currentUser.nombres, currentUser.apellidos)) : initials(currentUser.nombre);
-  const accion = necesitaAtencion ? 'reintentarGuardado()' : 'toggleSidebarFooter()';
+  const accion = (necesitaAtencion || sinSincronizar) ? 'reintentarGuardado()' : 'toggleSidebarFooter()';
   const espacioAbajo = sidebarFooterVisible ? '8px' : '0';
-  return `<div id="sync-indicator" style="display:flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:${espacioAbajo};" onclick="${accion}" title="${necesitaAtencion?'Reintentar / actualizar':'Tocar para ver más opciones'}">
+  return `<div id="sync-indicator" style="display:flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:${espacioAbajo};" onclick="${accion}" title="${(necesitaAtencion||sinSincronizar)?'Reintentar conexión con el centro escolar':'Tocar para ver más opciones'}">
     <div class="user-avatar" style="width:24px;height:24px;font-size:9px;background:${avatarColor};flex-shrink:0;">${esc(iniciales)}</div>
-    <span style="font-size:11px; color:${necesitaAtencion?color:'var(--muted)'};">${esc(texto)}</span>
+    <span style="font-size:11px; color:${(necesitaAtencion||sinSincronizar)?color:'var(--muted)'};">${esc(texto)}</span>
   </div>`;
 }
 function renderSincronizacion(){
@@ -1896,9 +1936,12 @@ function responder(texto) {
   </div>
 
   <div class="card">
-    <p class="card-title">Estado actual <span class="pill ${pill}">${esc(etiqueta)}</span></p>
+    <p class="card-title">Estado actual <span class="pill ${pill}">${esc(etiqueta)}</span>
+      ${motor!=='nube' && motor!=='compartido' ? `<button class="btn btn-sm" onclick="reintentarConexionManual()">Reintentar conexión</button>` : ''}
+    </p>
     <div class="note" style="margin-bottom:12px;">Este sistema ya trae integrado el enlace del centro escolar: no hace falta configurar nada en cada equipo, se conecta solo. Ya no es posible cambiarlo manualmente desde aquí (se quitó esa opción para que ningún equipo quede apuntando por error a un enlace distinto).</div>
     <p style="font-size:13.5px; color:var(--muted); margin:0;">${esc(detalle)}</p>
+    ${motor!=='nube' && motor!=='compartido' ? `<p style="font-size:12.5px; color:var(--muted); margin:8px 0 0;">Esto intenta conectar solo cada rato, pero si acabas de resolver algo (internet, el enlace, etc.) puedes pulsar "Reintentar conexión" para no esperar.</p>` : ''}
   </div>
 
   ${!admin ? `<div class="card">
@@ -10811,6 +10854,9 @@ function renderCalificaciones(){
         ${asignaturasPosibles.map(s=>`<option value="${s.id}" ${asignatura===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}
       </select>
     </div>
+    ${asignatura && puedeVerPanel(currentUser,'hojas')?`<div class="field" style="align-self:end;">
+      <button class="btn btn-sm" onclick="setPref('hojaGrado','${esc(grado)}'); setPref('hojaAsig','${asignatura}'); setPref('hojaPeriodo',${periodo}); goTo('hojas')">Ir a Hoja de tareas de esta aula/asignatura</button>
+    </div>`:''}
   </div>
 
   ${asignaturasPosibles.length===0 ? `<div class="card"><p class="empty">No tienes asignaturas asignadas en esta aula.</p></div>` : `
@@ -10818,6 +10864,8 @@ function renderCalificaciones(){
     ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="setPref('califPeriodo', ${p})">Período ${p}</div>`).join('')}
     ${puedeEditar?`<button class="btn btn-sm" style="margin-left:auto; align-self:center;" onclick="abrirDuplicarNotas()" title="Copiar las notas de esta asignatura/período a otra">Duplicar notas a…</button>`:''}
     <button class="btn btn-sm" onclick="descargarCalificaciones('${esc(grado)}','${asignatura}',${periodo})">Descargar en PDF</button>
+    ${puedeEditar?`<button class="btn btn-sm" onclick="document.getElementById('input_subir_notas').click()" title="Sube una hoja con notas y se ponen solas en esta tabla">Subir notas</button>
+    <input type="file" id="input_subir_notas" accept=".csv,text/csv" style="display:none;" onchange="subirNotasCsv(this)">`:''}
   </div>
 
   <div class="card" style="border-radius:0 var(--radius) var(--radius) var(--radius); margin-top:0;">
@@ -11044,6 +11092,139 @@ function descargarCalificaciones(grado, asigId, periodo){
   v.document.write(html);
   v.document.close();
   showToast('En el diálogo de impresión elige "Guardar como PDF".');
+}
+
+/* ===================== NOTAS: descargar para editar y volver a subir =====================
+   Columnas SIEMPRE en el mismo orden que calcula columnasNotas(): actividades
+   (en el orden de la Hoja de tareas) y luego los rubros del período
+   (integradoras, examen, cuaderno…, con su columna de recuperación si aplica).
+   Al subir, se usa la POSICIÓN de la columna para saber a qué casilla
+   corresponde cada nota — así no importa si alguien le cambia el título a una
+   columna, y no hay que adivinar nombres. Por eso nunca hay que reordenar ni
+   borrar columnas del archivo descargado, solo llenar los números. */
+function columnasNotas(grado, asigId, periodo){
+  const cols = [];
+  getActividades(grado, asigId, periodo).forEach(a=>{
+    cols.push({comp:'act:'+a.id, titulo: etiquetaCorta(a.id) || a.nombre});
+  });
+  rubrosActivos().forEach(r=>{
+    const nom = getNombreRubro(grado, asigId, r.key, periodo);
+    cols.push({comp:r.key, titulo: etiquetaCorta(r.key) || nom});
+    if(r.conRecuperacion) cols.push({comp:claveRecuperacion(r.key), titulo:'Recup. ' + (etiquetaCorta(r.key) || nom)});
+  });
+  return cols;
+}
+function campoCsv(v){
+  const s = String(v===undefined||v===null?'':v);
+  return /[",;\r\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+/* Parser de CSV sencillo, con soporte de comillas (para nombres con comas). */
+function parsearCsv(texto){
+  const filas = [];
+  let fila = [], campo = '', enComillas = false;
+  texto = String(texto||'').replace(/^﻿/, '');
+  for(let i=0;i<texto.length;i++){
+    const c = texto[i];
+    if(enComillas){
+      if(c==='"'){ if(texto[i+1]==='"'){ campo+='"'; i++; } else enComillas=false; }
+      else campo += c;
+    }else{
+      if(c==='"') enComillas = true;
+      else if(c===','){ fila.push(campo); campo=''; }
+      else if(c==='\r'){ /* se ignora, lo maneja \n */ }
+      else if(c==='\n'){ fila.push(campo); filas.push(fila); fila=[]; campo=''; }
+      else campo += c;
+    }
+  }
+  if(campo!=='' || fila.length){ fila.push(campo); filas.push(fila); }
+  return filas.filter(f=>!(f.length<=1 && (f[0]||'').trim()===''));
+}
+function descargarNotasCsv(grado, asigId, periodo){
+  const asig = DB.asignaturas.find(a=>a.id===asigId);
+  if(!asig){ showToast('Selecciona una asignatura.'); return; }
+  const cols = columnasNotas(grado, asigId, periodo);
+  if(cols.length===0){ showToast('No hay casillas de actividades ni rubros configurados todavía.'); return; }
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
+  const encabezado = ['ID (no borrar)','Estudiante', ...cols.map(c=>c.titulo)];
+  const filas = estudiantes.map(e=>{
+    const vals = cols.map(c=>{ const v = getComp(e.id, asigId, periodo, c.comp); return v===undefined?'':v; });
+    return [e.id, e.nombre, ...vals];
+  });
+  const texto = [encabezado, ...filas].map(f=>f.map(campoCsv).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + texto], {type:'text/csv;charset=utf-8'});
+  const nombreArchivo = ('Notas ' + asig.nombre + ' - ' + grado + ' - Periodo ' + periodo)
+    .replace(/[\\\/:\*\?"<>\|]/g,' ').trim();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nombreArchivo + '.csv';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+  showToast('Descargado: ' + nombreArchivo + '.csv — puedes abrirlo y editarlo en Excel.');
+}
+/* Lee el .csv ya lleno y pone las notas directamente en la tabla de
+   Calificaciones (misma aula/asignatura/período que están seleccionados en
+   pantalla en ese momento). No toca las casillas que vengan vacías en el
+   archivo, para no borrar notas sin querer. Identifica a cada estudiante por
+   su ID (primera columna); si esa columna se borró o no coincide, intenta
+   por el nombre completo como respaldo. */
+async function subirNotasCsv(inputEl){
+  const file = inputEl.files && inputEl.files[0];
+  inputEl.value = '';
+  if(!file) return;
+  const grado = getPref('califGrado','');
+  const asignatura = getPref('califAsig','');
+  const periodo = Number(getPref('califPeriodo',1)) || 1;
+  if(!grado || !asignatura){ showToast('Selecciona aula y asignatura antes de subir notas.'); return; }
+  if(!canEditGrades(currentUser, grado, asignatura)){ showToast('No tienes permiso para editar las notas de esta asignatura.'); return; }
+  let texto;
+  try{ texto = await file.text(); }
+  catch(e){ showToast('No se pudo leer el archivo.'); return; }
+  const filas = parsearCsv(texto);
+  if(filas.length < 2){ showToast('El archivo está vacío o no tiene filas de estudiantes.'); return; }
+  const cols = columnasNotas(grado, asignatura, periodo);
+  const estudiantes = DB.estudiantes.filter(e=>e.grado===grado);
+  const cambios = [];
+  let sinReconocer = 0;
+  for(let i=1; i<filas.length; i++){
+    const f = filas[i];
+    if(!f || f.every(x=>(x||'').trim()==='')) continue;
+    const id = (f[0]||'').trim();
+    const nombre = (f[1]||'').trim();
+    let est = estudiantes.find(e=>e.id===id);
+    if(!est && nombre) est = estudiantes.find(e=>normalizarComparacion(e.nombre)===normalizarComparacion(nombre));
+    if(!est){ sinReconocer++; continue; }
+    cols.forEach((c, idx)=>{
+      const crudo = (f[2+idx]===undefined ? '' : String(f[2+idx])).trim();
+      if(crudo==='') return;   // casilla vacía en el archivo: no se toca lo que ya había
+      const limpio = crudo.replace(',', '.');
+      if(!/^\d{1,3}(\.\d+)?$/.test(limpio)) return;
+      const val = Math.max(0, Math.min(100, Math.round(Number(limpio)*10)/10));
+      cambios.push({estId: est.id, comp: c.comp, valor: val});
+    });
+  }
+  if(cambios.length===0){
+    showToast(sinReconocer ? ('No se reconoció a ningún estudiante (' + sinReconocer + ' fila(s)). No borres la columna "ID".') : 'No se encontraron notas nuevas que aplicar.');
+    return;
+  }
+  commit(doc=>{
+    doc.calificaciones = doc.calificaciones || {};
+    doc.estados = doc.estados || {};
+    cambios.forEach(ch=>{
+      const key = ch.estId + '|' + asignatura + '|' + periodo + '|' + ch.comp;
+      doc.calificaciones[key] = ch.valor;
+      // Igual que al escribir una nota a mano: si queda arriba de 70 y la
+      // casilla tiene selector de estado, se marca "Entregada" sola.
+      const esActividad = ch.comp.indexOf('act:')===0;
+      const tieneEstado = esActividad || !!(rubrosActivos().find(r=>r.key===ch.comp && r.tarea));
+      if(tieneEstado && ch.valor>70){
+        const idEstado = esActividad ? ch.comp.slice(4) : ch.comp;
+        const ek = ch.estId + '|' + asignatura + '|' + periodo + '|' + idEstado;
+        if(!doc.estados[ek]) doc.estados[ek] = 'entregada';
+      }
+    });
+  });
+  render();
+  showToast('Notas aplicadas: ' + cambios.length + (sinReconocer ? ('. ' + sinReconocer + ' fila(s) no se reconocieron.') : '') + '. Recuerda pulsar "Guardar cambios".');
 }
 
 /* Descarga en PDF la tabla de notas por aula, horizontal y con encabezado repetido */
@@ -11377,6 +11558,7 @@ function renderMatriz(){
   }catch(e){ console.error('init', e); }
   render();
   iniciarSync();
+  vigilarPromocion();
 })();
 </script>
 </body>
