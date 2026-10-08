@@ -830,7 +830,32 @@ async function detectarMotor(){
 async function intentarPromocion(){
   if(motor === 'compartido' || motor === 'nube') return false;
   if(getSyncUrl()){
-    try{ await nubePing(); motor='nube'; iniciarSync(); setSyncStatus('ok'); if(currentUser) render(); return true; }catch(e){}
+    try{
+      await nubePing();
+      // Lo que se trabajó mientras no había conexión (reportes, notas…) vive
+      // solo en este equipo: antes de pasar al modo compartido hay que
+      // SUBIRLO combinado con lo del Drive, o quedaría invisible para los
+      // demás (y para Dirección) y se perdería de pantalla al sincronizar.
+      if(!sesionEstudiante){
+        const nubeDoc = await nubeLeer();
+        const mio = JSON.parse(JSON.stringify(docActual()));
+        const sinDatosPropios = (mio.estudiantes||[]).length === 0 &&
+          (mio.docentes||[]).length <= 1 &&
+          Object.keys(mio.calificaciones||{}).length === 0 &&
+          (mio.reportes||[]).length === 0;
+        if(nubeDoc && !sinDatosPropios){
+          const {doc:combinado} = combinarDocs(mio, nubeDoc, true);
+          repararCorrelativosDuplicados(combinado);
+          await nubeEscribir(JSON.stringify(combinado));
+          adoptarDoc(combinado);
+        }else if(nubeDoc){
+          adoptarDoc(nubeDoc);
+        }else if(!sinDatosPropios){
+          await nubeEscribir(JSON.stringify(mio));
+        }
+      }
+      motor='nube'; iniciarSync(); setSyncStatus('ok'); if(currentUser) render(); return true;
+    }catch(e){ console.warn('no se pudo pasar a modo compartido', e); }
   }
   if(!(typeof window !== 'undefined' && window.storage && typeof window.storage.get === 'function')) return false;
   try{
@@ -1979,8 +2004,10 @@ function copiarCodigo(){
 /* Combina lo que este equipo tiene con lo que ya está en el Drive.
    Regla: nunca se borra nada de nadie. Ante una nota repetida en la misma
    casilla, se conserva la que ya estaba en el Drive y se reporta el choque. */
-function combinarDocs(local, nube){
-  const res = {
+function combinarDocs(local, nube, preferirNube){
+  // Se parte de TODO lo que ya hay en el Drive (mensajes, reuniones, eliminados…)
+  // para que subir lo de este equipo nunca borre secciones que esta función no conoce.
+  const res = Object.assign({}, nube, {
     estudiantes: (nube.estudiantes||[]).slice(),
     asignaturas: (nube.asignaturas||[]).slice(),
     docentes: (nube.docentes||[]).slice(),
@@ -1999,7 +2026,14 @@ function combinarDocs(local, nube){
     averias: (nube.averias||[]).concat((local.averias||[]).filter(r=>!(nube.averias||[]).some(x=>x.id===r.id))),
     ajustes: (local.ajustes && local.ajustes.nombreColegio &&
               local.ajustes.nombreColegio !== 'Centro Escolar') ? local.ajustes : (nube.ajustes || local.ajustes)
-  };
+  });
+  if(preferirNube){
+    // Al reconectar un equipo que trabajó sin conexión, su copia puede estar
+    // desactualizada: ante un choque manda lo que ya está en el Drive.
+    res.boletaDatos = Object.assign({}, local.boletaDatos||{}, nube.boletaDatos||{});
+    res.hojas = Object.assign({}, local.hojas||{}, nube.hojas||{});
+    res.ajustes = nube.ajustes || local.ajustes;
+  }
   const cuenta = {estudiantes:0, docentes:0, asignaturas:0, notas:0, choques:0};
   const mapaIds = {};   // id local -> id definitivo en el Drive
 
@@ -2047,7 +2081,7 @@ function combinarDocs(local, nube){
     const nueva = [mapaIds[p[0]]||p[0], mapaIds[p[1]]||p[1], p[2], p[3]].join('|');
     if(!(nueva in res.calificaciones)){ res.calificaciones[nueva] = local.calificaciones[k]; cuenta.notas++; }
     else if(res.calificaciones[nueva] !== local.calificaciones[k]){
-      res.calificaciones[nueva] = local.calificaciones[k];   // este equipo actualiza el Drive
+      if(!preferirNube) res.calificaciones[nueva] = local.calificaciones[k];   // este equipo actualiza el Drive
       cuenta.choques++;
     }
   });
