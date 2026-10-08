@@ -1690,6 +1690,7 @@ function hayEdicionEnCurso(){
   // abierto, igual que con los otros modales de arriba.
   if(viewState.modalCargarArchivo) return true;
   if(viewState.modalNotasArchivo) return true;
+  if(viewState.modalSubirReporte) return true;
   return false;
 }
 async function pullCambios(silencioso){
@@ -4366,6 +4367,7 @@ function renderReportes(){
         <button class="btn" onclick="verReporteAntes()">Vista previa</button>
         <button class="btn" onclick="descargarReporteFormulario()">Descargar en PDF</button>
         <button class="btn" onclick="descargarPlantillaReporte()">Plantilla en blanco</button>
+        <button class="btn" onclick="abrirSubirReporte()" title="Sube el PDF o la foto de un reporte que se descargó cuando no había conexión">Subir reporte (PDF/foto)</button>
         <button class="btn" onclick="setPref('repVista','historial')">Ver historial</button>
       </div>
       <p class="nota-chica">Al guardar, el formulario queda en blanco para el siguiente reporte.</p>`}
@@ -4380,7 +4382,8 @@ function renderReportes(){
   </div>
   ${pestanas}
   ${cuerpo}
-  ${renderTecladoEmojis()}`;
+  ${renderTecladoEmojis()}
+  ${renderModalSubirReporte()}`;
 }
 /* Número correlativo del centro escolar: 001, 002… sin importar el docente.
    Una vez asignado, un número queda reservado para siempre, incluso si el
@@ -5295,6 +5298,182 @@ function descargarReporteFormulario(){
   const r = reporteDelFormulario();
   if(!r.estudiante){ showToast('Selecciona el estudiante.'); return; }
   imprimirReportes([r], 'REPORTE ' + nivelFalta(r.nivel).formato + ' ' + r.estudiante.toUpperCase());
+}
+/* ===================== REPORTES: subir un reporte ya descargado (PDF o foto) =====================
+   Sirve cuando no hubo conexión, el reporte se descargó en PDF y después ya
+   no aparece en el sistema. Se lee el texto del PDF (cada página = un
+   reporte), se reconstruyen los campos y SIEMPRE se muestra una pantalla
+   de revisión antes de guardar. Las casillas marcadas (situación,
+   antecedentes, acciones) no se pueden recuperar de un PDF: si hacen falta,
+   se vuelven a marcar al abrir el reporte. */
+function abrirSubirReporte(){
+  viewState.modalSubirReporte = {paso:1, cargando:false, error:''};
+  render();
+}
+function cerrarSubirReporte(){ viewState.modalSubirReporte = null; render(); }
+async function extraerPaginasPdf(file){
+  await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  if(typeof pdfjsLib !== 'undefined'){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  const buf = await leerArchivoComoArrayBuffer(file);
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  const paginas = [];
+  for(let i=1; i<=pdf.numPages; i++){
+    const page = await pdf.getPage(i);
+    const contenido = await page.getTextContent();
+    paginas.push(contenido.items.map(it=>it.str).join(' '));
+  }
+  return paginas;
+}
+function textoEntre(texto, inicio, fin){
+  const m = inicio.exec(texto);
+  if(!m) return '';
+  const resto = texto.slice(m.index + m[0].length);
+  const f = fin ? fin.exec(resto) : null;
+  return (f ? resto.slice(0, f.index) : resto).replace(/\s+/g,' ').trim();
+}
+function interpretarTextoReporte(crudo){
+  const t = String(crudo||'').replace(/\s+/g,' ').trim();
+  let nivel = '';
+  if(/Comunicaci[oó]n verbal/i.test(t)) nivel = 'comunicacion';
+  else if(/Situaci[oó]n presentada/i.test(t)) nivel = 'grave';
+  else if(/Descripci[oó]n del incidente/i.test(t)) nivel = 'muygrave';
+  else if(/BREVE DESCRIPCI[OÓ]N DE LA INCIDENCIA/i.test(t)) nivel = 'leve';
+  const r = {nivel: nivel || 'leve', nivelDetectado: !!nivel, estudiante:'', fecha:'', lugar:'',
+    descripcion:'', medida:'', acuerdosAlumno:'', acuerdosPadres:''};
+  const mEst = /Estudiante:\s*(.*?)\s*Grado:/.exec(t);
+  if(mEst) r.estudiante = mEst[1].replace(/\s*\b(F1|F2|F3|CV)\b\s*/g,' ').trim();
+  if(r.nivel==='leve'){
+    r.descripcion = textoEntre(t, /BREVE DESCRIPCI[OÓ]N DE LA INCIDENCIA/i, /\bFECHA\s+DIA\b|\bFECHA\b/);
+    r.acuerdosAlumno = textoEntre(t, /ACUERDOS Y COMPROMISOS DEL ESTUDIANTE/i, /NOMBRE Y FIRMA DEL PADRE/i);
+    const mf = /DIA\s+MES\s+A[ÑN]O\s+(\d{1,2})\s+(\d{1,2})\s+(\d{4})/i.exec(t);
+    if(mf) r.fecha = mf[3] + '-' + mf[2].padStart(2,'0') + '-' + mf[1].padStart(2,'0');
+  }else if(r.nivel==='grave'){
+    r.medida = textoEntre(t, /Acciones que se tomaron al momento de intervenir/i, /Descripci[oó]n breve de la situaci[oó]n/i);
+    r.descripcion = textoEntre(t, /Descripci[oó]n breve de la situaci[oó]n/i, /Acuerdos y compromisos/i);
+    r.acuerdosPadres = textoEntre(t, /Del padre de Familia/i, /Del Estudiante/i);
+    r.acuerdosAlumno = textoEntre(t, /Del Estudiante/i, /\bFirmas\b/);
+  }else if(r.nivel==='muygrave'){
+    r.descripcion = textoEntre(t, /Descripci[oó]n del incidente/i, /\sAcuerdos\s/);
+    r.acuerdosAlumno = textoEntre(t, /\sAcuerdos\s/, /\bFirmas\b/);
+  }else{
+    r.descripcion = textoEntre(t, /¿Qu[eé] se convers[oó] con el estudiante\?/i, /Compromiso del estudiante/i);
+    r.acuerdosAlumno = textoEntre(t, /Compromiso del estudiante/i, /\bFirmas\b/);
+    const mf = /Fecha:\s*(\d{4}-\d{2}-\d{2})/.exec(t);
+    if(mf) r.fecha = mf[1];
+    const ml = /Lugar:\s*(.*?)\s*¿Qu/i.exec(t);
+    if(ml) r.lugar = ml[1].trim();
+  }
+  return r;
+}
+async function procesarArchivoReporte(file){
+  if(!file) return;
+  viewState.modalSubirReporte = {paso:1, cargando:true, error:''};
+  render();
+  try{
+    let textos = [];
+    const nombre = (file.name||'').toLowerCase();
+    if(nombre.endsWith('.pdf') || file.type==='application/pdf') textos = await extraerPaginasPdf(file);
+    else if(/^image\//.test(file.type)) textos = [await extraerTextoImagen(file)];
+    else throw new Error('Ese tipo de archivo no se reconoce. Sube el PDF del reporte o una foto.');
+    textos = textos.filter(x=>x && x.trim());
+    if(textos.length===0) throw new Error('No se encontró texto en ese archivo.');
+    const items = textos.map(tx=>{
+      const r = interpretarTextoReporte(tx);
+      r.estId = r.estudiante ? mejorEstudiante(r.estudiante, DB.estudiantes) : '';
+      if(!r.fecha) r.fecha = new Date().toISOString().slice(0,10);
+      return r;
+    });
+    viewState.modalSubirReporte = {paso:2, cargando:false, error:'', items};
+  }catch(e){
+    console.error(e);
+    viewState.modalSubirReporte = {paso:1, cargando:false, error: e.message || 'No se pudo procesar el archivo.'};
+  }
+  render();
+}
+function guardarReportesSubidos(){
+  const info = viewState.modalSubirReporte;
+  if(!info || info.paso!==2) return;
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const nuevos = [];
+  let n = siguienteCorrelativo();
+  info.items.forEach((it,i)=>{
+    const inc = document.getElementById('sr_inc_' + i);
+    if(inc && !inc.checked) return;
+    const est = DB.estudiantes.find(e=>e.id===val('sr_est_' + i));
+    const desc = val('sr_desc_' + i);
+    if(!est || !desc) return;
+    const nivel = val('sr_nivel_' + i) || 'leve';
+    nuevos.push({
+      id: uid('rep'), numero: n++, ts: new Date().toISOString(), nivel,
+      vistas: [], seguimientos: [],
+      estId: est.id, estudiante: apellidosDe(est) + ', ' + nombresDe(est), grado: est.grado,
+      fecha: val('sr_fecha_' + i), lugar: it.lugar || '', reincidencias: '', articuloManual: '',
+      situaciones: [], antecedentes: [], acciones: [],
+      descripcion: desc, medida: val('sr_medida_' + i),
+      acuerdosAlumno: val('sr_acalu_' + i), acuerdosPadres: val('sr_acpad_' + i),
+      imagen: null, docente: currentUser.nombre, docenteId: currentUser.id
+    });
+  });
+  if(nuevos.length===0){ showToast('Nada que guardar: cada reporte necesita estudiante y descripción.'); return; }
+  commit(doc=>{
+    doc.reportes = doc.reportes || [];
+    nuevos.forEach(r=>doc.reportes.push(r));
+    doc.config.correlativoReportes = Math.max(doc.config.correlativoReportes||0, nuevos[nuevos.length-1].numero);
+  });
+  nuevos.forEach(r=>registrar('Reporte disciplinario', correlativoTexto(r.numero) + ' · subido desde archivo — ' + r.estudiante));
+  viewState.modalSubirReporte = null;
+  showToast(nuevos.length + ' reporte(s) guardado(s).');
+  render();
+}
+function renderModalSubirReporte(){
+  const info = viewState.modalSubirReporte;
+  if(!info) return '';
+  if(info.paso===1){
+    return `<div class="modal-bg" onclick="if(event.target===this) cerrarSubirReporte()">
+      <div class="modal">
+        <button class="modal-close" onclick="cerrarSubirReporte()">×</button>
+        <h3 class="modal-title">Subir reporte desde PDF o foto</h3>
+        <p class="nota-chica" style="margin-top:-6px;">Sube el PDF que descargaste del reporte (si tiene varias páginas, cada página es un reporte) o una foto. Vas a poder revisar y corregir todo antes de guardar.</p>
+        ${info.cargando ? `<div class="note">Procesando el archivo, un momento…</div>` : `
+        <div class="field"><label>PDF o foto del reporte</label>
+          <input type="file" accept=".pdf,application/pdf,image/*" onchange="procesarArchivoReporte(this.files[0])"></div>
+        ${info.error?`<p style="color:var(--red); font-size:13px;">${esc(info.error)}</p>`:''}`}
+      </div>
+    </div>`;
+  }
+  const todos = ordenarEstudiantes(DB.estudiantes.slice(), 'apellidos');
+  return `<div class="modal-bg" onclick="if(event.target===this) cerrarSubirReporte()">
+    <div class="modal" style="max-width:760px; max-height:92vh; overflow:auto;">
+      <button class="modal-close" onclick="cerrarSubirReporte()">×</button>
+      <h3 class="modal-title">Revisa antes de guardar</h3>
+      <p class="nota-chica" style="margin-top:-6px;">Confirma el tipo, el estudiante y el texto de cada reporte. Las casillas marcadas del formato no se pueden leer de un PDF; si las necesitas, vuelve a marcarlas después. Se guardará a tu nombre (${esc(currentUser.nombre)}) con el siguiente número disponible.</p>
+      ${info.items.map((it,i)=>`
+      <div class="card" style="margin-bottom:12px;">
+        <label class="check-chip"><input type="checkbox" id="sr_inc_${i}" checked> Guardar este reporte</label>
+        <div class="grid grid-2" style="margin-top:8px;">
+          <div class="field"><label>Tipo</label>
+            <select id="sr_nivel_${i}">${NIVELES_FALTA.map(n=>`<option value="${n.id}" ${it.nivel===n.id?'selected':''}>${esc(n.formato+' — '+n.nombre)}</option>`).join('')}</select></div>
+          <div class="field"><label>Fecha</label><input type="date" id="sr_fecha_${i}" value="${esc(it.fecha)}"></div>
+        </div>
+        <div class="field"><label>Estudiante ${it.estudiante?'<span class="nota-chica">(detectado: '+esc(it.estudiante)+')</span>':''}</label>
+          <select id="sr_est_${i}"><option value="">Selecciona el estudiante…</option>
+            ${todos.map(e=>`<option value="${e.id}" ${it.estId===e.id?'selected':''}>${esc(apellidosDe(e))}, ${esc(nombresDe(e))} — ${esc(e.grado)}</option>`).join('')}
+          </select></div>
+        <div class="field"><label>Descripción</label><textarea id="sr_desc_${i}" rows="4">${esc(it.descripcion)}</textarea></div>
+        <div class="field"><label>Acciones que se tomaron (solo F2)</label><textarea id="sr_medida_${i}" rows="2">${esc(it.medida)}</textarea></div>
+        <div class="grid grid-2">
+          <div class="field"><label>Acuerdos del padre de familia (solo F2)</label><textarea id="sr_acpad_${i}" rows="2">${esc(it.acuerdosPadres)}</textarea></div>
+          <div class="field"><label>Acuerdos / compromiso del estudiante</label><textarea id="sr_acalu_${i}" rows="2">${esc(it.acuerdosAlumno)}</textarea></div>
+        </div>
+      </div>`).join('')}
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="guardarReportesSubidos()">Guardar reportes</button>
+        <button class="btn" onclick="cerrarSubirReporte()">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
 }
 function verReporte(id, desdeEliminados){
   const r = desdeEliminados
