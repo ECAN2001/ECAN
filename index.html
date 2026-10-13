@@ -9941,15 +9941,17 @@ function renderTareas(){
       </div>`).join('')}`;
   }
 
+  if(pestana==='cartas') contenido = renderCartasRecuperacion();
   return `
   <div class="page-head">
     <p class="page-eyebrow">Seguimiento</p>
-    <h1 class="page-title">Registro de tareas</h1>
+    <h1 class="page-title">${pestana==='cartas'?'Registros y alertas':'Registro de tareas'}</h1>
     <p class="page-desc">Se alimenta solo de lo que cada docente carga en Calificaciones: fecha de la tarea, nota, estado y observaciones.</p>
   </div>
   <div class="period-tabs">
     <div class="period-tab ${pestana==='registro'?'active':''}" onclick="setPref('tareaTab','registro')">Registro</div>
     <div class="period-tab ${pestana==='alertas'?'active':''}" onclick="setPref('tareaTab','alertas')">Alertas</div>
+    <div class="period-tab ${pestana==='cartas'?'active':''}" onclick="setPref('tareaTab','cartas')">Cartas de recuperación</div>
   </div>
   <div style="border:1px solid var(--line-strong); border-radius:0 var(--radius) var(--radius) var(--radius); padding:18px; background:var(--panel-2);">
     ${contenido}
@@ -10022,12 +10024,7 @@ function promedioPeriodoEstudiante(estId, grado, periodo){
 
 function renderBoletas(){
   if(!puedeVerPanel(currentUser, 'boletas')) return renderNoAccess();
-  const tab = getPref('bolTab','boletas') === 'cartas' ? 'cartas' : 'boletas';
-  const barra = `<div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">
-    <button class="btn ${tab==='boletas'?'btn-primary':''}" onclick="setPref('bolTab','boletas')">Boletas</button>
-    <button class="btn ${tab==='cartas'?'btn-primary':''}" onclick="setPref('bolTab','cartas')">Cartas de recuperación</button>
-  </div>`;
-  return barra + (tab==='cartas' ? renderCartasRecuperacion() : renderBoletasContenido());
+  return renderBoletasContenido();
 }
 function renderBoletasContenido(){
   const grados = gradosBoleta(currentUser);
@@ -10558,6 +10555,15 @@ function cartasDeAula(grado, periodo, asigFiltro){
   }));
   return out;
 }
+function crTablaHtml(c, umbral){
+  const bd = 'border:1px solid #222; padding:5px 6px; text-align:center;';
+  const rojo = v => (v!=='' && !isNaN(Number(v)) && Math.round(Number(v)) < umbral) ? 'color:#e00000;' : '';
+  return `<table style="width:100%; border-collapse:collapse; margin:8px 0; font-size:13.5px;">
+    <tr><td colspan="${c.cols.length+1}" style="${bd}">Estudiante: <b style="background:#ffff00;">${esc(c.nombre)}</b></td></tr>
+    <tr><td style="${bd}">Materia</td>${c.cols.map(x=>`<td style="${bd}${x.t==='Promedio'?' background:#bdf0ff;':''}">${esc(x.t)}</td>`).join('')}</tr>
+    <tr><td style="${bd} font-weight:bold;"><span style="background:#ffff00;">${esc(c.asig.nombre)}</span></td>${c.cols.map(x=>`<td style="${bd} font-weight:bold; ${rojo(x.v)}${x.t==='Promedio'?' background:#bdf0ff;':''}">${esc(x.v)}</td>`).join('')}</tr>
+  </table>`;
+}
 function renderCartasRecuperacion(){
   const grados = misGrados(currentUser);
   if(grados.length===0){
@@ -10588,16 +10594,14 @@ function renderCartasRecuperacion(){
           <input type="date" value="${esc(c.fecha)}" ${d2} onchange="crGuardarFecha('${kq}', this.value)"></div>
         <div class="field"><label>Texto de la carta</label>
           <textarea rows="5" ${d2} onchange="crGuardarTexto('${kq}','intro', this.value)">${esc(c.intro)}</textarea></div>
-        <table style="width:100%; border-collapse:collapse; margin:8px 0; font-size:13px;">
-          <tr><th style="border:1px solid var(--line-strong); padding:5px;">Materia</th>${c.cols.map(x=>`<th style="border:1px solid var(--line-strong); padding:5px;">${esc(x.t)}</th>`).join('')}</tr>
-          <tr><td style="border:1px solid var(--line-strong); padding:5px;">${esc(c.asig.nombre)}</td>${c.cols.map(x=>`<td style="border:1px solid var(--line-strong); padding:5px; text-align:center;">${esc(x.v)}</td>`).join('')}</tr>
-        </table>
+        ${crTablaHtml(c, cfg.umbral)}
         <div class="field"><label>Qué debe hacer el estudiante</label>
           <textarea rows="4" ${d2} onchange="crGuardarTexto('${kq}','accion', this.value)">${esc(c.accion)}</textarea></div>
         <div class="note" style="white-space:pre-line;"><b>Horario (igual para todas las cartas):</b>\n${esc(cfg.horario)}</div>
         <div class="field"><label>Firma (nombre del docente)</label>
           <input type="text" value="${esc(c.firmaTxt)}" ${d2} onchange="crGuardarTexto('${kq}','firma', this.value)"></div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-sm" onclick="descargarCartasRecuperacion('${kq}', true)">Visualizar carta</button>
           <button class="btn btn-primary btn-sm" onclick="descargarCartasRecuperacion('${kq}')">PDF de esta carta</button>
           ${c.editada && puede ? `<button class="btn btn-sm" onclick="crRestablecer('${kq}')">Restablecer redacción automática</button>`:''}
         </div>
@@ -10605,11 +10609,7 @@ function renderCartasRecuperacion(){
     </details>`;
   };
   return `
-  <div class="page-head">
-    <p class="page-eyebrow">Reportes</p>
-    <h1 class="page-title">Cartas de recuperación</h1>
-    <p class="page-desc">Se generan solas para cada estudiante que dejó el examen o el promedio del período (menos de ${cfg.umbral}), según la materia y el grado. Cada carta se puede editar.</p>
-  </div>
+  <p class="nota-chica" style="margin:0 0 12px;">Se generan solas para cada estudiante que dejó el examen o el promedio del período (menos de ${cfg.umbral}), según la materia y el grado. Cada carta se puede editar.</p>
   <div class="filters">
     <div class="field"><label>Aula</label>
       <select class="grado-select" onchange="setPref('carMateria',''); setPref('carGrado', this.value)">
@@ -10624,6 +10624,7 @@ function renderCartasRecuperacion(){
         <option value="">Todas las que me corresponden</option>
         ${asigs.map(a=>`<option value="${esc(a.id)}" ${asigSel===a.id?'selected':''}>${esc(a.nombre)}</option>`).join('')}
       </select></div>
+    <button class="btn" ${cartas.length?'':'disabled'} onclick="descargarCartasRecuperacion('', true)">Visualizar todas</button>
     <button class="btn btn-primary" ${cartas.length?'':'disabled'} onclick="descargarCartasRecuperacion()">Descargar todas en PDF (${cartas.length})</button>
   </div>
   <details class="card" style="margin-bottom:14px; padding:12px 16px;" ${cfgEdit && !getPref('crCfgVisto',false)?'open':''}>
@@ -10650,7 +10651,7 @@ function renderCartasRecuperacion(){
   ${cartas.length ? `<p class="nota-chica">${cartas.length} carta(s) en este período. Toca una para revisarla o editarla.</p>${cartas.map(tarjeta).join('')}`
     : `<div class="card"><p class="empty">No hay cartas por generar: ningún estudiante tiene el examen ingresado con menos de ${cfg.umbral} ni promedio del período menor a ${cfg.umbral} (o ya hicieron la recuperación).</p></div>`}`;
 }
-function descargarCartasRecuperacion(soloK){
+function descargarCartasRecuperacion(soloK, vista){
   const grados = misGrados(currentUser);
   const grado = (getPref('carGrado','') && grados.includes(getPref('carGrado',''))) ? getPref('carGrado','') : grados[0];
   const periodo = Number(getPref('carPeriodo', 1)) || 1;
@@ -10661,7 +10662,13 @@ function descargarCartasRecuperacion(soloK){
   const cfg = crConfig();
   const aj = DB.ajustes || {};
   const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const parr = t => String(t||'').split(/\n+/).filter(x=>x.trim()).map(x=>'<p>'+q(x)+'</p>').join('');
+  const rojo = v => (v!=='' && !isNaN(Number(v)) && Math.round(Number(v)) < cfg.umbral) ? ' rojo' : '';
+  const hl = (txt, c) => {
+    let h = q(txt);
+    [c.nombre, c.asig.nombre].forEach(w=>{ const e = q(w); if(e) h = h.split(e).join('<mark>'+e+'</mark>'); });
+    return h;
+  };
+  const parr = (t, c) => String(t||'').split(/\n+/).filter(x=>x.trim()).map(x=>'<p>'+hl(x, c)+'</p>').join('');
   const pagina = c => `
   <div class="pagina">
     <div class="enc"><div class="azul"></div><div class="cian"></div>
@@ -10669,17 +10676,19 @@ function descargarCartasRecuperacion(soloK){
       <div class="enc-txt">${q((aj.nombreColegio||'').toUpperCase())}</div>
     </div>
     <div class="cuerpo">
-      <p class="lugar">${q(cfg.lugar)}</p>
-      <p class="fecha">${q(crFechaTexto(c.fecha))}</p>
-      <p class="sal"><b>Estimados padres de familia</b></p>
-      ${parr(c.intro)}
-      <p class="est"><b>Estudiante:</b> ${q(c.nombre)}</p>
-      <table class="t"><tr><th>Materia</th>${c.cols.map(x=>`<th>${q(x.t)}</th>`).join('')}</tr>
-        <tr><td>${q(c.asig.nombre)}</td>${c.cols.map(x=>`<td class="c">${q(x.v)}</td>`).join('')}</tr></table>
-      ${parr(c.accion)}
-      ${parr(cfg.horario)}
+      <p class="der">${q(cfg.lugar)}</p>
+      <p class="der fecha">${q(crFechaTexto(c.fecha))}</p>
+      <p class="sal">Estimados padres de familia</p>
+      ${parr(c.intro, c)}
+      <table class="t">
+        <tr><td colspan="${c.cols.length+1}">Estudiante: <mark>${q(c.nombre)}</mark></td></tr>
+        <tr class="th"><td>Materia</td>${c.cols.map(x=>`<td${x.t==='Promedio'?' class="prom"':''}>${q(x.t)}</td>`).join('')}</tr>
+        <tr class="dt"><td class="mat"><mark>${q(c.asig.nombre)}</mark></td>${c.cols.map(x=>`<td class="${(x.t==='Promedio'?'prom':'')+rojo(x.v)}">${q(x.v)}</td>`).join('')}</tr>
+      </table>
+      ${parr(c.accion, c)}
+      ${parr(cfg.horario, c)}
       <p>${q(cfg.cierre)}</p>
-      <div class="firma"><p><b>${q(c.firmaTxt)}</b></p><p>Docente de ${q(c.asig.nombre)}</p></div>
+      <div class="firma"><p>${q(c.firmaTxt)}</p><p>Docente de <mark>${q(c.asig.nombre)}</mark></p></div>
     </div>
     <div class="pie"><div class="pie-in">
       <div class="p1"><b>${q(aj.nombreColegio||'')}</b><br><span>${q(cfg.lema)}</span></div>
@@ -10688,36 +10697,38 @@ function descargarCartasRecuperacion(soloK){
     </div><div class="verde"></div></div>
   </div>`;
   const titulo = soloK ? 'Carta de recuperación - ' + cartas[0].nombre : 'Cartas de recuperación ' + grado + ' - Período ' + periodo;
+  const barra = vista ? '<div class="barra"><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>' : '';
+  const auto = vista ? '' : '<script>window.onload=function(){setTimeout(function(){window.print();},350);};<\/script>';
   const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>' + q(titulo) + '</title><style>' +
   '@page{ size: letter portrait; margin:0; }' +
   '*{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }' +
-  'body{ margin:0; font-family: Arial, Helvetica, sans-serif; font-size:12.5px; color:#111; background:#d8d8d8; }' +
-  '.pagina{ position:relative; width:215.9mm; height:279.4mm; margin:0 auto 14px; background:#fff; overflow:hidden; page-break-after:always; }' +
+  'body{ margin:0; font-family:"Berlin Sans FB","Berlin Sans FB Demi","Trebuchet MS",Arial,sans-serif; font-size:14pt; line-height:1.5; color:#111; background:#d8d8d8; }' +
+  '.barra{ position:sticky; top:0; z-index:5; background:#002060; padding:8px; text-align:center; } .barra button{ font-size:14px; padding:8px 18px; cursor:pointer; }' +
+  '.pagina{ position:relative; width:215.9mm; min-height:277mm; margin:0 auto 14px; background:#fff; display:flex; flex-direction:column; page-break-after:always; }' +
   '.pagina:last-child{ page-break-after:auto; }' +
-  '@media print{ body{ background:#fff; } .pagina{ margin:0; } }' +
-  '.enc{ position:absolute; top:0; left:0; right:0; height:30mm; }' +
+  '@media print{ body{ background:#fff; } .pagina{ margin:0; } .barra{ display:none; } }' +
+  '.enc{ position:relative; flex:none; height:30mm; }' +
   '.azul{ position:absolute; inset:0; background:#002060; }' +
   '.cian{ position:absolute; top:0; right:0; width:70mm; height:100%; background:#00b0f0; clip-path:polygon(35% 0,100% 0,100% 100%,0 100%); }' +
   '.logo{ position:absolute; left:12mm; top:4mm; height:22mm; width:22mm; object-fit:contain; background:#fff; border-radius:50%; }' +
-  '.enc-txt{ position:absolute; left:40mm; top:0; bottom:0; display:flex; align-items:center; color:#fff; font-weight:bold; font-size:15px; letter-spacing:.5px; max-width:105mm; }' +
-  '.cuerpo{ position:absolute; top:40mm; left:22mm; right:22mm; bottom:40mm; line-height:1.5; text-align:justify; }' +
-  '.cuerpo p{ margin:0 0 9px; } .lugar,.fecha{ text-align:left; margin-bottom:2px !important; } .fecha{ margin-bottom:14px !important; }' +
-  '.t{ width:100%; border-collapse:collapse; margin:4px 0 12px; } .t th,.t td{ border:1px solid #222; padding:5px 6px; font-size:12px; }' +
-  '.t th{ background:#eef2f8; } .c{ text-align:center; }' +
-  '.firma{ margin-top:26px; text-align:left; } .firma p{ margin:0 0 2px; }' +
-  '.pie{ position:absolute; left:0; right:0; bottom:0; height:30mm; }' +
-  '.pie-in{ display:flex; gap:10mm; padding:4mm 14mm 0; font-size:10px; color:#002060; } .pie-in div{ flex:1; }' +
+  '.enc-txt{ position:absolute; left:40mm; top:0; bottom:0; display:flex; align-items:center; color:#fff; font-weight:bold; font-size:15px; letter-spacing:.5px; max-width:105mm; line-height:1.2; }' +
+  '.cuerpo{ flex:1; padding:8mm 20mm 6mm; text-align:justify; }' +
+  '.cuerpo p{ margin:0 0 8px; } .der{ text-align:right; margin-bottom:0 !important; } .fecha{ margin-bottom:12px !important; }' +
+  'mark{ background:#ffff00; color:inherit; }' +
+  '.t{ width:100%; border-collapse:collapse; margin:6px 0 12px; } .t td{ border:1px solid #222; padding:4px 6px; text-align:center; }' +
+  '.t .dt td{ font-weight:bold; } .t .prom{ background:#bdf0ff; } .rojo{ color:#e00000; }' +
+  '.firma{ margin-top:22px; text-align:left; } .firma p{ margin:0; }' +
+  '.pie{ position:relative; flex:none; height:30mm; }' +
+  '.pie-in{ display:flex; gap:10mm; padding:4mm 14mm 0; font-size:10px; line-height:1.3; color:#002060; font-family:Arial,sans-serif; } .pie-in div{ flex:1; }' +
   '.p1 b{ font-size:11px; } .p1 span{ color:#00b0f0; font-weight:bold; }' +
   '.verde{ position:absolute; left:0; right:0; bottom:0; height:8mm; background:#3bb76a; }' +
-  '</style></head><body>' + cartas.map(pagina).join('') +
-  '<script>window.onload=function(){setTimeout(function(){window.print();},350);};<\/script></body></html>';
+  '</style></head><body>' + barra + cartas.map(pagina).join('') + auto + '</body></html>';
   const v = window.open('', '_blank');
   if(!v){ showToast('El navegador bloqueó la ventana emergente. Permítela e intenta de nuevo.'); return; }
   v.document.write(html);
   v.document.close();
-  showToast('En el diálogo de impresión elige "Guardar como PDF".');
+  if(!vista) showToast('En el diálogo de impresión elige "Guardar como PDF".');
 }
-
 /* ============================= PANEL: HOJA DE TAREAS ============================= */
 function renderHojas(){
   if(!puedeVerPanel(currentUser, 'hojas')) return renderNoAccess();
