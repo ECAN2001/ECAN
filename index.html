@@ -9979,7 +9979,9 @@ function boletaCfg(){
     casillasPadres: Array.isArray(c.casillasPadres) ? c.casillasPadres : BOLETA_DEF.casillasPadres.slice(),
     conducta:       Array.isArray(c.conducta)       ? c.conducta       : BOLETA_DEF.conducta.slice(),
     escala:         Array.isArray(c.escala)         ? c.escala         : BOLETA_DEF.escala.map(x=>Object.assign({},x)),
-    firmas:         Array.isArray(c.firmas)         ? c.firmas         : BOLETA_DEF.firmas.map(x=>Object.assign({},x))
+    firmas:         Array.isArray(c.firmas)         ? c.firmas         : BOLETA_DEF.firmas.map(x=>Object.assign({},x)),
+    orden:          (c.orden && typeof c.orden==='object') ? JSON.parse(JSON.stringify(c.orden)) : {},
+    nombreCiencia:  c.nombreCiencia || ''
   };
 }
 function guardarBoletaCfg(mutador){
@@ -10020,6 +10022,118 @@ function promedioPeriodoEstudiante(estId, grado, periodo){
     .filter(v=>v!==null);
   if(vals.length===0) return null;
   return vals.reduce((s,v)=>s+v,0)/vals.length;
+}
+
+/* ---- Orden de materias en la boleta y bloque Ciencia y Tecnología ---- */
+const BOL_CIENCIAS = ['FISICA','QUIMICA','BIOLOGIA'];
+function bolNormNombre(s){ return String(s==null?'':s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim(); }
+function bolNombreCiencia(){ const c = (DB.config && DB.config.boleta) || {}; return c.nombreCiencia || 'CIENCIA Y TECNOLOGÍA'; }
+/* Unidades de la boleta: una materia suelta, o el bloque de Física + Química + Biología */
+function bolUnidades(grado){
+  const todas = asignaturasDeGrado(grado);
+  const o = (DB.config && DB.config.boleta && DB.config.boleta.orden) || {};
+  const orden = Array.isArray(o[grado]) ? o[grado] : [];
+  const pos = a => { const i = orden.indexOf(a.id); return i<0 ? 1e6 : i; };
+  const lista = todas.map((a,i)=>({a,i})).sort((x,y)=>(pos(x.a)-pos(y.a)) || (x.i-y.i)).map(x=>x.a);
+  const cienc = BOL_CIENCIAS.map(n=>lista.find(a=>bolNormNombre(a.nombre)===n));
+  const hayTrio = cienc.every(Boolean);
+  const unidades = []; let puesto = false;
+  lista.forEach(a=>{
+    if(hayTrio && cienc.includes(a)){
+      if(!puesto){
+        puesto = true;
+        const miembros = lista.filter(x=>cienc.includes(x));
+        unidades.push({tipo:'ciencia', miembros: miembros.sort((x,y)=>(pos(x)-pos(y)) || (cienc.indexOf(x)-cienc.indexOf(y)))});
+      }
+    }else unidades.push({tipo:'asig', a});
+  });
+  return unidades;
+}
+/* Filas en el orden que se dibujan: materias, y tras las tres ciencias la fila de total */
+function bolFilas(grado){
+  const out = [];
+  bolUnidades(grado).forEach(u=>{
+    if(u.tipo==='asig') out.push({tipo:'asig', a:u.a});
+    else{ u.miembros.forEach(a=>out.push({tipo:'miembro', a})); out.push({tipo:'total', miembros:u.miembros}); }
+  });
+  return out;
+}
+function bolValorCiencia(estId, grado, miembros, p){
+  const vals = miembros.map(a=> p==='final' ? subjectInfo(estId, a.id, grado).valor : periodInfo(estId, a.id, p, grado).valor)
+    .filter(v=>v!==null && v!==undefined);
+  return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
+}
+function moverMateriaBoleta(grado, id, dir){
+  if(!puedeEditarBoleta(grado)) return;
+  const u = bolUnidades(grado);
+  let movido = false;
+  if(id==='__ciencia'){
+    const i = u.findIndex(x=>x.tipo==='ciencia'), k = i+dir;
+    if(i>=0 && k>=0 && k<u.length){ [u[i],u[k]] = [u[k],u[i]]; movido = true; }
+  }else{
+    const ci = u.findIndex(x=>x.tipo==='ciencia' && x.miembros.some(m=>m.id===id));
+    if(ci>=0){      // dentro del bloque de ciencias solo se cambia el orden entre las tres
+      const mm = u[ci].miembros, j = mm.findIndex(m=>m.id===id), k = j+dir;
+      if(k>=0 && k<mm.length){ [mm[j],mm[k]] = [mm[k],mm[j]]; movido = true; }
+    }else{
+      const i = u.findIndex(x=>x.tipo==='asig' && x.a.id===id), k = i+dir;
+      if(i>=0 && k>=0 && k<u.length){ [u[i],u[k]] = [u[k],u[i]]; movido = true; }
+    }
+  }
+  if(!movido) return;
+  const plano = [];
+  u.forEach(x=>{ if(x.tipo==='asig') plano.push(x.a.id); else x.miembros.forEach(m=>plano.push(m.id)); });
+  const clave = ids => ids.slice().sort().join('|');
+  const mia = clave(plano);
+  // El mismo orden se aplica a todos los grados que tengan exactamente estas materias
+  const grados = (DB.config.grados||[]).filter(g=> g===grado || clave(asignaturasDeGrado(g).map(a=>a.id))===mia);
+  guardarBoletaCfg(c=>{ c.orden = c.orden || {}; grados.forEach(g=>{ c.orden[g] = plano.slice(); }); });
+  render();
+}
+function editarNombreCiencia(valor){
+  guardarBoletaCfg(c=>{ c.nombreCiencia = (valor||'').trim(); });
+  render();
+}
+function bolFilasPantallaHtml(est, grado, edit, n1){
+  const G = esc(grado);
+  const flechas = id => edit
+    ? `<span style="white-space:nowrap; margin-right:4px;"><button class="icon-btn" title="Subir" onclick="moverMateriaBoleta('${G}','${id}',-1)">▲</button><button class="icon-btn" title="Bajar" onclick="moverMateriaBoleta('${G}','${id}',1)">▼</button></span>`
+    : '';
+  return bolFilas(grado).map(f=>{
+    if(f.tipo==='total'){
+      const nom = edit
+        ? `<input class="bol-in" style="width:calc(100% - 56px); text-transform:uppercase; font-weight:700;" value="${esc(bolNombreCiencia())}" onchange="editarNombreCiencia(this.value)">`
+        : esc(bolNombreCiencia().toUpperCase());
+      return `<tr style="background:#eef3ee; font-weight:700;">
+        <td class="bol-mat">${flechas('__ciencia')}${nom}</td>
+        ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(bolValorCiencia(est.id, grado, f.miembros, p))}</td>`).join('')}
+        <td class="bol-num bol-fuerte">${n1(bolValorCiencia(est.id, grado, f.miembros, 'final'))}</td>
+      </tr>`;
+    }
+    const a = f.a, si = subjectInfo(est.id, a.id, grado);
+    return `<tr>
+      <td class="bol-mat">${flechas(a.id)}${esc(a.nombre.toUpperCase())}</td>
+      ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(periodInfo(est.id, a.id, p, grado).valor)}</td>`).join('')}
+      <td class="bol-num bol-fuerte">${n1(si.valor)}</td>
+    </tr>`;
+  }).join('');
+}
+function bolFilasPdfHtml(est, grado, n1, q){
+  return bolFilas(grado).map(f=>{
+    if(f.tipo==='total'){
+      return `<tr style="background:#eef3ee; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+        <td class="izqtxt b">${q(bolNombreCiencia().toUpperCase())}</td>
+        ${[1,2,3,4].map(p=>`<td class="c b">${n1(bolValorCiencia(est.id, grado, f.miembros, p))}</td>`).join('')}
+        <td class="c b">${n1(bolValorCiencia(est.id, grado, f.miembros, 'final'))}</td>
+      </tr>`;
+    }
+    const a = f.a;
+    return `<tr>
+      <td class="izqtxt">${q(a.nombre.toUpperCase())}</td>
+      ${[1,2,3,4].map(p=>`<td class="c">${n1(periodInfo(est.id,a.id,p,grado).valor)}</td>`).join('')}
+      <td class="c b">${n1(subjectInfo(est.id,a.id,grado).valor)}</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderBoletas(){
@@ -10080,14 +10194,7 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
         value="${esc(valor)}" onchange="${onchange}">`
     : `<span>${esc(valor)}</span>`;
 
-  const filasMaterias = asigs.map(a=>{
-    const si = subjectInfo(est.id, a.id, grado);
-    return `<tr>
-      <td class="bol-mat">${esc(a.nombre.toUpperCase())}</td>
-      ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(periodInfo(est.id, a.id, p, grado).valor)}</td>`).join('')}
-      <td class="bol-num bol-fuerte">${n1(si.valor)}</td>
-    </tr>`;
-  }).join('');
+  const filasMaterias = bolFilasPantallaHtml(est, grado, edit, n1);
 
   return `
   <div class="card boleta-hoja">
@@ -10278,11 +10385,7 @@ function descargarBoletasPdf(grado, soloEstId){
           <table>
             <colgroup><col class="mat"><col class="per"><col class="per"><col class="per"><col class="per"><col class="fin"></colgroup>
             <tr><th>MATERIAS</th><th>I PER&Iacute;ODO</th><th>II PER&Iacute;ODO</th><th>III PER&Iacute;ODO</th><th>IV PER&Iacute;ODO</th><th>PROMEDIO FINAL</th></tr>
-            ${asigs.map(a=>`<tr>
-              <td class="izqtxt">${q(a.nombre.toUpperCase())}</td>
-              ${[1,2,3,4].map(p=>`<td class="c">${n1(periodInfo(est.id,a.id,p,grado).valor)}</td>`).join('')}
-              <td class="c b">${n1(subjectInfo(est.id,a.id,grado).valor)}</td>
-            </tr>`).join('')}
+            ${bolFilasPdfHtml(est, grado, n1, q)}
             <tr class="tot">
               <td class="izqtxt">PROMEDIO DE PER&Iacute;ODO</td>
               ${[1,2,3,4].map(p=>`<td class="c">${n1(promedioPeriodoEstudiante(est.id,grado,p))}</td>`).join('')}
@@ -10324,7 +10427,7 @@ function descargarBoletasPdf(grado, soloEstId){
   const cierre = '<' + '/script>';
   /* La hoja es carta horizontal: 279.4 x 215.9 mm, menos 12 mm de margen por lado.
      La letra y el relleno de las celdas se ajustan a cuántas materias tenga el aula. */
-  const n = asigs.length;
+  const n = bolFilas(grado).length;
   const escalaFuente = n > 14 ? '8.5px' : (n > 12 ? '9.5px' : (n > 10 ? '10.5px' : (n > 8 ? '11px' : '12px')));
   const relleno     = n > 14 ? '1.6px' : (n > 12 ? '2.2px' : (n > 10 ? '3px'    : (n > 8 ? '3.6px' : '4.4px')));
   /* Carta horizontal (215.9 mm de alto) menos 14 mm de margen arriba y abajo */
@@ -10541,6 +10644,8 @@ function crAplicarTextos(c){
   const t = (crDatos().textos||{})[c.k] || {};
   c.intro = t.intro!==undefined ? t.intro : c.gen.intro;
   c.accion = t.accion!==undefined ? t.accion : c.gen.accion;
+  // Las tareas ya no van en la carta: se quita también de textos que se guardaron antes
+  c.accion = String(c.accion).replace(/\s*También deberá presentar (las siguientes tareas|la siguiente tarea):[\s\S]*$/, '');
   c.firmaTxt = t.firma!==undefined ? t.firma : c.gen.firma;
   c.editada = Object.keys(t).length>0;
   return c;
