@@ -10526,7 +10526,7 @@ function calcularCarta(est, grado, asig, periodo){
   intro += ' Lo anterior se detalla en la tabla siguiente:';
   let accion = 'Por lo cual deberá someterse a desarrollar el examen de recuperación según el horario estipulado por Dirección.';
   if(integBajas.length) accion += ' Asimismo, deberá desarrollar ' + (integBajas.length>1?'las actividades integradoras':'la actividad integradora') + ': ' + unir(lista(integBajas)) + '.';
-  if(tareasBajas.length) accion += ' También deberá presentar ' + (tareasBajas.length>1?'las siguientes tareas':'la siguiente tarea') + ': ' + unir(lista(tareasBajas)) + '.';
+  // Las tareas ya no se incluyen en la carta: solo exam. de recuperación e integradoras menores al umbral
   const docente = docenteDeAsignatura(grado, asig.id);
   const firma = (docente ? docente.nombre : '') ;
   return {
