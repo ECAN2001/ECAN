@@ -10646,8 +10646,7 @@ function calcularCarta(est, grado, asig, periodo){
   }
   intro += ' Lo anterior se detalla en la tabla siguiente:';
   let accion = 'Por lo cual deberá someterse a desarrollar el examen de recuperación según el horario estipulado por Dirección.';
-  if(integBajas.length) accion += ' Asimismo, deberá desarrollar ' + (integBajas.length>1?'las actividades integradoras':'la actividad integradora') + ': ' + unir(lista(integBajas)) + '.';
-  // Las tareas ya no se incluyen en la carta: solo exam. de recuperación e integradoras menores al umbral
+  // La carta solo pide el examen de recuperación: ya no incluye tareas ni integradoras
   const docente = docenteDeAsignatura(grado, asig.id);
   const firma = (docente ? docente.nombre : '') ;
   return {
@@ -10664,6 +10663,8 @@ function crAplicarTextos(c){
   c.accion = t.accion!==undefined ? t.accion : c.gen.accion;
   // Las tareas ya no van en la carta: se quita también de textos que se guardaron antes
   c.accion = String(c.accion).replace(/\s*También deberá presentar (las siguientes tareas|la siguiente tarea):[\s\S]*$/, '');
+  // Igual con la frase de integradoras en textos guardados antes
+  c.accion = c.accion.replace(/\s*Asimismo, deberá desarrollar (las actividades integradoras|la actividad integradora):[\s\S]*$/, '');
   c.firmaTxt = t.firma!==undefined ? t.firma : c.gen.firma;
   c.editada = Object.keys(t).length>0;
   return c;
