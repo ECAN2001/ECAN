@@ -9981,7 +9981,8 @@ function boletaCfg(){
     escala:         Array.isArray(c.escala)         ? c.escala         : BOLETA_DEF.escala.map(x=>Object.assign({},x)),
     firmas:         Array.isArray(c.firmas)         ? c.firmas         : BOLETA_DEF.firmas.map(x=>Object.assign({},x)),
     orden:          (c.orden && typeof c.orden==='object') ? JSON.parse(JSON.stringify(c.orden)) : {},
-    nombreCiencia:  c.nombreCiencia || ''
+    nombreCiencia:  c.nombreCiencia || '',
+    firmasGrado:    (c.firmasGrado && typeof c.firmasGrado==='object') ? JSON.parse(JSON.stringify(c.firmasGrado)) : {}
   };
 }
 function guardarBoletaCfg(mutador){
@@ -10136,6 +10137,23 @@ function bolFilasPdfHtml(est, grado, n1, q){
   }).join('');
 }
 
+/* Firmas de la boleta: el nombre de la orientadora es propio de cada grado;
+   las demás firmas (Coordinadora, Directora…) son iguales para todos. */
+function firmaEsDeGrado(f){ return /orientad/i.test(bolNormNombre(f && f.cargo)); }
+function firmasDeGrado(cfg, grado){
+  const mios = (cfg.firmasGrado && cfg.firmasGrado[grado]) || {};
+  return cfg.firmas.map((f,i)=> (firmaEsDeGrado(f) && Object.prototype.hasOwnProperty.call(mios, i))
+    ? {nombre: mios[i], cargo: f.cargo} : f);
+}
+function editarFirmaGrado(grado, i, valor){
+  guardarBoletaCfg(c=>{
+    c.firmasGrado = c.firmasGrado || {};
+    c.firmasGrado[grado] = c.firmasGrado[grado] || {};
+    c.firmasGrado[grado][i] = (valor||'').trim();
+  });
+  render();
+}
+
 function renderBoletas(){
   if(!puedeVerPanel(currentUser, 'boletas')) return renderNoAccess();
   return renderBoletasContenido();
@@ -10243,12 +10261,12 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
         </div>
 
         <div class="boleta-firmas">
-          ${cfg.firmas.map((f,i)=>`
+          ${firmasDeGrado(cfg, grado).map((f,i)=>`
             <div>
               <span></span>
               ${edit
                 ? `<input class="bol-in bol-firma-nom" value="${esc(f.nombre)}" placeholder="Nombre y apellido"
-                     onchange="editarFirma(${i},'nombre',this.value)">
+                     onchange="${firmaEsDeGrado(f) ? "editarFirmaGrado('"+esc(grado)+"',"+i+",this.value)" : "editarFirma("+i+",'nombre',this.value)"}">
                    <input class="bol-in bol-firma-cargo" value="${esc(f.cargo)}" placeholder="Cargo"
                      onchange="editarFirma(${i},'cargo',this.value)">
                    <button class="icon-btn" onclick="quitarFirma(${i})" title="Quitar firma">×</button>`
@@ -10286,7 +10304,7 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
         ${edit?`<div class="btn-row"><button class="btn btn-sm" onclick="agregarEscala()">+ Fila de escala</button></div>`:''}
       </div>
     </div>
-    ${edit?`<p class="nota-chica">Los criterios, la escala y las firmas quedan guardados como valor por defecto para las siguientes boletas.</p>`:''}
+    ${edit?`<p class="nota-chica">Los criterios, la escala y las firmas quedan guardados para las siguientes boletas. El nombre de la orientadora se guarda solo para este grado.</p>`:''}
   </div>`;
 }
 /* Tabla de criterios con su casilla de letra, ambos editables */
@@ -10399,7 +10417,7 @@ function descargarBoletasPdf(grado, soloEstId){
           </div>
           <div class="obs"><b>OBSERVACIONES:</b> ${q(dat.observaciones)}</div>
           <div class="firmas">
-            ${cfg.firmas.map(f=>`<div><span></span><p class="fn">${q(f.nombre)}</p><p>${q(f.cargo)}</p></div>`).join('')}
+            ${firmasDeGrado(cfg, grado).map(f=>`<div><span></span><p class="fn">${q(f.nombre)}</p><p>${q(f.cargo)}</p></div>`).join('')}
           </div>
         </div>
         <div class="der">
