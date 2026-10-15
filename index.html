@@ -10711,6 +10711,11 @@ function renderCartasRecuperacion(){
         <b>${esc(apellidosDe(c.est))}, ${esc(nombresDe(c.est))}</b>
         <span style="color:var(--muted);">· ${esc(c.asig.nombre)}</span>
         <span class="nota-chica" style="margin:0;">Examen ${Math.round(c.exam)} · Promedio ${Math.round(c.prom)} · ${c.reprobExam && c.reprobProm ? 'reprobó examen y período' : (c.reprobExam ? 'reprobó el examen' : 'aprobó el examen, no el período')}${c.editada?' · <b>editada</b>':''}</span>
+        <span style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm" onclick="event.preventDefault(); event.stopPropagation(); crAlternarEdicion(this)">Editar</button>
+          <button type="button" class="btn btn-sm" onclick="event.preventDefault(); event.stopPropagation(); descargarCartasRecuperacion('${kq}', true)">Visualizar</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="event.preventDefault(); event.stopPropagation(); descargarCartasRecuperacion('${kq}')">Descargar</button>
+        </span>
       </summary>
       <div style="margin-top:12px;">
         <div class="field"><label>Fecha de la carta ${c.sinFecha?'(se guardará la de hoy; cámbiala si hace falta)':'(día en que se ingresó la nota del examen)'}</label>
@@ -10724,8 +10729,6 @@ function renderCartasRecuperacion(){
         <div class="field"><label>Firma (nombre del docente)</label>
           <input type="text" value="${esc(c.firmaTxt)}" ${d2} onchange="crGuardarTexto('${kq}','firma', this.value)"></div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn btn-sm" onclick="descargarCartasRecuperacion('${kq}', true)">Visualizar carta</button>
-          <button class="btn btn-primary btn-sm" onclick="descargarCartasRecuperacion('${kq}')">PDF de esta carta</button>
           ${c.editada && puede ? `<button class="btn btn-sm" onclick="crRestablecer('${kq}')">Restablecer redacción automática</button>`:''}
         </div>
       </div>
@@ -10771,8 +10774,15 @@ function renderCartasRecuperacion(){
         <input type="text" value="${esc(cfg.lema)}" ${dis} onchange="crGuardarConfig('lema', this.value)"></div>
     </div>
   </details>
-  ${cartas.length ? `<p class="nota-chica">${cartas.length} carta(s) en este período. Toca una para revisarla o editarla.</p>${cartas.map(tarjeta).join('')}`
+  ${cartas.length ? `<p class="nota-chica">${cartas.length} carta(s) en este período. Cada carta tiene sus botones Editar, Visualizar y Descargar.</p>${cartas.map(tarjeta).join('')}`
     : `<div class="card"><p class="empty">No hay cartas por generar: ningún estudiante tiene el examen ingresado con menos de ${cfg.umbral} ni promedio del período menor a ${cfg.umbral} (o ya hicieron la recuperación).</p></div>`}`;
+}
+/* Abre o cierra el formulario de edición de una carta */
+function crAlternarEdicion(btn){
+  const d = btn.closest('details');
+  if(!d) return;
+  d.open = !d.open;
+  btn.textContent = d.open ? 'Cerrar edición' : 'Editar';
 }
 function descargarCartasRecuperacion(soloK, vista){
   const grados = misGrados(currentUser);
