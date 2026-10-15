@@ -1072,7 +1072,7 @@ function commit(mutador){
   // la persona presiona "Guardar cambios" — así varios campos editados
   // seguidos se mandan juntos en un solo guardado, en vez de uno por
   // campo. En el resto de paneles se sigue guardando solo, como siempre.
-  if(currentView==='hojas' || currentView==='calificaciones'){
+  if(currentView==='hojas' || currentView==='calificaciones' || currentView==='boletas'){
     setSyncStatus('manual');
   }else{
     setSyncStatus('pendiente');
@@ -1585,7 +1585,7 @@ function setSyncStatus(s){
    escribiendo en otro campo mientras tanto. */
 let guardadoManualEnCurso = false;
 function renderGuardarManualBanner(){
-  if(currentView!=='hojas' && currentView!=='calificaciones') return '';
+  if(currentView!=='hojas' && currentView!=='calificaciones' && currentView!=='boletas') return '';
   const hay = pendientes.length > 0;
   const activo = guardadoManualEnCurso;
   return `<div id="guardar-manual-banner" class="card" style="margin-bottom:14px; border-left:4px solid ${hay?'var(--gold)':'var(--primary)'}; background:${hay?'var(--gold-light)':'var(--primary-light)'};">
@@ -3341,7 +3341,7 @@ function goTo(id){
   // Si veníamos de un panel de guardado manual (Hojas/Calificaciones) con
   // cambios sin guardar, los mandamos solos antes de salir — para que
   // nunca se pierdan por olvidarse de presionar "Guardar cambios".
-  if((currentView==='hojas' || currentView==='calificaciones') && pendientes.length>0){
+  if((currentView==='hojas' || currentView==='calificaciones' || currentView==='boletas') && pendientes.length>0){
     programarGuardado(0);
   }
   // Guarda de dónde veníamos, para que el botón "← Volver" pueda regresar
@@ -3371,7 +3371,7 @@ function renderView(){
 }
 function volverAtras(){
   if(historialNav.length === 0) return;
-  if((currentView==='hojas' || currentView==='calificaciones') && pendientes.length>0){
+  if((currentView==='hojas' || currentView==='calificaciones' || currentView==='boletas') && pendientes.length>0){
     programarGuardado(0);
   }
   currentView = historialNav.pop();
@@ -10216,6 +10216,7 @@ function renderBoletasContenido(){
     <button class="btn btn-primary" onclick="descargarBoletasPdf('${esc(grado)}')">Descargar todas en PDF</button>
     <button class="btn" onclick="descargarBoletasPdf('${esc(grado)}','${est?est.id:''}')">Esta boleta en PDF</button>
   </div>
+  ${puedeEditarBoleta(grado) ? renderGuardarManualBanner() : ''}
   ${est ? renderBoletaEstudiante(est, grado) : '<div class="card"><p class="empty">No hay estudiantes en esta aula.</p></div>'}`;
 }
 function renderBoletaEstudiante(est, grado, forzarSoloLectura){
