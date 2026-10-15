@@ -9982,7 +9982,8 @@ function boletaCfg(){
     firmas:         Array.isArray(c.firmas)         ? c.firmas         : BOLETA_DEF.firmas.map(x=>Object.assign({},x)),
     orden:          (c.orden && typeof c.orden==='object') ? JSON.parse(JSON.stringify(c.orden)) : {},
     nombreCiencia:  c.nombreCiencia || '',
-    firmasGrado:    (c.firmasGrado && typeof c.firmasGrado==='object') ? JSON.parse(JSON.stringify(c.firmasGrado)) : {}
+    firmasGrado:    (c.firmasGrado && typeof c.firmasGrado==='object') ? JSON.parse(JSON.stringify(c.firmasGrado)) : {},
+    nombresMateria: (c.nombresMateria && typeof c.nombresMateria==='object') ? JSON.parse(JSON.stringify(c.nombresMateria)) : {}
   };
 }
 function guardarBoletaCfg(mutador){
@@ -10028,6 +10029,22 @@ function promedioPeriodoEstudiante(estId, grado, periodo){
 /* ---- Orden de materias en la boleta y bloque Ciencia y Tecnología ---- */
 const BOL_CIENCIAS = ['FISICA','QUIMICA','BIOLOGIA'];
 function bolNormNombre(s){ return String(s==null?'':s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim(); }
+/* Nombre con que sale una materia en la boleta de un grado (no cambia la asignatura en el sistema) */
+function bolNombreMateria(grado, a){
+  const m = (DB.config && DB.config.boleta && DB.config.boleta.nombresMateria) || {};
+  const v = m[grado] && m[grado][a.id];
+  return (v && String(v).trim()) ? String(v).trim() : a.nombre;
+}
+function editarNombreMateria(grado, id, valor){
+  const limpio = (valor||'').trim();
+  guardarBoletaCfg(c=>{
+    c.nombresMateria = c.nombresMateria || {};
+    c.nombresMateria[grado] = c.nombresMateria[grado] || {};
+    if(limpio) c.nombresMateria[grado][id] = limpio;
+    else delete c.nombresMateria[grado][id];
+  });
+  render();
+}
 function bolNombreCiencia(){ const c = (DB.config && DB.config.boleta) || {}; return c.nombreCiencia || 'CIENCIA Y TECNOLOGÍA'; }
 /* Unidades de la boleta: una materia suelta, o el bloque de Física + Química + Biología */
 function bolUnidades(grado){
@@ -10112,8 +10129,11 @@ function bolFilasPantallaHtml(est, grado, edit, n1){
       </tr>`;
     }
     const a = f.a, si = subjectInfo(est.id, a.id, grado);
+    const nomMat = edit
+      ? `<input class="bol-in" style="width:calc(100% - 56px); text-transform:uppercase;" value="${esc(bolNombreMateria(grado, a).toUpperCase())}" onchange="editarNombreMateria('${G}','${a.id}',this.value)">`
+      : esc(bolNombreMateria(grado, a).toUpperCase());
     return `<tr>
-      <td class="bol-mat">${flechas(a.id)}${esc(a.nombre.toUpperCase())}</td>
+      <td class="bol-mat">${flechas(a.id)}${nomMat}</td>
       ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(periodInfo(est.id, a.id, p, grado).valor)}</td>`).join('')}
       <td class="bol-num bol-fuerte">${n1(si.valor)}</td>
     </tr>`;
@@ -10130,7 +10150,7 @@ function bolFilasPdfHtml(est, grado, n1, q){
     }
     const a = f.a;
     return `<tr>
-      <td class="izqtxt">${q(a.nombre.toUpperCase())}</td>
+      <td class="izqtxt">${q(bolNombreMateria(grado, a).toUpperCase())}</td>
       ${[1,2,3,4].map(p=>`<td class="c">${n1(periodInfo(est.id,a.id,p,grado).valor)}</td>`).join('')}
       <td class="c b">${n1(subjectInfo(est.id,a.id,grado).valor)}</td>
     </tr>`;
