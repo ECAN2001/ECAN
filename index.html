@@ -387,7 +387,7 @@
 
 <script>
 /* ============================= ESTADO ============================= */
-let DB = { cartasRecup:{}, estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{}, soporte:[], mensajes:[], reuniones:[] };
+let DB = { cartasRecup:{}, caract:{}, estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{}, soporte:[], mensajes:[], reuniones:[] };
 let baseCompletaCargada = false;         // true una vez que se descargó la base completa (solo docentes/admin)
 let sesionEstudianteCred = null;         // {usuario, claveHash} en memoria, para reautenticar sin pedir de nuevo
 /* Vista previa de "cómo lo vería un estudiante": no es una sesión real, no
@@ -910,7 +910,7 @@ function docActual(){
     observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros,
     boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes, averias: DB.averias,
     soporte: DB.soporte, mensajes: DB.mensajes, reportesEliminados: DB.reportesEliminados, reuniones: DB.reuniones,
-    reunionesEliminadas: DB.reunionesEliminadas, cartasRecup: DB.cartasRecup
+    reunionesEliminadas: DB.reunionesEliminadas, cartasRecup: DB.cartasRecup, caract: DB.caract
   };
 }
 function adoptarDoc(doc){
@@ -936,6 +936,7 @@ function adoptarDoc(doc){
   DB.reuniones = doc.reuniones || [];
   DB.reunionesEliminadas = doc.reunionesEliminadas || [];
   DB.cartasRecup = doc.cartasRecup || {};
+  DB.caract = doc.caract || {};
   DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
   if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
@@ -1020,6 +1021,7 @@ async function loadAll(){
   if(!DB.rubros) DB.rubros = {};
   if(!DB.boletaDatos) DB.boletaDatos = {};
   if(!DB.cartasRecup) DB.cartasRecup = {};
+  if(!DB.caract) DB.caract = {};
   if(!DB.hojas) DB.hojas = {};
   if(!DB.bitacora) DB.bitacora = [];
   if(!DB.reportes) DB.reportes = [];
@@ -1072,7 +1074,7 @@ function commit(mutador){
   // la persona presiona "Guardar cambios" — así varios campos editados
   // seguidos se mandan juntos en un solo guardado, en vez de uno por
   // campo. En el resto de paneles se sigue guardando solo, como siempre.
-  if(currentView==='hojas' || currentView==='calificaciones' || currentView==='boletas'){
+  if(esVistaGuardadoManual()){
     setSyncStatus('manual');
   }else{
     setSyncStatus('pendiente');
@@ -1584,8 +1586,11 @@ function setSyncStatus(s){
    bloque (no toda la pantalla), para no interrumpir si la persona sigue
    escribiendo en otro campo mientras tanto. */
 let guardadoManualEnCurso = false;
+function esVistaGuardadoManual(){
+  return currentView==='hojas' || currentView==='calificaciones' || (currentView==='boletas' && getPref('bolTab','boletas')==='caract');
+}
 function renderGuardarManualBanner(){
-  if(currentView!=='hojas' && currentView!=='calificaciones' && currentView!=='boletas') return '';
+  if(!esVistaGuardadoManual()) return '';
   const hay = pendientes.length > 0;
   const activo = guardadoManualEnCurso;
   return `<div id="guardar-manual-banner" class="card" style="margin-bottom:14px; border-left:4px solid ${hay?'var(--gold)':'var(--primary)'}; background:${hay?'var(--gold-light)':'var(--primary-light)'};">
@@ -1693,6 +1698,7 @@ function hayEdicionEnCurso(){
   if(viewState.modalCargarArchivo) return true;
   if(viewState.modalNotasArchivo) return true;
   if(viewState.modalSubirReporte) return true;
+  if(viewState.modalCopiarFicha) return true;
   return false;
 }
 async function pullCambios(silencioso){
@@ -2028,6 +2034,11 @@ function combinarDocs(local, nube, preferirNube){
       config: Object.assign({}, (local.cartasRecup||{}).config||{}, (nube.cartasRecup||{}).config||{}),
       fechas: Object.assign({}, (local.cartasRecup||{}).fechas||{}, (nube.cartasRecup||{}).fechas||{}),
       textos: Object.assign({}, (local.cartasRecup||{}).textos||{}, (nube.cartasRecup||{}).textos||{})
+    },
+    caract: {
+      datos: Object.assign({}, (local.caract||{}).datos||{}, (nube.caract||{}).datos||{}),
+      obs: Object.assign({}, (local.caract||{}).obs||{}, (nube.caract||{}).obs||{}),
+      config: Object.assign({}, (local.caract||{}).config||{}, (nube.caract||{}).config||{})
     },
     bitacora: (nube.bitacora||[]).concat((local.bitacora||[]).filter(l=>!(nube.bitacora||[]).some(x=>x.ts===l.ts && x.userId===l.userId))).slice(-800),
     reportes: (nube.reportes||[]).concat((local.reportes||[]).filter(r=>!(nube.reportes||[]).some(x=>x.id===r.id))),
@@ -3341,7 +3352,7 @@ function goTo(id){
   // Si veníamos de un panel de guardado manual (Hojas/Calificaciones) con
   // cambios sin guardar, los mandamos solos antes de salir — para que
   // nunca se pierdan por olvidarse de presionar "Guardar cambios".
-  if((currentView==='hojas' || currentView==='calificaciones' || currentView==='boletas') && pendientes.length>0){
+  if(esVistaGuardadoManual() && pendientes.length>0){
     programarGuardado(0);
   }
   // Guarda de dónde veníamos, para que el botón "← Volver" pueda regresar
@@ -3371,7 +3382,7 @@ function renderView(){
 }
 function volverAtras(){
   if(historialNav.length === 0) return;
-  if((currentView==='hojas' || currentView==='calificaciones' || currentView==='boletas') && pendientes.length>0){
+  if(esVistaGuardadoManual() && pendientes.length>0){
     programarGuardado(0);
   }
   currentView = historialNav.pop();
@@ -9958,6 +9969,493 @@ function renderTareas(){
   </div>`;
 }
 
+/* ============================= CARACTERIZACIÓN (Boletas → Caracterización) =============================
+   DB.caract = { datos:{'estId|periodo':{conducta,inas,tardias, v:{}, c:{}, t:{}}},
+                 obs:{'grado|periodo': texto}, config:{periodos:{1:{ini,fin},...}} } */
+const CAR_ESQUEMA = [
+  {area:'Conductual', filas:[
+    {key:'actitud', label:'Actitud en el aula', tipo:'radio', ops:['Positiva','Neutra','Negativa']},
+    {key:'normas', label:'Cumple normas dentro y fuera del aula', tipo:'radio', ops:['Siempre','A veces','Rara vez']},
+    {key:'companeros', label:'Relación con compañeros', tipo:'radio', ops:['Buena','Regular','Conflictiva']},
+    {key:'problemas', label:'Resolución de problemas y manejo de adversidades', tipo:'radio', ops:['Con autonomía','Con apoyo','Le cuesta']},
+    {key:'mobiliario', label:'Cuida el mobiliario de la escuela', tipo:'radio', ops:['No','Sí']}]},
+  {area:'Académico', filas:[
+    {key:'atencion', label:'Atención en clase', tipo:'radio', ops:['Alta','Media','Baja']},
+    {key:'participacion', label:'Participación', tipo:'radio', ops:['Activa','Poca','Ninguna']},
+    {key:'tareas', label:'Entrega de tareas', tipo:'radio', ops:['Puntual','Tardía','No entrega']},
+    {key:'copia', label:'Copia clases, realiza actividades libro', tipo:'radio', ops:['Completo','Incompleto','No copia']},
+    {key:'materiales', label:'Materiales: libros, cuadernos, Biblia, estuche', tipo:'radio', ops:['Completo','Incompleto']},
+    {key:'materias', label:'Materias', tipo:'materias'}]},
+  {area:'Socio-familiar', filas:[
+    {key:'vive', label:'Vive con', tipo:'radio', ops:['Ambos padres','Un padre','Otro familiar','Otro'], otro:'vive_otro'},
+    {key:'apoyo', label:'Apoyo y comunicación de la familia', tipo:'radio', ops:['Alto','Medio','Bajo']},
+    {key:'solo', label:'Tiempo solo en casa', tipo:'radio', ops:['Poco','Medio','Mucho']},
+    {key:'pantallas', label:'Pantallas, juegos y redes (al día)', tipo:'radio', ops:['Menos de 2 h','2 a 4 h','Más de 4 h']},
+    {key:'extra', label:'Actividades extra', tipo:'check', ops:['Deporte','Arte','Música','Ninguna','Otra:'], otro:'extra_otra'}]},
+  {area:'Características', filas:[
+    {key:'caract', label:'Marque las que apliquen', tipo:'check', ops:['Empático','Colaborador','Líder','Creativo','Responsable','Perseverante','Tímido','Reservado','Inquieto','Comunicativo','Asertivo']}]},
+  {area:'Fortalezas', filas:[
+    {key:'fort', label:'Marque las que apliquen', tipo:'check', ops:['Análisis','Creatividad','Puntualidad','Organización','Trabajo en equipo','Expresión oral','Retentiva','Deporte','Otra:'], otro:'fort_otra'}]},
+  {area:'Debilidades', filas:[
+    {key:'deb', label:'Marque las que apliquen', tipo:'check', ops:['Distracción','Poca participación','Expresión oral','Ortografía y caligrafía','Organización','Memorización','Inasistencias','Cansancio','Otra:'], otro:'deb_otra'}]},
+  {area:'Perfil emocional', filas:[
+    {key:'animo', label:'Estado de ánimo habitual', tipo:'radio', ops:['Alegre','Tranquilo','Triste','Ansioso','Irritable']},
+    {key:'autoestima', label:'Autoestima', tipo:'radio', ops:['Alta','Media','Baja']},
+    {key:'senales', label:'Señales observadas', tipo:'check', ops:['Timidez','Inseguridad','Aislamiento','Busca atención','Ninguna']}]},
+  {area:'Alimentación y salud', filas:[
+    {key:'refrigerio', label:'Refrigerio que lleva', tipo:'radio', ops:['Saludable','Mixto','Poco saludable','No lleva']},
+    {key:'dulces', label:'Dulces y harinas', tipo:'radio', ops:['Poco','Moderado','Mucho']},
+    {key:'cafeteria', label:'Compra en la cafetería', tipo:'radio', ops:['Nunca','A veces','Frecuente']},
+    {key:'salud', label:'Condición de salud o dieta especial', tipo:'radio', ops:['No','Sí'], otro:'salud_si'},
+    {key:'seguimiento', label:'Seguimiento médico o psicológico', tipo:'radio', ops:['No','Sí'], otro:'seg_si'}]},
+  {area:'Presentación personal', filas:[
+    {key:'higiene', label:'Se evidencian hábitos de higiene personal', tipo:'radio', ops:['Nunca','A veces','Siempre']},
+    {key:'cabello', label:'Presenta su cabello según la normativa escolar', tipo:'radio', ops:['Nunca','A veces','Siempre']},
+    {key:'uniforme', label:'Uniforme completo, según horario.', tipo:'radio', ops:['Nunca','A veces','Siempre']}]},
+  {area:'Padres de familia', filas:[
+    {key:'p_eventos', label:'Apoyo en eventos extracurriculares', tipo:'radio', ops:['No','A veces','Siempre']},
+    {key:'p_agenda', label:'Revisión y firma de agenda diaria', tipo:'radio', ops:['No','A veces','Siempre']},
+    {key:'p_seg', label:'Seguimiento académico', tipo:'radio', ops:['No','A veces','Siempre']},
+    {key:'p_pres', label:'Apoyo en presentación personal del estudiante', tipo:'radio', ops:['No','A veces','Siempre']}]},
+  {area:'Reconocimiento y recomendación', filas:[
+    {key:'reconocimiento', label:'Reconocimiento', tipo:'texto'},
+    {key:'recomendacion', label:'Recomendación', tipo:'texto'}]}
+];
+const CAR_PUNTO_CORTE = 7;   // la ficha impresa se parte después de "Debilidades" (área n.º 6)
+const CAR_COLORES = ['#1f5f8b','#e8793a','#2e7d32','#2aa7e0','#7cb342','#8e44ad','#c0392b','#16a085','#f1c40f','#34495e','#d35400','#95a5a6'];
+function carDatos(){ if(!DB.caract) DB.caract = {}; return DB.caract; }
+function carFicha(estId, p){ return ((carDatos().datos||{})[estId+'|'+p]) || {}; }
+function carMut(estId, p, fn){
+  commit(doc=>{
+    const c = doc.caract = doc.caract || {};
+    c.datos = c.datos || {};
+    const k = estId+'|'+p;
+    const d = c.datos[k] = c.datos[k] || {};
+    fn(d);
+  });
+}
+function carPeriodoSel(){ return Math.min(4, Math.max(1, Number(getPref('carPer', 1)) || 1)); }
+function carGradoSel(){
+  const grados = gradosBoleta(currentUser);
+  const g = getPref('carGradoSel','');
+  return (g && grados.includes(g)) ? g : (grados[0] || '');
+}
+function carNivelCodigo(n){ return {comunicacion:'CV', leve:'F1', grave:'F2', muygrave:'F3'}[n] || ''; }
+function carEnPeriodo(fecha, p){
+  const cfg = (carDatos().config||{}).periodos || {};
+  const r = cfg[p] || {};
+  if(!r.ini && !r.fin) return true;
+  if(!fecha) return false;
+  if(r.ini && fecha < r.ini) return false;
+  if(r.fin && fecha > r.fin) return false;
+  return true;
+}
+/* Cuenta automática de reportes de un estudiante en el período: {F1,F2,F3,CV} */
+function carReportes(estId, p){
+  const c = {F1:0, F2:0, F3:0, CV:0};
+  (DB.reportes||[]).forEach(r=>{
+    if(r.estId!==estId) return;
+    if(!carEnPeriodo(r.fecha, p)) return;
+    const cod = carNivelCodigo(r.nivel);
+    if(cod) c[cod]++;
+  });
+  return c;
+}
+function carReportesTexto(c){
+  const t = ['F1','F2','F3','CV'].filter(k=>c[k]>0).map(k=>k+': '+c[k]);
+  return t.length ? t.join(' · ') : '—';
+}
+function carNota(estId, asigId, p, grado){
+  const v = periodInfo(estId, asigId, p, grado).valor;
+  return v===null ? null : Math.round(v);
+}
+function carOrientador(grado){
+  const d = DB.docentes.find(x=>!esPropietario(x) && esOrientador(x, grado));
+  return d ? d.nombre : (currentUser ? currentUser.nombre : '');
+}
+/* Fortaleza / a reforzar: se sugieren solas con las notas del período */
+function carAutoMaterias(estId, p, grado){
+  const lista = asignaturasDeGrado(grado).map(a=>({n:a.nombre, v:carNota(estId, a.id, p, grado)})).filter(x=>x.v!==null);
+  if(!lista.length) return {fort:'', ref:''};
+  const orden = lista.slice().sort((a,b)=>b.v-a.v);
+  const fort = orden.filter(x=>x.v>=70).slice(0,2).map(x=>x.n).join(', ');
+  const bajas = lista.filter(x=>x.v<70).map(x=>x.n);
+  const ref = bajas.length ? bajas.join(', ') : (orden.length>1 ? orden[orden.length-1].n : '');
+  return {fort, ref};
+}
+function carValorTexto(estId, p, key, grado){
+  const d = carFicha(estId, p);
+  if(d.t && d.t[key]!==undefined) return d.t[key];
+  if(key==='fortaleza' || key==='reforzar'){
+    const a = carAutoMaterias(estId, p, grado);
+    return key==='fortaleza' ? a.fort : a.ref;
+  }
+  return '';
+}
+/* --- Edición --- */
+function carManual(estId, p, campo, valor){
+  let v = String(valor).trim().replace(',', '.');
+  if(campo==='conducta' && v!==''){
+    if(!/^\d{1,3}(\.\d+)?$/.test(v) || Number(v)<10 || Number(v)>100){ showToast('La nota de conducta va de 10 a 100.'); render(); return; }
+  }
+  if((campo==='inas' || campo==='tardias') && v!=='' && !/^\d{1,3}$/.test(v)){ showToast('Escribe solo un número.'); render(); return; }
+  carMut(estId, p, d=>{ if(v==='') delete d[campo]; else d[campo] = v; });
+}
+function carRadio(el, estId, p, key, i){
+  const fila = CAR_ESQUEMA.reduce((r,a)=>r || a.filas.find(f=>f.key===key), null);
+  const op = fila.ops[i];
+  const marcado = el.checked;
+  if(marcado){
+    document.querySelectorAll('input[data-ck="'+key+'"]').forEach(x=>{ if(x!==el) x.checked = false; });
+  }
+  carMut(estId, p, d=>{ d.v = d.v || {}; if(marcado) d.v[key] = op; else delete d.v[key]; });
+}
+function carCheck(el, estId, p, key, i){
+  const fila = CAR_ESQUEMA.reduce((r,a)=>r || a.filas.find(f=>f.key===key), null);
+  const op = fila.ops[i];
+  const marcado = el.checked;
+  carMut(estId, p, d=>{
+    d.c = d.c || {};
+    const arr = (d.c[key] || []).filter(x=>x!==op);
+    if(marcado) arr.push(op);
+    if(arr.length) d.c[key] = arr; else delete d.c[key];
+  });
+}
+function carTexto(estId, p, key, valor){
+  const v = String(valor);
+  carMut(estId, p, d=>{ d.t = d.t || {}; if(v.trim()==='' && key!=='fortaleza' && key!=='reforzar') delete d.t[key]; else d.t[key] = v; });
+}
+function carObsGrupo(grado, p, valor){
+  commit(doc=>{
+    const c = doc.caract = doc.caract || {};
+    c.obs = c.obs || {};
+    const k = grado+'|'+p;
+    if(String(valor).trim()==='') delete c.obs[k]; else c.obs[k] = valor;
+  });
+}
+function carFechaPeriodo(p, campo, valor){
+  commit(doc=>{
+    const c = doc.caract = doc.caract || {};
+    c.config = c.config || {};
+    c.config.periodos = c.config.periodos || {};
+    const r = c.config.periodos[p] = c.config.periodos[p] || {};
+    if(valor) r[campo] = valor; else delete r[campo];
+  });
+  render();
+}
+/* --- Copiar la ficha a otros estudiantes --- */
+function carClavesArea(area){
+  const claves = {v:[], c:[], t:[]};
+  area.filas.forEach(f=>{
+    if(f.tipo==='radio') claves.v.push(f.key);
+    if(f.tipo==='check') claves.c.push(f.key);
+    if(f.tipo==='texto') claves.t.push(f.key);
+    if(f.otro) claves.t.push(f.otro);
+  });
+  return claves;
+}
+function carAbrirCopiar(estId){
+  viewState.modalCopiarFicha = {src: estId, areas: CAR_ESQUEMA.map((a,i)=>i), destinos: []};
+  render();
+}
+function carCerrarCopiar(){ viewState.modalCopiarFicha = null; render(); }
+function carCopiarMarcar(tipo, i, valor){
+  const m = viewState.modalCopiarFicha; if(!m) return;
+  const lista = tipo==='area' ? m.areas : m.destinos;
+  const k = tipo==='area' ? Number(i) : i;
+  const pos = lista.indexOf(k);
+  if(valor && pos<0) lista.push(k);
+  if(!valor && pos>=0) lista.splice(pos,1);
+}
+function carCopiarTodos(valor){
+  const m = viewState.modalCopiarFicha; if(!m) return;
+  const grado = carGradoSel();
+  m.destinos = valor ? DB.estudiantes.filter(e=>e.grado===grado && e.id!==m.src).map(e=>e.id) : [];
+  render();
+}
+function carAplicarCopia(){
+  const m = viewState.modalCopiarFicha; if(!m) return;
+  const p = carPeriodoSel();
+  if(m.destinos.length===0){ showToast('Elige al menos un estudiante.'); return; }
+  if(m.areas.length===0){ showToast('Elige al menos un apartado para copiar.'); return; }
+  const origen = JSON.parse(JSON.stringify(carFicha(m.src, p)));
+  const claves = {v:[], c:[], t:[]};
+  m.areas.forEach(i=>{ const k = carClavesArea(CAR_ESQUEMA[i]); claves.v.push(...k.v); claves.c.push(...k.c); claves.t.push(...k.t); });
+  const destinos = m.destinos.slice();
+  commit(doc=>{
+    const c = doc.caract = doc.caract || {};
+    c.datos = c.datos || {};
+    destinos.forEach(id=>{
+      const k = id+'|'+p;
+      const d = c.datos[k] = c.datos[k] || {};
+      d.v = d.v || {}; d.c = d.c || {}; d.t = d.t || {};
+      claves.v.forEach(x=>{ if(origen.v && origen.v[x]!==undefined) d.v[x] = origen.v[x]; else delete d.v[x]; });
+      claves.c.forEach(x=>{ if(origen.c && origen.c[x]) d.c[x] = origen.c[x].slice(); else delete d.c[x]; });
+      claves.t.forEach(x=>{ if(origen.t && origen.t[x]!==undefined) d.t[x] = origen.t[x]; else delete d.t[x]; });
+    });
+  });
+  viewState.modalCopiarFicha = null;
+  render();
+  showToast('Ficha copiada a ' + destinos.length + ' estudiante(s). Recuerda pulsar "Guardar cambios".');
+}
+function renderModalCopiarFicha(){
+  const m = viewState.modalCopiarFicha;
+  if(!m) return '';
+  const grado = carGradoSel();
+  const ests = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado && e.id!==m.src), getPref('ordenEst','apellidos'));
+  const src = DB.estudiantes.find(e=>e.id===m.src);
+  return `<div class="modal-bg" onclick="if(event.target===this) carCerrarCopiar()">
+    <div class="modal" style="max-width:620px; max-height:92vh; overflow:auto;">
+      <button class="modal-close" onclick="carCerrarCopiar()">×</button>
+      <h3 class="modal-title">Copiar ficha de ${esc(src?nombresDe(src)+' '+apellidosDe(src):'')}</h3>
+      <p class="nota-chica" style="margin-top:-6px;">Se copian las casillas marcadas a los estudiantes que elijas (reemplazan lo que tengan en esos apartados). Después puedes corregir a cada uno.</p>
+      <div class="field"><label>1. ¿Qué apartados copiar?</label>
+        <div style="display:flex; flex-wrap:wrap; gap:6px 14px;">
+        ${CAR_ESQUEMA.map((a,i)=>`<label class="check-chip"><input type="checkbox" ${m.areas.includes(i)?'checked':''} onchange="carCopiarMarcar('area',${i},this.checked)"> ${esc(a.area)}</label>`).join('')}
+        </div></div>
+      <div class="field"><label>2. ¿A quiénes?</label>
+        <div style="margin-bottom:6px;"><button class="btn btn-sm" onclick="carCopiarTodos(true)">Marcar todos</button> <button class="btn btn-sm" onclick="carCopiarTodos(false)">Quitar todos</button></div>
+        <div style="display:flex; flex-direction:column; gap:3px; max-height:300px; overflow:auto;">
+        ${ests.map(e=>`<label class="check-chip"><input type="checkbox" ${m.destinos.includes(e.id)?'checked':''} onchange="carCopiarMarcar('dest','${e.id}',this.checked)"> ${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</label>`).join('') || '<p class="empty">No hay más estudiantes en esta aula.</p>'}
+        </div></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="carAplicarCopia()">Copiar</button>
+        <button class="btn" onclick="carCerrarCopiar()">Cancelar</button>
+      </div>
+    </div></div>`;
+}
+/* --- Pantalla --- */
+function renderCaracterizacion(){
+  const grados = gradosBoleta(currentUser);
+  if(grados.length===0){
+    return `<div class="card"><p class="empty">La caracterización la llenan Dirección y el docente orientador de cada aula. No tienes un grado de orientación asignado.</p></div>`;
+  }
+  const grado = carGradoSel();
+  const p = carPeriodoSel();
+  const edit = puedeEditarBoleta(grado);
+  const dis = edit ? '' : 'disabled';
+  const ests = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
+  const asigs = asignaturasDeGrado(grado);
+  let estId = getPref('carEst','');
+  if(!ests.some(e=>e.id===estId)) estId = ests[0] ? ests[0].id : '';
+  const est = ests.find(e=>e.id===estId);
+  const media = arr => { const v = arr.filter(x=>x!==null && x!==undefined && x!=='' && !isNaN(Number(x))).map(Number); return v.length ? Math.round(v.reduce((s,x)=>s+x,0)/v.length) : ''; };
+  const sumaN = arr => { const v = arr.filter(x=>x!=='' && x!==undefined && !isNaN(Number(x))).map(Number); return v.length ? v.reduce((s,x)=>s+x,0) : ''; };
+  const filas = ests.map((e,i)=>{
+    const d = carFicha(e.id, p);
+    const rep = carReportes(e.id, p);
+    return {e, i, d, rep, notas: asigs.map(a=>carNota(e.id, a.id, p, grado))};
+  });
+  const th = 'style="border:1px solid var(--line-strong); padding:4px; background:#dcebf7; font-size:12px;"';
+  const td = 'style="border:1px solid var(--line-strong); padding:3px 4px; text-align:center; font-size:13px;"';
+  const inp = (e,campo,val,ancho)=>`<input type="text" ${dis} value="${esc(val===undefined?'':val)}" style="width:${ancho}px; text-align:center; padding:3px;" onchange="carManual('${e.id}',${p},'${campo}',this.value)">`;
+  const rangos = ((carDatos().config||{}).periodos||{})[p] || {};
+
+  const tablaGrupo = `
+  <div style="overflow:auto;">
+  <table style="border-collapse:collapse; width:100%; min-width:900px;">
+    <tr><th ${th}>N.°</th><th ${th} style="text-align:left;">Nombre del estudiante</th>
+      ${asigs.map(a=>`<th ${th}>${esc(a.nombre)}</th>`).join('')}
+      <th ${th}>Conducta (10-100)</th><th ${th}>Reportes F1 · F2 · F3 · CV</th><th ${th}>Inasistencias (días)</th><th ${th}>Llegadas tardías</th></tr>
+    ${filas.map(f=>`<tr>
+      <td ${td}>${f.i+1}</td>
+      <td style="border:1px solid var(--line-strong); padding:3px 6px; font-size:13px; white-space:nowrap;">${esc(apellidosDe(f.e))}, ${esc(nombresDe(f.e))}</td>
+      ${f.notas.map(n=>`<td ${td}${n!==null&&n<70?' ><span style="color:#c00;font-weight:600;">'+n+'</span>':'>'+(n===null?'':n)}</td>`).join('')}
+      <td ${td}>${inp(f.e,'conducta',f.d.conducta,54)}</td>
+      <td ${td}>${esc(carReportesTexto(f.rep))}</td>
+      <td ${td}>${inp(f.e,'inas',f.d.inas,48)}</td>
+      <td ${td}>${inp(f.e,'tardias',f.d.tardias,48)}</td>
+    </tr>`).join('')}
+    <tr style="font-weight:700; background:#f3f7fb;"><td ${td}></td><td style="border:1px solid var(--line-strong); padding:3px 6px; font-size:13px;">MEDIA GRUPAL</td>
+      ${asigs.map((a,j)=>`<td ${td}>${media(filas.map(f=>f.notas[j]))}</td>`).join('')}
+      <td ${td}>${media(filas.map(f=>f.d.conducta))}</td>
+      <td ${td}>${esc(carReportesTexto(['F1','F2','F3','CV'].reduce((o,k)=>{ o[k]=filas.reduce((s,f)=>s+f.rep[k],0); return o; },{})))}</td>
+      <td ${td}>${sumaN(filas.map(f=>f.d.inas))}</td><td ${td}>${sumaN(filas.map(f=>f.d.tardias))}</td></tr>
+  </table></div>
+  <p class="nota-chica">Las notas y los reportes (F1, F2, F3, CV) salen solos de la plataforma. Conducta, inasistencias y llegadas tardías se escriben a mano. Las materias que el grado no recibe no aparecen, y si agregas una materia al grado, aparece sola.</p>`;
+
+  const celdaOps = (f, d)=>{
+    if(f.tipo==='texto'){
+      return `<input type="text" ${dis} style="width:100%;" value="${esc((d.t||{})[f.key]||'')}" onchange="carTexto('${estId}',${p},'${f.key}',this.value)">`;
+    }
+    if(f.tipo==='materias'){
+      return `<div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <label style="flex:1; min-width:180px;">Fortaleza: <input type="text" ${dis} style="width:100%;" value="${esc(carValorTexto(estId,p,'fortaleza',grado))}" onchange="carTexto('${estId}',${p},'fortaleza',this.value)"></label>
+        <label style="flex:1; min-width:180px;">A reforzar: <input type="text" ${dis} style="width:100%;" value="${esc(carValorTexto(estId,p,'reforzar',grado))}" onchange="carTexto('${estId}',${p},'reforzar',this.value)"></label>
+        <span class="nota-chica" style="width:100%; margin:0;">Se llenan solas con las notas del período; puedes corregirlas.</span></div>`;
+    }
+    const sel = f.tipo==='radio' ? [ (d.v||{})[f.key] ] : ((d.c||{})[f.key] || []);
+    return `<div style="display:flex; flex-wrap:wrap; gap:4px 16px; align-items:center;">
+      ${f.ops.map((op,i)=>`<label class="check-chip" style="margin:0;"><input type="checkbox" data-ck="${f.key}" ${dis} ${sel.includes(op)?'checked':''} onchange="${f.tipo==='radio'?'carRadio':'carCheck'}(this,'${estId}',${p},'${f.key}',${i})"> ${esc(op)}</label>`).join('')}
+      ${f.otro ? `<input type="text" ${dis} placeholder="¿Cuál?" style="width:170px; padding:3px;" value="${esc((d.t||{})[f.otro]||'')}" onchange="carTexto('${estId}',${p},'${f.otro}',this.value)">` : ''}
+    </div>`;
+  };
+  const dEst = est ? carFicha(est.id, p) : {};
+  const ficha = est ? `
+  <h2 style="font-size:17px; margin:22px 0 4px;">Ficha individual — ${esc(apellidosDe(est))}, ${esc(nombresDe(est))}</h2>
+  <div style="overflow:auto;">
+  <table style="border-collapse:collapse; width:100%; min-width:760px;">
+    <tr><th ${th} style="width:120px;">Área</th><th ${th} style="width:250px; text-align:left;">Aspecto</th><th ${th} style="text-align:left;">Marque con X</th></tr>
+    ${CAR_ESQUEMA.map(a=>a.filas.map((f,i)=>`<tr>
+      <td style="border:1px solid var(--line-strong); padding:4px 6px; font-weight:700; font-size:13px; vertical-align:top;">${i===0?esc(a.area==='Reconocimiento y recomendación'?'':a.area):''}</td>
+      <td style="border:1px solid var(--line-strong); padding:4px 6px; font-size:13px; vertical-align:top;">${esc(f.label)}</td>
+      <td style="border:1px solid var(--line-strong); padding:4px 6px; font-size:13px;">${celdaOps(f, dEst)}</td>
+    </tr>`).join('')).join('')}
+  </table></div>
+  <div class="field" style="margin-top:12px;"><label>Observaciones del análisis estadístico (página de la gráfica de este estudiante)</label>
+    <textarea rows="3" ${dis} onchange="carTexto('${est.id}',${p},'observaciones',this.value)">${esc((dEst.t||{}).observaciones||'')}</textarea></div>
+  ${edit ? `<button class="btn" onclick="carAbrirCopiar('${est.id}')">Copiar esta ficha a otros estudiantes…</button>` : ''}` : '<div class="card"><p class="empty">No hay estudiantes en esta aula.</p></div>';
+
+  return `
+  <div class="filters">
+    <div class="field"><label>Aula</label>
+      <select class="grado-select" onchange="setPref('carEst',''); setPref('carGradoSel', this.value)">
+        ${grados.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}</select></div>
+    <div class="field"><label>Período</label>
+      <select onchange="setPref('carPer', Number(this.value))">
+        ${[1,2,3,4].map(n=>`<option value="${n}" ${p===n?'selected':''}>Período ${ROMANOS[n-1]}</option>`).join('')}</select></div>
+    <div class="field"><label>Estudiante (ficha)</label>
+      <select onchange="setPref('carEst', this.value)">
+        ${ests.map((e,i)=>`<option value="${e.id}" ${est&&est.id===e.id?'selected':''}>${i+1}. ${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</option>`).join('')}</select></div>
+    <button class="btn" ${ests.length?'':'disabled'} onclick="descargarCaracterizacion(true)">Visualizar</button>
+    <button class="btn btn-primary" ${ests.length?'':'disabled'} onclick="descargarCaracterizacion(false)">Descargar PDF</button>
+  </div>
+  ${edit ? renderGuardarManualBanner() : '<div class="note">Solo puedes ver la caracterización de esta aula; la llena su orientador(a).</div>'}
+  <h2 style="font-size:17px; margin:6px 0;">1. Media del grupo por asignatura — Período ${ROMANOS[p-1]}</h2>
+  ${tablaGrupo}
+  <div class="field"><label>Observaciones del grupo</label>
+    <textarea rows="3" ${dis} onchange="carObsGrupo('${esc(grado)}',${p},this.value)">${esc(((carDatos().obs||{})[grado+'|'+p])||'')}</textarea></div>
+  <details class="card" style="margin:10px 0; padding:10px 14px;">
+    <summary style="cursor:pointer;"><b>Fechas del período ${ROMANOS[p-1]}</b> (para contar solo los reportes de este período)</summary>
+    <div class="filters" style="margin-top:8px;">
+      <div class="field"><label>Desde</label><input type="date" ${dis} value="${esc(rangos.ini||'')}" onchange="carFechaPeriodo(${p},'ini',this.value)"></div>
+      <div class="field"><label>Hasta</label><input type="date" ${dis} value="${esc(rangos.fin||'')}" onchange="carFechaPeriodo(${p},'fin',this.value)"></div>
+    </div>
+    <p class="nota-chica">Si no pones fechas, se cuentan todos los reportes del año.</p>
+  </details>
+  ${ficha}
+  ${renderModalCopiarFicha()}`;
+}
+/* --- Gráficas (SVG) --- */
+function carSvgBarras(titulo, cats, series, opts){
+  opts = opts || {};
+  const W = opts.w || 900, H = opts.h || 360;
+  const ml = 44, mr = 16, mt = 44, mb = opts.rotar ? 110 : 70;
+  const pw = W-ml-mr, ph = H-mt-mb;
+  const max = 100;
+  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let g = '';
+  for(let v=0; v<=max; v+=10){
+    const y = mt + ph - (v/max)*ph;
+    g += `<line x1="${ml}" x2="${W-mr}" y1="${y}" y2="${y}" stroke="#d9d9d9"/><text x="${ml-6}" y="${y+4}" font-size="11" text-anchor="end" fill="#555">${v}</text>`;
+  }
+  const gw = pw/Math.max(1,cats.length);
+  const bw = Math.max(3, (gw*0.78)/Math.max(1,series.length));
+  cats.forEach((c,i)=>{
+    const x0 = ml + i*gw + (gw - bw*series.length)/2;
+    series.forEach((s,j)=>{
+      const v = s.vals[i];
+      if(v===null || v===undefined || isNaN(v)) return;
+      const h = Math.max(0, Math.min(max, v))/max*ph;
+      g += `<rect x="${x0+j*bw}" y="${mt+ph-h}" width="${bw-1}" height="${h}" fill="${s.color}"/>`;
+      if(opts.etiquetas && bw>=14) g += `<text x="${x0+j*bw+bw/2}" y="${mt+ph-h-3}" font-size="9" text-anchor="middle" fill="#333">${Math.round(v)}</text>`;
+    });
+    const cx = ml + i*gw + gw/2, cy = mt+ph+14;
+    g += opts.rotar
+      ? `<text x="${cx}" y="${cy}" font-size="11" text-anchor="end" fill="#333" transform="rotate(-40 ${cx} ${cy})">${q(c)}</text>`
+      : `<text x="${cx}" y="${cy}" font-size="12" text-anchor="middle" fill="#333">${q(c)}</text>`;
+  });
+  const lx0 = ml; let lx = lx0, ly = H-16;
+  const leg = series.map(s=>{
+    const w = 26 + s.nombre.length*6.2;
+    if(lx + w > W-mr){ lx = lx0; ly -= 16; }
+    const r = `<rect x="${lx}" y="${ly-9}" width="10" height="10" fill="${s.color}"/><text x="${lx+14}" y="${ly}" font-size="11" fill="#333">${q(s.nombre)}</text>`;
+    lx += w; return r;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" style="font-family:Arial,sans-serif;">
+    <rect x="0" y="0" width="${W}" height="${H}" fill="#fff" stroke="#ccc"/>
+    <text x="${W/2}" y="26" font-size="16" font-weight="bold" text-anchor="middle" fill="#1a2f55">${q(titulo)}</text>
+    ${g}${leg}</svg>`;
+}
+function caractHtml(grado, p, vista){
+  const aj = DB.ajustes || {};
+  const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const ests = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
+  const asigs = asignaturasDeGrado(grado);
+  const nombreCorto = e => (nombresDe(e).split(' ')[0] + ' ' + apellidosDe(e).split(' ')[0]).trim();
+  const nombreLargo = e => (nombresDe(e)+' '+apellidosDe(e)).trim();
+  const media = arr => { const v = arr.filter(x=>x!==null && x!=='' && x!==undefined && !isNaN(Number(x))).map(Number); return v.length ? Math.round(v.reduce((s,x)=>s+x,0)/v.length) : ''; };
+  const sumaN = arr => { const v = arr.filter(x=>x!=='' && x!==undefined && !isNaN(Number(x))).map(Number); return v.length ? v.reduce((s,x)=>s+x,0) : ''; };
+  const filas = ests.map(e=>({e, d:carFicha(e.id,p), rep:carReportes(e.id,p), notas:asigs.map(a=>carNota(e.id,a.id,p,grado))}));
+  const cab = `<div class="cab">${aj.logo?`<img src="${aj.logo}" class="logo">`:'<div class="logo"></div>'}
+    <table class="tcab"><tr><td colspan="2" class="c1">${q((aj.nombreColegio||'').toUpperCase())}<br><span class="c2">CARACTERIZACIÓN PSICOPEDAGÓGICA – AÑO LECTIVO ${q(aj.anio||'')}</span><br><span class="c2">PERÍODO ${ROMANOS[p-1]}</span></td></tr>
+    <tr><td><b>Docente:</b> ${q(carOrientador(grado))}</td><td><b>Grado:</b> ${q(grado)}</td></tr></table></div>`;
+  const rojo = n => (n!==null && n!=='' && Number(n)<70) ? ' class="rj"' : '';
+  const pag1 = `<div class="pg">${cab}
+    <h3>1. Media del grupo por asignatura durante el período ${ROMANOS[p-1]}</h3>
+    <table class="tg"><tr><th>N.°</th><th class="nm">Nombre del estudiante</th>${asigs.map(a=>`<th class="v"><div>${q(a.nombre)}</div></th>`).join('')}<th class="v"><div>Conducta (10-100)</div></th><th class="rp">Reportes F1 · F2 · F3 · CV</th><th class="v"><div>Inasistencias (días)</div></th><th class="v"><div>Llegadas tardías</div></th></tr>
+    ${filas.map((f,i)=>`<tr><td>${i+1}</td><td class="nm">${q(apellidosDe(f.e))}, ${q(nombresDe(f.e))}</td>${f.notas.map(n=>`<td${rojo(n)}>${n===null?'':n}</td>`).join('')}<td>${q(f.d.conducta||'')}</td><td class="rp">${q(carReportesTexto(f.rep))}</td><td>${q(f.d.inas||'')}</td><td>${q(f.d.tardias||'')}</td></tr>`).join('')}
+    <tr class="mg"><td></td><td class="nm">MEDIA GRUPAL</td>${asigs.map((a,j)=>`<td>${media(filas.map(f=>f.notas[j]))}</td>`).join('')}<td>${media(filas.map(f=>f.d.conducta))}</td><td class="rp">${q(carReportesTexto(['F1','F2','F3','CV'].reduce((o,k)=>{ o[k]=filas.reduce((s,f)=>s+f.rep[k],0); return o; },{})))}</td><td>${sumaN(filas.map(f=>f.d.inas))}</td><td>${sumaN(filas.map(f=>f.d.tardias))}</td></tr></table>
+    <p><b>Observaciones:</b> ${q((carDatos().obs||{})[grado+'|'+p]||'')}</p></div>`;
+  const marca = (sel, op) => (sel.includes(op) ? '☒' : '☐') + ' ' + q(op);
+  const filaFicha = (a, f, i, d, e)=>{
+    let celda = '';
+    if(f.tipo==='texto') celda = q((d.t||{})[f.key]||'');
+    else if(f.tipo==='materias') celda = `<b>Fortaleza:</b> ${q(carValorTexto(e.id,p,'fortaleza',grado))} &nbsp;&nbsp; <b>A reforzar:</b> ${q(carValorTexto(e.id,p,'reforzar',grado))}`;
+    else{
+      const sel = f.tipo==='radio' ? [ (d.v||{})[f.key] ] : ((d.c||{})[f.key]||[]);
+      celda = f.ops.map(op=>{
+        let x = '<span class="op">'+marca(sel, op);
+        if(f.otro && ((f.tipo==='radio' && (op==='Sí'||op==='Otro')) || op==='Otra:')) x += ' ' + q((d.t||{})[f.otro]||'');
+        return x+'</span>';
+      }).join(' ');
+    }
+    return `<tr><td class="ar">${i===0?q(a.area==='Reconocimiento y recomendación'?'':a.area):''}</td><td>${q(f.label)}</td><td>${celda}</td></tr>`;
+  };
+  const tablaFicha = (areas, d, e) => `<table class="tf"><tr class="hd"><th>Área</th><th>Aspecto</th><th>Marque con X</th></tr>${areas.map(a=>a.filas.map((f,i)=>filaFicha(a,f,i,d,e)).join('')).join('')}</table>`;
+  const palette = i => CAR_COLORES[i % CAR_COLORES.length];
+  let cuerpo = pag1;
+  ests.forEach(e=>{
+    const d = carFicha(e.id, p);
+    cuerpo += `<div class="pg"><p class="ft">Ficha individual</p><p><b>Estudiante:</b> ${q(nombreLargo(e))}</p>${tablaFicha(CAR_ESQUEMA.slice(0,CAR_PUNTO_CORTE-1), d, e)}</div>`;
+    cuerpo += `<div class="pg"><p class="ft">Ficha individual — ${q(nombreLargo(e))}</p>${tablaFicha(CAR_ESQUEMA.slice(CAR_PUNTO_CORTE-1), d, e)}</div>`;
+    const series = asigs.map((a,j)=>({nombre:a.nombre, color:palette(j), vals:[1,2,3,4].map(per=>carNota(e.id,a.id,per,grado))}));
+    cuerpo += `<div class="pg"><h3>Análisis estadístico por estudiante:</h3><p><b>Nombre:</b> ${q(nombreLargo(e))}</p>
+      ${carSvgBarras(nombreLargo(e), ['PERÍODO I','PERÍODO II','PERÍODO III','PERÍODO IV'], series, {etiquetas:true, h:380})}
+      <p><b>Observaciones:</b> ${q((d.t||{}).observaciones||'')}</p></div>`;
+  });
+  const per = [1,2,3,4].map((n,j)=>({nombre:'PERÍODO '+ROMANOS[j], color:['#1f5f8b','#e8793a','#2e7d32','#2aa7e0'][j], vals:ests.map(e=>{ const v=promedioPeriodoEstudiante(e.id,grado,n); return v===null?null:Math.round(v); })}));
+  cuerpo += `<div class="pg"><h3>2. Gráfica global por grado — ${q(grado)}</h3>${carSvgBarras('GRÁFICA COMPARATIVA — MEDIA POR PERÍODO', ests.map(nombreCorto), per, {rotar:true, h:430})}</div>`;
+  const titulo = 'Caracterización ' + grado + ' - Período ' + ROMANOS[p-1];
+  const barra = vista ? '<div class="barra"><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>' : '';
+  const auto = vista ? '' : '<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>';
+  return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+q(titulo)+'</title><style>'+
+  '@page{ size: letter landscape; margin:10mm; }'+
+  '*{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'+
+  'body{ margin:0; font-family:"Times New Roman",serif; font-size:10.5pt; color:#000; background:#d8d8d8; }'+
+  '.barra{ position:sticky; top:0; z-index:5; background:#002060; padding:8px; text-align:center; } .barra button{ font-size:14px; padding:8px 18px; cursor:pointer; }'+
+  '.pg{ width:259mm; min-height:196mm; margin:0 auto 12px; background:#fff; padding:6mm 8mm; page-break-after:always; }'+
+  '.pg:last-child{ page-break-after:auto; }'+
+  '@media print{ body{ background:#fff; } .pg{ margin:0; width:auto; min-height:0; padding:0; } .barra{ display:none; } }'+
+  'h3{ font-size:12pt; margin:8px 0 6px; } p{ margin:4px 0; } .ft{ font-size:11pt; }'+
+  '.cab{ display:flex; gap:12px; align-items:center; margin-bottom:6px; } .logo{ width:22mm; height:22mm; object-fit:contain; }'+
+  '.tcab{ flex:1; border-collapse:collapse; } .tcab td{ border:1px solid #000; padding:3px 6px; font-family:Calibri,Arial,sans-serif; } .c1{ text-align:center; font-size:13pt; font-weight:bold; } .c2{ font-size:9.5pt; font-weight:bold; }'+
+  '.tg{ border-collapse:collapse; width:100%; font-size:9.5pt; } .tg th,.tg td{ border:1px solid #000; padding:3px 3px; text-align:center; } .tg th{ background:#dcebf7; }'+
+  '.tg .nm{ text-align:left; white-space:nowrap; } .tg th.v{ height:34mm; padding:2px; } .tg th.v div{ writing-mode:vertical-rl; transform:rotate(180deg); margin:auto; font-size:9pt; } .tg .rp{ white-space:nowrap; } .tg .mg td{ font-weight:bold; background:#f3f7fb; } .rj{ color:#e00000; font-weight:bold; }'+
+  '.tf{ border-collapse:collapse; width:100%; font-size:9.5pt; } .tf td,.tf th{ border:1px solid #000; padding:3px 6px; vertical-align:top; } .tf .hd th{ background:#bde0f5; text-align:left; } .tf .ar{ font-weight:bold; width:28mm; } .tf td:nth-child(2){ width:62mm; } .op{ display:inline-block; margin-right:10px; white-space:nowrap; }'+
+  '</style></head><body>'+barra+cuerpo+auto+'</body></html>';
+}
+function descargarCaracterizacion(vista){
+  const grado = carGradoSel(), p = carPeriodoSel();
+  if(!DB.estudiantes.some(e=>e.grado===grado)){ showToast('No hay estudiantes en esta aula.'); return; }
+  const html = caractHtml(grado, p, vista);
+  const v = window.open('', '_blank');
+  if(!v){ showToast('El navegador bloqueó la ventana emergente. Permítela e intenta de nuevo.'); return; }
+  v.document.write(html);
+  v.document.close();
+  if(!vista) showToast('En el diálogo de impresión elige "Guardar como PDF".');
+}
+
 /* ============================= BOLETAS DE NOTAS ============================= */
 /* Configuración de la boleta: se guarda una vez y queda como valor por defecto
    para todas las siguientes. Cada edición reemplaza a la anterior. */
@@ -9979,11 +10477,7 @@ function boletaCfg(){
     casillasPadres: Array.isArray(c.casillasPadres) ? c.casillasPadres : BOLETA_DEF.casillasPadres.slice(),
     conducta:       Array.isArray(c.conducta)       ? c.conducta       : BOLETA_DEF.conducta.slice(),
     escala:         Array.isArray(c.escala)         ? c.escala         : BOLETA_DEF.escala.map(x=>Object.assign({},x)),
-    firmas:         Array.isArray(c.firmas)         ? c.firmas         : BOLETA_DEF.firmas.map(x=>Object.assign({},x)),
-    orden:          (c.orden && typeof c.orden==='object') ? JSON.parse(JSON.stringify(c.orden)) : {},
-    nombreCiencia:  c.nombreCiencia || '',
-    firmasGrado:    (c.firmasGrado && typeof c.firmasGrado==='object') ? JSON.parse(JSON.stringify(c.firmasGrado)) : {},
-    nombresMateria: (c.nombresMateria && typeof c.nombresMateria==='object') ? JSON.parse(JSON.stringify(c.nombresMateria)) : {}
+    firmas:         Array.isArray(c.firmas)         ? c.firmas         : BOLETA_DEF.firmas.map(x=>Object.assign({},x))
   };
 }
 function guardarBoletaCfg(mutador){
@@ -10026,157 +10520,18 @@ function promedioPeriodoEstudiante(estId, grado, periodo){
   return vals.reduce((s,v)=>s+v,0)/vals.length;
 }
 
-/* ---- Orden de materias en la boleta y bloque Ciencia y Tecnología ---- */
-const BOL_CIENCIAS = ['FISICA','QUIMICA','BIOLOGIA'];
-function bolNormNombre(s){ return String(s==null?'':s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim(); }
-/* Nombre con que sale una materia en la boleta de un grado (no cambia la asignatura en el sistema) */
-function bolNombreMateria(grado, a){
-  const m = (DB.config && DB.config.boleta && DB.config.boleta.nombresMateria) || {};
-  const v = m[grado] && m[grado][a.id];
-  return (v && String(v).trim()) ? String(v).trim() : a.nombre;
-}
-function editarNombreMateria(grado, id, valor){
-  const limpio = (valor||'').trim();
-  guardarBoletaCfg(c=>{
-    c.nombresMateria = c.nombresMateria || {};
-    c.nombresMateria[grado] = c.nombresMateria[grado] || {};
-    if(limpio) c.nombresMateria[grado][id] = limpio;
-    else delete c.nombresMateria[grado][id];
-  });
-  render();
-}
-function bolNombreCiencia(){ const c = (DB.config && DB.config.boleta) || {}; return c.nombreCiencia || 'CIENCIA Y TECNOLOGÍA'; }
-/* Unidades de la boleta: una materia suelta, o el bloque de Física + Química + Biología */
-function bolUnidades(grado){
-  const todas = asignaturasDeGrado(grado);
-  const o = (DB.config && DB.config.boleta && DB.config.boleta.orden) || {};
-  const orden = Array.isArray(o[grado]) ? o[grado] : [];
-  const pos = a => { const i = orden.indexOf(a.id); return i<0 ? 1e6 : i; };
-  const lista = todas.map((a,i)=>({a,i})).sort((x,y)=>(pos(x.a)-pos(y.a)) || (x.i-y.i)).map(x=>x.a);
-  const cienc = BOL_CIENCIAS.map(n=>lista.find(a=>bolNormNombre(a.nombre)===n));
-  const hayTrio = cienc.every(Boolean);
-  const unidades = []; let puesto = false;
-  lista.forEach(a=>{
-    if(hayTrio && cienc.includes(a)){
-      if(!puesto){
-        puesto = true;
-        const miembros = lista.filter(x=>cienc.includes(x));
-        unidades.push({tipo:'ciencia', miembros: miembros.sort((x,y)=>(pos(x)-pos(y)) || (cienc.indexOf(x)-cienc.indexOf(y)))});
-      }
-    }else unidades.push({tipo:'asig', a});
-  });
-  return unidades;
-}
-/* Filas en el orden que se dibujan: materias, y tras las tres ciencias la fila de total */
-function bolFilas(grado){
-  const out = [];
-  bolUnidades(grado).forEach(u=>{
-    if(u.tipo==='asig') out.push({tipo:'asig', a:u.a});
-    else{ u.miembros.forEach(a=>out.push({tipo:'miembro', a})); out.push({tipo:'total', miembros:u.miembros}); }
-  });
-  return out;
-}
-function bolValorCiencia(estId, grado, miembros, p){
-  const vals = miembros.map(a=> p==='final' ? subjectInfo(estId, a.id, grado).valor : periodInfo(estId, a.id, p, grado).valor)
-    .filter(v=>v!==null && v!==undefined);
-  return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
-}
-function moverMateriaBoleta(grado, id, dir){
-  if(!puedeEditarBoleta(grado)) return;
-  const u = bolUnidades(grado);
-  let movido = false;
-  if(id==='__ciencia'){
-    const i = u.findIndex(x=>x.tipo==='ciencia'), k = i+dir;
-    if(i>=0 && k>=0 && k<u.length){ [u[i],u[k]] = [u[k],u[i]]; movido = true; }
-  }else{
-    const ci = u.findIndex(x=>x.tipo==='ciencia' && x.miembros.some(m=>m.id===id));
-    if(ci>=0){      // dentro del bloque de ciencias solo se cambia el orden entre las tres
-      const mm = u[ci].miembros, j = mm.findIndex(m=>m.id===id), k = j+dir;
-      if(k>=0 && k<mm.length){ [mm[j],mm[k]] = [mm[k],mm[j]]; movido = true; }
-    }else{
-      const i = u.findIndex(x=>x.tipo==='asig' && x.a.id===id), k = i+dir;
-      if(i>=0 && k>=0 && k<u.length){ [u[i],u[k]] = [u[k],u[i]]; movido = true; }
-    }
-  }
-  if(!movido) return;
-  const plano = [];
-  u.forEach(x=>{ if(x.tipo==='asig') plano.push(x.a.id); else x.miembros.forEach(m=>plano.push(m.id)); });
-  const clave = ids => ids.slice().sort().join('|');
-  const mia = clave(plano);
-  // El mismo orden se aplica a todos los grados que tengan exactamente estas materias
-  const grados = (DB.config.grados||[]).filter(g=> g===grado || clave(asignaturasDeGrado(g).map(a=>a.id))===mia);
-  guardarBoletaCfg(c=>{ c.orden = c.orden || {}; grados.forEach(g=>{ c.orden[g] = plano.slice(); }); });
-  render();
-}
-function editarNombreCiencia(valor){
-  guardarBoletaCfg(c=>{ c.nombreCiencia = (valor||'').trim(); });
-  render();
-}
-function bolFilasPantallaHtml(est, grado, edit, n1){
-  const G = esc(grado);
-  const flechas = id => edit
-    ? `<span style="white-space:nowrap; margin-right:4px;"><button class="icon-btn" title="Subir" onclick="moverMateriaBoleta('${G}','${id}',-1)">▲</button><button class="icon-btn" title="Bajar" onclick="moverMateriaBoleta('${G}','${id}',1)">▼</button></span>`
-    : '';
-  return bolFilas(grado).map(f=>{
-    if(f.tipo==='total'){
-      const nom = edit
-        ? `<input class="bol-in" style="width:calc(100% - 56px); text-transform:uppercase; font-weight:700;" value="${esc(bolNombreCiencia())}" onchange="editarNombreCiencia(this.value)">`
-        : esc(bolNombreCiencia().toUpperCase());
-      return `<tr style="background:#eef3ee; font-weight:700;">
-        <td class="bol-mat">${flechas('__ciencia')}${nom}</td>
-        ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(bolValorCiencia(est.id, grado, f.miembros, p))}</td>`).join('')}
-        <td class="bol-num bol-fuerte">${n1(bolValorCiencia(est.id, grado, f.miembros, 'final'))}</td>
-      </tr>`;
-    }
-    const a = f.a, si = subjectInfo(est.id, a.id, grado);
-    const nomMat = edit
-      ? `<input class="bol-in" style="width:calc(100% - 56px); text-transform:uppercase;" value="${esc(bolNombreMateria(grado, a).toUpperCase())}" onchange="editarNombreMateria('${G}','${a.id}',this.value)">`
-      : esc(bolNombreMateria(grado, a).toUpperCase());
-    return `<tr>
-      <td class="bol-mat">${flechas(a.id)}${nomMat}</td>
-      ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(periodInfo(est.id, a.id, p, grado).valor)}</td>`).join('')}
-      <td class="bol-num bol-fuerte">${n1(si.valor)}</td>
-    </tr>`;
-  }).join('');
-}
-function bolFilasPdfHtml(est, grado, n1, q){
-  return bolFilas(grado).map(f=>{
-    if(f.tipo==='total'){
-      return `<tr style="background:#eef3ee; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
-        <td class="izqtxt b">${q(bolNombreCiencia().toUpperCase())}</td>
-        ${[1,2,3,4].map(p=>`<td class="c b">${n1(bolValorCiencia(est.id, grado, f.miembros, p))}</td>`).join('')}
-        <td class="c b">${n1(bolValorCiencia(est.id, grado, f.miembros, 'final'))}</td>
-      </tr>`;
-    }
-    const a = f.a;
-    return `<tr>
-      <td class="izqtxt">${q(bolNombreMateria(grado, a).toUpperCase())}</td>
-      ${[1,2,3,4].map(p=>`<td class="c">${n1(periodInfo(est.id,a.id,p,grado).valor)}</td>`).join('')}
-      <td class="c b">${n1(subjectInfo(est.id,a.id,grado).valor)}</td>
-    </tr>`;
-  }).join('');
-}
-
-/* Firmas de la boleta: el nombre de la orientadora es propio de cada grado;
-   las demás firmas (Coordinadora, Directora…) son iguales para todos. */
-function firmaEsDeGrado(f){ return /orientad/i.test(bolNormNombre(f && f.cargo)); }
-function firmasDeGrado(cfg, grado){
-  const mios = (cfg.firmasGrado && cfg.firmasGrado[grado]) || {};
-  return cfg.firmas.map((f,i)=> (firmaEsDeGrado(f) && Object.prototype.hasOwnProperty.call(mios, i))
-    ? {nombre: mios[i], cargo: f.cargo} : f);
-}
-function editarFirmaGrado(grado, i, valor){
-  guardarBoletaCfg(c=>{
-    c.firmasGrado = c.firmasGrado || {};
-    c.firmasGrado[grado] = c.firmasGrado[grado] || {};
-    c.firmasGrado[grado][i] = (valor||'').trim();
-  });
-  render();
-}
-
 function renderBoletas(){
   if(!puedeVerPanel(currentUser, 'boletas')) return renderNoAccess();
-  return renderBoletasContenido();
+  const tab = getPref('bolTab','boletas') === 'caract' ? 'caract' : 'boletas';
+  const barra = `<div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">
+    <button class="btn ${tab==='boletas'?'btn-primary':''}" onclick="setPref('bolTab','boletas')">Boletas</button>
+    <button class="btn ${tab==='caract'?'btn-primary':''}" onclick="setPref('bolTab','caract')">Caracterización</button>
+  </div>`;
+  if(tab==='caract'){
+    return barra + `<div class="page-head"><p class="page-eyebrow">Reportes</p><h1 class="page-title">Caracterización psicopedagógica</h1>
+      <p class="page-desc">Notas y reportes salen solos de la plataforma; el orientador completa conducta, inasistencias, llegadas tardías y la ficha de cada estudiante.</p></div>` + renderCaracterizacion();
+  }
+  return barra + renderBoletasContenido();
 }
 function renderBoletasContenido(){
   const grados = gradosBoleta(currentUser);
@@ -10216,7 +10571,6 @@ function renderBoletasContenido(){
     <button class="btn btn-primary" onclick="descargarBoletasPdf('${esc(grado)}')">Descargar todas en PDF</button>
     <button class="btn" onclick="descargarBoletasPdf('${esc(grado)}','${est?est.id:''}')">Esta boleta en PDF</button>
   </div>
-  ${puedeEditarBoleta(grado) ? renderGuardarManualBanner() : ''}
   ${est ? renderBoletaEstudiante(est, grado) : '<div class="card"><p class="empty">No hay estudiantes en esta aula.</p></div>'}`;
 }
 function renderBoletaEstudiante(est, grado, forzarSoloLectura){
@@ -10233,7 +10587,14 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
         value="${esc(valor)}" onchange="${onchange}">`
     : `<span>${esc(valor)}</span>`;
 
-  const filasMaterias = bolFilasPantallaHtml(est, grado, edit, n1);
+  const filasMaterias = asigs.map(a=>{
+    const si = subjectInfo(est.id, a.id, grado);
+    return `<tr>
+      <td class="bol-mat">${esc(a.nombre.toUpperCase())}</td>
+      ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(periodInfo(est.id, a.id, p, grado).valor)}</td>`).join('')}
+      <td class="bol-num bol-fuerte">${n1(si.valor)}</td>
+    </tr>`;
+  }).join('');
 
   return `
   <div class="card boleta-hoja">
@@ -10282,12 +10643,12 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
         </div>
 
         <div class="boleta-firmas">
-          ${firmasDeGrado(cfg, grado).map((f,i)=>`
+          ${cfg.firmas.map((f,i)=>`
             <div>
               <span></span>
               ${edit
                 ? `<input class="bol-in bol-firma-nom" value="${esc(f.nombre)}" placeholder="Nombre y apellido"
-                     onchange="${firmaEsDeGrado(f) ? "editarFirmaGrado('"+esc(grado)+"',"+i+",this.value)" : "editarFirma("+i+",'nombre',this.value)"}">
+                     onchange="editarFirma(${i},'nombre',this.value)">
                    <input class="bol-in bol-firma-cargo" value="${esc(f.cargo)}" placeholder="Cargo"
                      onchange="editarFirma(${i},'cargo',this.value)">
                    <button class="icon-btn" onclick="quitarFirma(${i})" title="Quitar firma">×</button>`
@@ -10325,7 +10686,7 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
         ${edit?`<div class="btn-row"><button class="btn btn-sm" onclick="agregarEscala()">+ Fila de escala</button></div>`:''}
       </div>
     </div>
-    ${edit?`<p class="nota-chica">Los criterios, la escala y las firmas quedan guardados para las siguientes boletas. El nombre de la orientadora se guarda solo para este grado.</p>`:''}
+    ${edit?`<p class="nota-chica">Los criterios, la escala y las firmas quedan guardados como valor por defecto para las siguientes boletas.</p>`:''}
   </div>`;
 }
 /* Tabla de criterios con su casilla de letra, ambos editables */
@@ -10424,7 +10785,11 @@ function descargarBoletasPdf(grado, soloEstId){
           <table>
             <colgroup><col class="mat"><col class="per"><col class="per"><col class="per"><col class="per"><col class="fin"></colgroup>
             <tr><th>MATERIAS</th><th>I PER&Iacute;ODO</th><th>II PER&Iacute;ODO</th><th>III PER&Iacute;ODO</th><th>IV PER&Iacute;ODO</th><th>PROMEDIO FINAL</th></tr>
-            ${bolFilasPdfHtml(est, grado, n1, q)}
+            ${asigs.map(a=>`<tr>
+              <td class="izqtxt">${q(a.nombre.toUpperCase())}</td>
+              ${[1,2,3,4].map(p=>`<td class="c">${n1(periodInfo(est.id,a.id,p,grado).valor)}</td>`).join('')}
+              <td class="c b">${n1(subjectInfo(est.id,a.id,grado).valor)}</td>
+            </tr>`).join('')}
             <tr class="tot">
               <td class="izqtxt">PROMEDIO DE PER&Iacute;ODO</td>
               ${[1,2,3,4].map(p=>`<td class="c">${n1(promedioPeriodoEstudiante(est.id,grado,p))}</td>`).join('')}
@@ -10438,7 +10803,7 @@ function descargarBoletasPdf(grado, soloEstId){
           </div>
           <div class="obs"><b>OBSERVACIONES:</b> ${q(dat.observaciones)}</div>
           <div class="firmas">
-            ${firmasDeGrado(cfg, grado).map(f=>`<div><span></span><p class="fn">${q(f.nombre)}</p><p>${q(f.cargo)}</p></div>`).join('')}
+            ${cfg.firmas.map(f=>`<div><span></span><p class="fn">${q(f.nombre)}</p><p>${q(f.cargo)}</p></div>`).join('')}
           </div>
         </div>
         <div class="der">
@@ -10466,7 +10831,7 @@ function descargarBoletasPdf(grado, soloEstId){
   const cierre = '<' + '/script>';
   /* La hoja es carta horizontal: 279.4 x 215.9 mm, menos 12 mm de margen por lado.
      La letra y el relleno de las celdas se ajustan a cuántas materias tenga el aula. */
-  const n = bolFilas(grado).length;
+  const n = asigs.length;
   const escalaFuente = n > 14 ? '8.5px' : (n > 12 ? '9.5px' : (n > 10 ? '10.5px' : (n > 8 ? '11px' : '12px')));
   const relleno     = n > 14 ? '1.6px' : (n > 12 ? '2.2px' : (n > 10 ? '3px'    : (n > 8 ? '3.6px' : '4.4px')));
   /* Carta horizontal (215.9 mm de alto) menos 14 mm de margen arriba y abajo */
@@ -10667,7 +11032,8 @@ function calcularCarta(est, grado, asig, periodo){
   }
   intro += ' Lo anterior se detalla en la tabla siguiente:';
   let accion = 'Por lo cual deberá someterse a desarrollar el examen de recuperación según el horario estipulado por Dirección.';
-  // La carta solo pide el examen de recuperación: ya no incluye tareas ni integradoras
+  if(integBajas.length) accion += ' Asimismo, deberá desarrollar ' + (integBajas.length>1?'las actividades integradoras':'la actividad integradora') + ': ' + unir(lista(integBajas)) + '.';
+  if(tareasBajas.length) accion += ' También deberá presentar ' + (tareasBajas.length>1?'las siguientes tareas':'la siguiente tarea') + ': ' + unir(lista(tareasBajas)) + '.';
   const docente = docenteDeAsignatura(grado, asig.id);
   const firma = (docente ? docente.nombre : '') ;
   return {
@@ -10682,10 +11048,6 @@ function crAplicarTextos(c){
   const t = (crDatos().textos||{})[c.k] || {};
   c.intro = t.intro!==undefined ? t.intro : c.gen.intro;
   c.accion = t.accion!==undefined ? t.accion : c.gen.accion;
-  // Las tareas ya no van en la carta: se quita también de textos que se guardaron antes
-  c.accion = String(c.accion).replace(/\s*También deberá presentar (las siguientes tareas|la siguiente tarea):[\s\S]*$/, '');
-  // Igual con la frase de integradoras en textos guardados antes
-  c.accion = c.accion.replace(/\s*Asimismo, deberá desarrollar (las actividades integradoras|la actividad integradora):[\s\S]*$/, '');
   c.firmaTxt = t.firma!==undefined ? t.firma : c.gen.firma;
   c.editada = Object.keys(t).length>0;
   return c;
@@ -10733,11 +11095,6 @@ function renderCartasRecuperacion(){
         <b>${esc(apellidosDe(c.est))}, ${esc(nombresDe(c.est))}</b>
         <span style="color:var(--muted);">· ${esc(c.asig.nombre)}</span>
         <span class="nota-chica" style="margin:0;">Examen ${Math.round(c.exam)} · Promedio ${Math.round(c.prom)} · ${c.reprobExam && c.reprobProm ? 'reprobó examen y período' : (c.reprobExam ? 'reprobó el examen' : 'aprobó el examen, no el período')}${c.editada?' · <b>editada</b>':''}</span>
-        <span style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm" onclick="event.preventDefault(); event.stopPropagation(); crAlternarEdicion(this)">Editar</button>
-          <button type="button" class="btn btn-sm" onclick="event.preventDefault(); event.stopPropagation(); descargarCartasRecuperacion('${kq}', true)">Visualizar</button>
-          <button type="button" class="btn btn-primary btn-sm" onclick="event.preventDefault(); event.stopPropagation(); descargarCartasRecuperacion('${kq}')">Descargar</button>
-        </span>
       </summary>
       <div style="margin-top:12px;">
         <div class="field"><label>Fecha de la carta ${c.sinFecha?'(se guardará la de hoy; cámbiala si hace falta)':'(día en que se ingresó la nota del examen)'}</label>
@@ -10751,6 +11108,8 @@ function renderCartasRecuperacion(){
         <div class="field"><label>Firma (nombre del docente)</label>
           <input type="text" value="${esc(c.firmaTxt)}" ${d2} onchange="crGuardarTexto('${kq}','firma', this.value)"></div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-sm" onclick="descargarCartasRecuperacion('${kq}', true)">Visualizar carta</button>
+          <button class="btn btn-primary btn-sm" onclick="descargarCartasRecuperacion('${kq}')">PDF de esta carta</button>
           ${c.editada && puede ? `<button class="btn btn-sm" onclick="crRestablecer('${kq}')">Restablecer redacción automática</button>`:''}
         </div>
       </div>
@@ -10796,15 +11155,8 @@ function renderCartasRecuperacion(){
         <input type="text" value="${esc(cfg.lema)}" ${dis} onchange="crGuardarConfig('lema', this.value)"></div>
     </div>
   </details>
-  ${cartas.length ? `<p class="nota-chica">${cartas.length} carta(s) en este período. Cada carta tiene sus botones Editar, Visualizar y Descargar.</p>${cartas.map(tarjeta).join('')}`
+  ${cartas.length ? `<p class="nota-chica">${cartas.length} carta(s) en este período. Toca una para revisarla o editarla.</p>${cartas.map(tarjeta).join('')}`
     : `<div class="card"><p class="empty">No hay cartas por generar: ningún estudiante tiene el examen ingresado con menos de ${cfg.umbral} ni promedio del período menor a ${cfg.umbral} (o ya hicieron la recuperación).</p></div>`}`;
-}
-/* Abre o cierra el formulario de edición de una carta */
-function crAlternarEdicion(btn){
-  const d = btn.closest('details');
-  if(!d) return;
-  d.open = !d.open;
-  btn.textContent = d.open ? 'Cerrar edición' : 'Editar';
 }
 function descargarCartasRecuperacion(soloK, vista){
   const grados = misGrados(currentUser);
