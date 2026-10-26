@@ -10090,6 +10090,8 @@ function carValorTexto(estId, p, key, grado){
     const a = carAutoMaterias(estId, p, grado);
     return key==='fortaleza' ? a.fort : a.ref;
   }
+  if(key==='reconocimiento') return carSugerirReconocimiento(estId, p, grado);
+  if(key==='recomendacion') return carSugerirRecomendacion(estId, p, grado);
   return '';
 }
 /* --- Edición --- */
@@ -10100,6 +10102,7 @@ function carManual(estId, p, campo, valor){
   }
   if((campo==='inas' || campo==='tardias') && v!=='' && !/^\d{1,3}$/.test(v)){ showToast('Escribe solo un número.'); render(); return; }
   carMut(estId, p, d=>{ if(v==='') delete d[campo]; else d[campo] = v; });
+  carRefrescarSugerencias(estId, p);
 }
 function carRadio(el, estId, p, key, i){
   const fila = CAR_ESQUEMA.reduce((r,a)=>r || a.filas.find(f=>f.key===key), null);
@@ -10109,6 +10112,7 @@ function carRadio(el, estId, p, key, i){
     document.querySelectorAll('input[data-ck="'+key+'"]').forEach(x=>{ if(x!==el) x.checked = false; });
   }
   carMut(estId, p, d=>{ d.v = d.v || {}; if(marcado) d.v[key] = op; else delete d.v[key]; });
+  carRefrescarSugerencias(estId, p);
 }
 function carCheck(el, estId, p, key, i){
   const fila = CAR_ESQUEMA.reduce((r,a)=>r || a.filas.find(f=>f.key===key), null);
@@ -10120,17 +10124,20 @@ function carCheck(el, estId, p, key, i){
     if(marcado) arr.push(op);
     if(arr.length) d.c[key] = arr; else delete d.c[key];
   });
+  carRefrescarSugerencias(estId, p);
 }
 function carTexto(estId, p, key, valor){
   const v = String(valor);
-  carMut(estId, p, d=>{ d.t = d.t || {}; if(v.trim()==='' && key!=='fortaleza' && key!=='reforzar') delete d.t[key]; else d.t[key] = v; });
+  const conservaVacio = ['fortaleza','reforzar','reconocimiento','recomendacion'].indexOf(key) >= 0;
+  carMut(estId, p, d=>{ d.t = d.t || {}; if(v.trim()==='' && !conservaVacio) delete d.t[key]; else d.t[key] = v; });
+  carRefrescarSugerencias(estId, p);
 }
 function carObsGrupo(grado, p, valor){
   commit(doc=>{
     const c = doc.caract = doc.caract || {};
     c.obs = c.obs || {};
     const k = grado+'|'+p;
-    if(String(valor).trim()==='') delete c.obs[k]; else c.obs[k] = valor;
+    c.obs[k] = String(valor);
   });
 }
 function carFechaPeriodo(p, campo, valor){
@@ -10276,7 +10283,10 @@ function renderCaracterizacion(){
 
   const celdaOps = (f, d)=>{
     if(f.tipo==='texto'){
-      return `<input type="text" ${dis} style="width:100%;" value="${esc((d.t||{})[f.key]||'')}" onchange="carTexto('${estId}',${p},'${f.key}',this.value)">`;
+      const editado = d.t && d.t[f.key]!==undefined;
+      return `<textarea id="car_t_${f.key}" rows="3" ${dis} style="width:100%;" onchange="carTexto('${estId}',${p},'${f.key}',this.value)">${esc(carValorTexto(estId,p,f.key,grado))}</textarea>
+        <span class="nota-chica" style="margin:0;">${editado?'Editado por ti.':'Sugerencia automática según lo marcado; puedes editarla.'}
+        ${(editado && edit)?`<button class="btn btn-sm" onclick="carRestablecerTexto('${estId}',${p},'${f.key}')">Volver a la sugerencia</button>`:''}</span>`;
     }
     if(f.tipo==='materias'){
       return `<div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -10324,7 +10334,9 @@ function renderCaracterizacion(){
   <h2 style="font-size:17px; margin:6px 0;">1. Media del grupo por asignatura — Período ${ROMANOS[p-1]}</h2>
   ${tablaGrupo}
   <div class="field"><label>Observaciones del grupo</label>
-    <textarea rows="3" ${dis} onchange="carObsGrupo('${esc(grado)}',${p},this.value)">${esc(((carDatos().obs||{})[grado+'|'+p])||'')}</textarea></div>
+    <textarea id="car_obs_grupo" rows="4" ${dis} onchange="carObsGrupo('${esc(grado)}',${p},this.value)">${esc(carObsValor(grado,p))}</textarea>
+    <span class="nota-chica">${((carDatos().obs||{})[grado+'|'+p]!==undefined)?'Editado por ti.':'Sugerencia automática con las notas, reportes y datos del grupo; puedes editarla.'}
+    ${(((carDatos().obs||{})[grado+'|'+p]!==undefined) && edit)?`<button class="btn btn-sm" onclick="carRestablecerObs('${esc(grado)}',${p})">Volver a la sugerencia</button>`:''}</span></div>
   <details class="card" style="margin:10px 0; padding:10px 14px;">
     <summary style="cursor:pointer;"><b>Fechas del período ${ROMANOS[p-1]}</b> (para contar solo los reportes de este período)</summary>
     <div class="filters" style="margin-top:8px;">
@@ -10335,6 +10347,174 @@ function renderCaracterizacion(){
   </details>
   ${ficha}
   ${renderModalCopiarFicha()}`;
+}
+/* --- Sugerencias automáticas (reconocimiento, recomendación y observación del grupo) ---
+   Se arman con lo marcado en la ficha, las notas y los reportes. Las frases cambian según
+   el estudiante (se elige entre varias redacciones), y todo se puede editar. */
+function carHash(txt){ let h = 0; String(txt).split('').forEach(c=>{ h = (h*31 + c.charCodeAt(0)) % 100003; }); return h; }
+function carElegir(lista, semilla){ return lista[carHash(semilla) % lista.length]; }
+function carUnir(l){ return l.length<=1 ? l.join('') : l.slice(0,-1).join(', ') + ' y ' + l[l.length-1]; }
+function carPrimerNombre(est){ return (nombresDe(est)||'').split(' ')[0] || (est.nombre||''); }
+function carSugerirReconocimiento(estId, p, grado){
+  const est = DB.estudiantes.find(e=>e.id===estId); if(!est) return '';
+  const d = carFicha(estId, p), v = d.v||{}, c = d.c||{}, t = d.t||{};
+  const n = carPrimerNombre(est);
+  const hay = Object.keys(v).length || Object.keys(c).length;
+  const notas = asignaturasDeGrado(grado).map(a=>({n:a.nombre, v:carNota(estId, a.id, p, grado)})).filter(x=>x.v!==null);
+  if(!hay && !notas.length) return '';
+  const cl = [];
+  const altas = notas.filter(x=>x.v>=90).map(x=>x.n);
+  if(altas.length) cl.push('sus excelentes resultados en ' + carUnir(altas));
+  else { const buenas = notas.filter(x=>x.v>=80).map(x=>x.n); if(buenas.length) cl.push('su buen rendimiento en ' + carUnir(buenas)); }
+  const nombresFort = {'Análisis':'su capacidad de análisis','Creatividad':'su creatividad','Puntualidad':'su puntualidad','Organización':'su organización','Trabajo en equipo':'su trabajo en equipo','Expresión oral':'su expresión oral','Retentiva':'su retentiva','Deporte':'su destreza deportiva'};
+  (c.fort||[]).forEach(x=>{ if(x==='Otra:'){ if((t.fort_otra||'').trim()) cl.push('su destreza en ' + t.fort_otra.trim()); } else if(nombresFort[x]) cl.push(nombresFort[x]); });
+  if(v.actitud==='Positiva') cl.push('su actitud positiva en el aula');
+  if(v.normas==='Siempre') cl.push('el cumplimiento de las normas');
+  if(v.companeros==='Buena') cl.push('su buena relación con los compañeros');
+  if(v.problemas==='Con autonomía') cl.push('su autonomía para resolver problemas');
+  if(v.atencion==='Alta') cl.push('su atención en clase');
+  if(v.participacion==='Activa') cl.push('su participación activa');
+  if(v.tareas==='Puntual') cl.push('la puntualidad en la entrega de tareas');
+  if(v.copia==='Completo') cl.push('su orden al copiar y trabajar el libro');
+  if(v.materiales==='Completo') cl.push('traer sus materiales completos');
+  if(v.autoestima==='Alta') cl.push('su buena autoestima');
+  if(v.higiene==='Siempre' && v.uniforme==='Siempre') cl.push('su excelente presentación personal');
+  const nc = {'Empático':'su empatía','Colaborador':'su espíritu de colaboración','Líder':'su liderazgo','Creativo':'su creatividad','Responsable':'su responsabilidad','Perseverante':'su perseverancia','Asertivo':'su asertividad','Comunicativo':'su facilidad para comunicarse'};
+  (c.caract||[]).forEach(x=>{ if(nc[x]) cl.push(nc[x]); });
+  if(Number(d.conducta)>=90) cl.push('su conducta ejemplar');
+  const unicos = cl.filter((x,i)=>cl.indexOf(x)===i);
+  // se mezcla el orden según el estudiante, para que no todos salgan igual
+  const ini = unicos.length ? carHash(estId+'r') % unicos.length : 0;
+  const elegidas = unicos.slice(ini).concat(unicos.slice(0, ini)).slice(0, 4);
+  if(!elegidas.length) return carElegir([
+    'Se reconoce el esfuerzo de '+n+' durante el período y su disposición para seguir mejorando.',
+    'Reconocemos a '+n+' por su empeño y las ganas de superarse en este período.'], estId+'r0');
+  const lista = carUnir(elegidas);
+  const frase = carElegir([
+    'Se reconoce a '+n+' por '+lista+'.',
+    n+' merece un reconocimiento por '+lista+'.',
+    'Felicitamos a '+n+' por '+lista+'.',
+    'Destacamos de '+n+': '+lista+'.'], estId+'r1');
+  const cierre = elegidas.length>=2 ? ' ' + carElegir(['¡Que continúe así!','Es un buen ejemplo para sus compañeros.','Le animamos a seguir creciendo.','Su esfuerzo se nota y se agradece.'], estId+'r2') : '';
+  return frase + cierre;
+}
+function carSugerirRecomendacion(estId, p, grado){
+  const est = DB.estudiantes.find(e=>e.id===estId); if(!est) return '';
+  const d = carFicha(estId, p), v = d.v||{}, c = d.c||{};
+  const n = carPrimerNombre(est);
+  const hay = Object.keys(v).length || Object.keys(c).length;
+  const rep = carReportes(estId, p);
+  const notasBajas = asignaturasDeGrado(grado).map(a=>({n:a.nombre, v:carNota(estId, a.id, p, grado)})).filter(x=>x.v!==null && x.v<70).map(x=>x.n);
+  if(!hay && !notasBajas.length && !d.conducta && !d.inas) return '';
+  const al = [], fam = [];
+  const deb = c.deb||[];
+  if(v.tareas==='Tardía' || v.tareas==='No entrega') al.push('entregar sus tareas en el tiempo indicado, apoyándose en su agenda');
+  if(v.atencion==='Baja' || deb.includes('Distracción')) al.push('reforzar su atención en clase y evitar las distracciones');
+  if(v.participacion==='Poca' || v.participacion==='Ninguna' || deb.includes('Poca participación')) al.push('participar con más frecuencia en clase');
+  if(v.copia==='Incompleto' || v.copia==='No copia') al.push('completar el copiado de clases y las actividades del libro');
+  if(v.materiales==='Incompleto') al.push('traer todos sus materiales: libros, cuadernos, Biblia y estuche');
+  if(notasBajas.length) al.push('reforzar en casa ' + carUnir(notasBajas));
+  if(deb.includes('Ortografía y caligrafía')) al.push('practicar ortografía y caligrafía todos los días');
+  if(deb.includes('Memorización')) al.push('hacer ejercicios de memorización y repaso');
+  if(deb.includes('Organización')) al.push('organizar mejor sus útiles y su tiempo');
+  if(deb.includes('Expresión oral')) al.push('ejercitar la expresión oral');
+  if(deb.includes('Cansancio')) al.push('respetar sus horas de descanso');
+  if(v.actitud==='Negativa') al.push('mejorar su actitud en el aula');
+  if(v.normas==='A veces' || v.normas==='Rara vez') al.push('cumplir las normas de convivencia dentro y fuera del aula');
+  if(v.companeros==='Regular' || v.companeros==='Conflictiva') al.push('fortalecer el respeto y la convivencia con sus compañeros');
+  if(v.problemas==='Le cuesta' || v.problemas==='Con apoyo') al.push('practicar la solución de problemas con acompañamiento');
+  if(v.animo==='Triste' || v.animo==='Ansioso' || v.animo==='Irritable' || v.autoestima==='Baja' || (c.senales||[]).some(x=>x==='Aislamiento'||x==='Inseguridad'||x==='Timidez'))
+    al.push('recibir acompañamiento y orientación para fortalecer su seguridad y su bienestar emocional');
+  if((v.higiene==='Nunca'||v.higiene==='A veces') || (v.cabello==='Nunca'||v.cabello==='A veces') || (v.uniforme==='Nunca'||v.uniforme==='A veces'))
+    al.push('cuidar su presentación personal: higiene, cabello y uniforme completo');
+  const inas = Number(d.inas)||0, tard = Number(d.tardias)||0;
+  if(inas>=3 || deb.includes('Inasistencias')) al.push('asistir con regularidad a clases');
+  if(tard>=3) al.push('llegar puntual a la escuela');
+  if(rep.F1+rep.F2+rep.F3>0) al.push('evitar nuevas faltas disciplinarias');
+  if(d.conducta && Number(d.conducta)<80) al.push('mejorar su nota de conducta');
+  if(v.apoyo==='Medio' || v.apoyo==='Bajo') fam.push('mantener una comunicación constante con la escuela');
+  if(v.solo==='Mucho') fam.push('acompañar sus horas en casa');
+  if(v.pantallas==='Más de 4 h') fam.push('reducir el tiempo de pantallas, juegos y redes');
+  if(v.p_agenda==='No' || v.p_agenda==='A veces') fam.push('revisar y firmar la agenda diaria');
+  if(v.p_seg==='No' || v.p_seg==='A veces') fam.push('dar seguimiento a sus tareas y estudio');
+  if(v.p_pres==='No' || v.p_pres==='A veces') fam.push('apoyar su presentación personal');
+  if(v.refrigerio==='Poco saludable' || v.refrigerio==='No lleva') fam.push('enviar un refrigerio más saludable');
+  if(v.dulces==='Mucho') fam.push('limitar los dulces y las harinas');
+  const ini = al.length ? carHash(estId+'c') % al.length : 0;
+  const alE = al.slice(ini).concat(al.slice(0, ini)).slice(0, 4);
+  const iniF = fam.length ? carHash(estId+'f') % fam.length : 0;
+  const famE = fam.slice(iniF).concat(fam.slice(0, iniF)).slice(0, 3);
+  if(!alE.length && !famE.length){
+    return carElegir([
+      'Se recomienda a '+n+' mantener su buen desempeño y seguir fortaleciendo sus hábitos de estudio.',
+      'Se sugiere a '+n+' continuar con su buen ritmo de trabajo y proponerse nuevas metas para el próximo período.'], estId+'c0');
+  }
+  let out = '';
+  if(alE.length) out += carElegir([
+    'Se recomienda a '+n+' '+carUnir(alE)+'.',
+    n+' necesita '+carUnir(alE)+'.',
+    'Para el próximo período, se sugiere a '+n+' '+carUnir(alE)+'.'], estId+'c1');
+  if(famE.length) out += (out?' ':'') + carElegir([
+    'A la familia se le sugiere '+carUnir(famE)+'.',
+    'Se pide el apoyo de la familia para '+carUnir(famE)+'.',
+    'Es importante que la familia pueda '+carUnir(famE)+'.'], estId+'c2');
+  return out;
+}
+function carSugerirObsGrupo(grado, p){
+  const ests = DB.estudiantes.filter(e=>e.grado===grado);
+  if(!ests.length) return '';
+  const asigs = asignaturasDeGrado(grado);
+  const medias = asigs.map(a=>{
+    const v = ests.map(e=>carNota(e.id, a.id, p, grado)).filter(x=>x!==null);
+    return {n:a.nombre, v: v.length ? Math.round(v.reduce((s,x)=>s+x,0)/v.length) : null};
+  }).filter(x=>x.v!==null);
+  if(!medias.length) return '';
+  const orden = medias.slice().sort((a,b)=>b.v-a.v);
+  const por = ROMANOS[p-1];
+  const semilla = grado+'|'+p;
+  const out = [];
+  if(orden.length>=2) out.push(carElegir([
+    'En el período '+por+', el grupo de '+grado+' obtuvo su mejor media en '+orden[0].n+' ('+orden[0].v+') y la más baja en '+orden[orden.length-1].n+' ('+orden[orden.length-1].v+').',
+    'Durante el período '+por+', '+grado+' destacó en '+orden[0].n+' (media de '+orden[0].v+'), mientras que '+orden[orden.length-1].n+' tuvo la media más baja ('+orden[orden.length-1].v+').'], semilla+'g1'));
+  else out.push('En el período '+por+', la media del grupo de '+grado+' en '+orden[0].n+' fue de '+orden[0].v+'.');
+  const bajas = medias.filter(x=>x.v<70).map(x=>x.n);
+  out.push(bajas.length ? 'Las materias con media menor a 70 son '+carUnir(bajas)+', por lo que conviene reforzarlas con repasos y actividades de apoyo.' : 'Todas las materias se mantienen con media de 70 o más.');
+  const conBajas = ests.filter(e=>asigs.some(a=>{ const x = carNota(e.id, a.id, p, grado); return x!==null && x<70; })).length;
+  out.push(conBajas>0 ? conBajas+' de '+ests.length+' estudiantes tienen una o más materias por debajo de 70 y requieren seguimiento.' : 'Ningún estudiante tiene materias por debajo de 70.');
+  const rep = {F1:0,F2:0,F3:0,CV:0};
+  ests.forEach(e=>{ const r = carReportes(e.id, p); Object.keys(rep).forEach(k=>rep[k]+=r[k]); });
+  const totRep = rep.F1+rep.F2+rep.F3+rep.CV;
+  out.push(totRep>0 ? 'Se registraron '+totRep+' reportes disciplinarios ('+carReportesTexto(rep)+').' : 'No se registraron reportes disciplinarios.');
+  const sum = campo => ests.reduce((s,e)=>s+(Number(carFicha(e.id,p)[campo])||0),0);
+  const inas = sum('inas'), tard = sum('tardias');
+  if(inas>0 || tard>0) out.push('El grupo acumula '+inas+' días de inasistencia y '+tard+' llegadas tardías.');
+  out.push(carElegir([
+    'Se recomienda dar seguimiento a los estudiantes con notas bajas'+(bajas.length?', reforzar '+carUnir(bajas):'')+' y mantener la comunicación con las familias.',
+    'Se sugiere acompañar de cerca a los estudiantes con dificultades'+(bajas.length?', fortalecer '+carUnir(bajas):'')+' y reconocer el esfuerzo de quienes mantienen buenas notas.'], semilla+'g9'));
+  return out.join(' ');
+}
+function carObsValor(grado, p){
+  const o = (carDatos().obs||{})[grado+'|'+p];
+  return o!==undefined ? o : carSugerirObsGrupo(grado, p);
+}
+/* Si el campo no fue editado a mano, se actualiza la sugerencia al cambiar las casillas */
+function carRefrescarSugerencias(estId, p){
+  const grado = carGradoSel();
+  const d = carFicha(estId, p);
+  [['reconocimiento', carSugerirReconocimiento], ['recomendacion', carSugerirRecomendacion]].forEach(([k, fn])=>{
+    const el = document.getElementById('car_t_'+k);
+    if(el && !(d.t && d.t[k]!==undefined)) el.value = fn(estId, p, grado);
+  });
+  const og = document.getElementById('car_obs_grupo');
+  if(og && (carDatos().obs||{})[grado+'|'+p]===undefined) og.value = carSugerirObsGrupo(grado, p);
+}
+function carRestablecerTexto(estId, p, key){
+  carMut(estId, p, d=>{ if(d.t) delete d.t[key]; });
+  render();
+}
+function carRestablecerObs(grado, p){
+  commit(doc=>{ const c = doc.caract; if(c && c.obs) delete c.obs[grado+'|'+p]; });
+  render();
 }
 /* --- Gráficas (SVG) --- */
 function carSvgBarras(titulo, cats, series, opts){
@@ -10396,11 +10576,11 @@ function caractHtml(grado, p, vista){
     <table class="tg"><tr><th>N.°</th><th class="nm">Nombre del estudiante</th>${asigs.map(a=>`<th class="v"><div>${q(a.nombre)}</div></th>`).join('')}<th class="v"><div>Conducta (10-100)</div></th><th class="rp">Reportes F1 · F2 · F3 · CV</th><th class="v"><div>Inasistencias (días)</div></th><th class="v"><div>Llegadas tardías</div></th></tr>
     ${filas.map((f,i)=>`<tr><td>${i+1}</td><td class="nm">${q(apellidosDe(f.e))}, ${q(nombresDe(f.e))}</td>${f.notas.map(n=>`<td${rojo(n)}>${n===null?'':n}</td>`).join('')}<td>${q(f.d.conducta||'')}</td><td class="rp">${q(carReportesTexto(f.rep))}</td><td>${q(f.d.inas||'')}</td><td>${q(f.d.tardias||'')}</td></tr>`).join('')}
     <tr class="mg"><td></td><td class="nm">MEDIA GRUPAL</td>${asigs.map((a,j)=>`<td>${media(filas.map(f=>f.notas[j]))}</td>`).join('')}<td>${media(filas.map(f=>f.d.conducta))}</td><td class="rp">${q(carReportesTexto(['F1','F2','F3','CV'].reduce((o,k)=>{ o[k]=filas.reduce((s,f)=>s+f.rep[k],0); return o; },{})))}</td><td>${sumaN(filas.map(f=>f.d.inas))}</td><td>${sumaN(filas.map(f=>f.d.tardias))}</td></tr></table>
-    <p><b>Observaciones:</b> ${q((carDatos().obs||{})[grado+'|'+p]||'')}</p></div>`;
+    <p><b>Observaciones:</b> ${q(carObsValor(grado,p))}</p></div>`;
   const marca = (sel, op) => (sel.includes(op) ? '☒' : '☐') + ' ' + q(op);
   const filaFicha = (a, f, i, d, e)=>{
     let celda = '';
-    if(f.tipo==='texto') celda = q((d.t||{})[f.key]||'');
+    if(f.tipo==='texto') celda = q(carValorTexto(e.id,p,f.key,grado));
     else if(f.tipo==='materias') celda = `<b>Fortaleza:</b> ${q(carValorTexto(e.id,p,'fortaleza',grado))} &nbsp;&nbsp; <b>A reforzar:</b> ${q(carValorTexto(e.id,p,'reforzar',grado))}`;
     else{
       const sel = f.tipo==='radio' ? [ (d.v||{})[f.key] ] : ((d.c||{})[f.key]||[]);
