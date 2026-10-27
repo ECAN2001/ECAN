@@ -10751,20 +10751,28 @@ const BOLETA_DEF = {
 function nombreSinTildes(n){ return String(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
 const CIENCIAS_GRUPO = ['fisica','quimica','biologia'];
 function esMateriaCiencia(a){ return CIENCIAS_GRUPO.indexOf(nombreSinTildes(a.nombre)) >= 0; }
-function asignaturasBoleta(grado){
+/* Elementos ordenables de la boleta: cada materia, y el bloque "ciencias"
+   (Física, Química y Biología siempre juntas, seguidas de su promedio). */
+function itemsBoleta(grado){
   const base = asignaturasDeGrado(grado);
   const ciencias = base.filter(esMateriaCiencia).sort((a,b)=>CIENCIAS_GRUPO.indexOf(nombreSinTildes(a.nombre)) - CIENCIAS_GRUPO.indexOf(nombreSinTildes(b.nombre)));
-  let resto = base.filter(a=>!esMateriaCiencia(a));
+  let items = base.filter(a=>!esMateriaCiencia(a)).map(a=>({id:a.id, tipo:'asig', a}));
+  if(ciencias.length) items.push({id:'ciencias', tipo:'ciencias', lista:ciencias});
   const orden = (DB.config && DB.config.ordenMaterias && DB.config.ordenMaterias[grado]) || [];
   if(orden.length){
-    const pos = id => { const i = orden.indexOf(id); return i<0 ? 9999 : i; };
-    resto = resto.map((a,i)=>({a,i})).sort((x,y)=>(pos(x.a.id)-pos(y.a.id)) || (x.i-y.i)).map(x=>x.a);
+    const pos = id => { const k = orden.indexOf(id); return k<0 ? 9999 : k; };
+    items = items.map((x,k)=>({x,k})).sort((u,v)=>(pos(u.x.id)-pos(v.x.id)) || (u.k-v.k)).map(u=>u.x);
   }
-  return resto.concat(ciencias);
+  return items;
 }
-function moverMateriaBoleta(grado, asigId, dir){
-  const ids = asignaturasBoleta(grado).filter(a=>!esMateriaCiencia(a)).map(a=>a.id);
-  const i = ids.indexOf(asigId), j = i + dir;
+function asignaturasBoleta(grado){
+  const out = [];
+  itemsBoleta(grado).forEach(it=>{ if(it.tipo==='asig') out.push(it.a); else it.lista.forEach(a=>out.push(a)); });
+  return out;
+}
+function moverMateriaBoleta(grado, id, dir){
+  const ids = itemsBoleta(grado).map(x=>x.id);
+  const i = ids.indexOf(id), j = i + dir;
   if(i<0 || j<0 || j>=ids.length) return;
   const t = ids[i]; ids[i] = ids[j]; ids[j] = t;
   commit(doc=>{
@@ -10902,23 +10910,27 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
         value="${esc(valor)}" onchange="${onchange}">`
     : `<span>${esc(valor)}</span>`;
 
-  const movibles = asigs.filter(a=>!esMateriaCiencia(a));
+  const items = itemsBoleta(grado);
   const filaCiencia = cienciaPromedioFila(est.id, grado);
-  const filasMaterias = asigs.map(a=>{
+  const botonesMover = (id, k, titulo) => edit ? `<span style="float:right; white-space:nowrap;">
+        <button class="btn btn-sm" style="padding:0 6px;" ${k===0?'disabled':''} onclick="moverMateriaBoleta('${esc(grado)}','${id}',-1)" title="Subir ${titulo}">↑</button>
+        <button class="btn btn-sm" style="padding:0 6px;" ${k===items.length-1?'disabled':''} onclick="moverMateriaBoleta('${esc(grado)}','${id}',1)" title="Bajar ${titulo}">↓</button></span>` : '';
+  const filaAsig = (a, botones) => {
     const si = subjectInfo(est.id, a.id, grado);
-    const k = movibles.findIndex(x=>x.id===a.id);
-    const botones = (edit && k>=0) ? `<span style="float:right; white-space:nowrap;">
-        <button class="btn btn-sm" style="padding:0 6px;" ${k===0?'disabled':''} onclick="moverMateriaBoleta('${esc(grado)}','${a.id}',-1)" title="Subir">↑</button>
-        <button class="btn btn-sm" style="padding:0 6px;" ${k===movibles.length-1?'disabled':''} onclick="moverMateriaBoleta('${esc(grado)}','${a.id}',1)" title="Bajar">↓</button></span>` : '';
     return `<tr>
-      <td class="bol-mat">${esc(a.nombre.toUpperCase())}${botones}</td>
+      <td class="bol-mat">${esc(a.nombre.toUpperCase())}${botones||''}</td>
       ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(periodInfo(est.id, a.id, p, grado).valor)}</td>`).join('')}
       <td class="bol-num bol-fuerte">${n1(si.valor)}</td>
     </tr>`;
-  }).join('') + (filaCiencia ? `<tr style="font-weight:700;">
+  };
+  const filasMaterias = items.map((it,k)=>{
+    if(it.tipo==='asig') return filaAsig(it.a, botonesMover(it.id, k, esc(it.a.nombre)));
+    return it.lista.map((a,m)=>filaAsig(a, m===0 ? botonesMover('ciencias', k, 'el bloque de ciencias (Física, Química y Biología)') : '')).join('')
+      + (filaCiencia ? `<tr style="font-weight:700;">
       <td class="bol-mat">CIENCIA Y TECNOLOGÍA PROMEDIO</td>
       ${filaCiencia.periodos.map(v=>`<td class="bol-num">${n1(v)}</td>`).join('')}
       <td class="bol-num bol-fuerte">${n1(filaCiencia.final)}</td></tr>` : '');
+  }).join('');
 
   return `
   <div class="card boleta-hoja">
@@ -11121,12 +11133,16 @@ function descargarBoletasPdf(grado, soloEstId){
           <table>
             <colgroup><col class="mat"><col class="per"><col class="per"><col class="per"><col class="per"><col class="fin"></colgroup>
             <tr><th>MATERIAS</th><th>I PER&Iacute;ODO</th><th>II PER&Iacute;ODO</th><th>III PER&Iacute;ODO</th><th>IV PER&Iacute;ODO</th><th>PROMEDIO FINAL</th></tr>
-            ${asigs.map(a=>`<tr>
+            ${itemsBoleta(grado).map(it=>{
+              const fa = a=>`<tr>
               <td class="izqtxt">${q(a.nombre.toUpperCase())}</td>
               ${[1,2,3,4].map(p=>`<td class="c">${n1(periodInfo(est.id,a.id,p,grado).valor)}</td>`).join('')}
               <td class="c b">${n1(subjectInfo(est.id,a.id,grado).valor)}</td>
-            </tr>`).join('')}
-            ${(()=>{ const fc = cienciaPromedioFila(est.id, grado); return fc ? `<tr><td class="izqtxt"><b>CIENCIA Y TECNOLOG&Iacute;A PROMEDIO</b></td>${fc.periodos.map(v=>`<td class="c b">${n1(v)}</td>`).join('')}<td class="c b">${n1(fc.final)}</td></tr>` : ''; })()}
+            </tr>`;
+              if(it.tipo==='asig') return fa(it.a);
+              const fc = cienciaPromedioFila(est.id, grado);
+              return it.lista.map(fa).join('') + (fc ? `<tr><td class="izqtxt"><b>CIENCIA Y TECNOLOG&Iacute;A PROMEDIO</b></td>${fc.periodos.map(v=>`<td class="c b">${n1(v)}</td>`).join('')}<td class="c b">${n1(fc.final)}</td></tr>` : '');
+            }).join('')}
             <tr class="tot">
               <td class="izqtxt">PROMEDIO DE PER&Iacute;ODO</td>
               ${[1,2,3,4].map(p=>`<td class="c">${n1(promedioPeriodoEstudiante(est.id,grado,p))}</td>`).join('')}
