@@ -10738,13 +10738,53 @@ const BOLETA_DEF = {
   firmas: [{nombre:'', cargo:'Coordinadora Académica'},{nombre:'', cargo:'Directora'},
     {nombre:'', cargo:'Orientadora de grado'}]
 };
-function boletaCfg(){
+/* ===== Orden de materias en la boleta =====
+   Cada grado puede mover sus materias (↑ ↓). Física, Química y Biología van siempre
+   juntas al final, en ese orden, seguidas de "CIENCIA Y TECNOLOGÍA PROMEDIO". */
+function nombreSinTildes(n){ return String(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+const CIENCIAS_GRUPO = ['fisica','quimica','biologia'];
+function esMateriaCiencia(a){ return CIENCIAS_GRUPO.indexOf(nombreSinTildes(a.nombre)) >= 0; }
+function asignaturasBoleta(grado){
+  const base = asignaturasDeGrado(grado);
+  const ciencias = base.filter(esMateriaCiencia).sort((a,b)=>CIENCIAS_GRUPO.indexOf(nombreSinTildes(a.nombre)) - CIENCIAS_GRUPO.indexOf(nombreSinTildes(b.nombre)));
+  let resto = base.filter(a=>!esMateriaCiencia(a));
+  const orden = (DB.config && DB.config.ordenMaterias && DB.config.ordenMaterias[grado]) || [];
+  if(orden.length){
+    const pos = id => { const i = orden.indexOf(id); return i<0 ? 9999 : i; };
+    resto = resto.map((a,i)=>({a,i})).sort((x,y)=>(pos(x.a.id)-pos(y.a.id)) || (x.i-y.i)).map(x=>x.a);
+  }
+  return resto.concat(ciencias);
+}
+function moverMateriaBoleta(grado, asigId, dir){
+  const ids = asignaturasBoleta(grado).filter(a=>!esMateriaCiencia(a)).map(a=>a.id);
+  const i = ids.indexOf(asigId), j = i + dir;
+  if(i<0 || j<0 || j>=ids.length) return;
+  const t = ids[i]; ids[i] = ids[j]; ids[j] = t;
+  commit(doc=>{
+    doc.config = doc.config || {};
+    doc.config.ordenMaterias = doc.config.ordenMaterias || {};
+    doc.config.ordenMaterias[grado] = ids.slice();
+  });
+  render();
+}
+/* Fila "CIENCIA Y TECNOLOGÍA PROMEDIO": promedio de Física, Química y Biología (solo informativa) */
+function cienciaPromedioFila(estId, grado){
+  const cs = asignaturasDeGrado(grado).filter(esMateriaCiencia);
+  if(cs.length < 2) return null;
+  const media = arr => { const v = arr.filter(x=>x!==null && x!==undefined); return v.length ? v.reduce((s,x)=>s+x,0)/v.length : null; };
+  return {
+    periodos: [1,2,3,4].map(p=>media(cs.map(a=>periodInfo(estId, a.id, p, grado).valor))),
+    final: media(cs.map(a=>subjectInfo(estId, a.id, grado).valor))
+  };
+}
+function boletaCfg(grado){
   const c = (DB.config && DB.config.boleta) || {};
+  const propias = (grado && c.firmasGrado && Array.isArray(c.firmasGrado[grado])) ? c.firmasGrado[grado] : null;
   return {
     casillasPadres: Array.isArray(c.casillasPadres) ? c.casillasPadres : BOLETA_DEF.casillasPadres.slice(),
     conducta:       Array.isArray(c.conducta)       ? c.conducta       : BOLETA_DEF.conducta.slice(),
     escala:         Array.isArray(c.escala)         ? c.escala         : BOLETA_DEF.escala.map(x=>Object.assign({},x)),
-    firmas:         Array.isArray(c.firmas)         ? c.firmas         : BOLETA_DEF.firmas.map(x=>Object.assign({},x))
+    firmas:         propias ? propias.map(x=>Object.assign({},x)) : (Array.isArray(c.firmas) ? c.firmas : BOLETA_DEF.firmas.map(x=>Object.assign({},x)))
   };
 }
 function guardarBoletaCfg(mutador){
@@ -10752,7 +10792,8 @@ function guardarBoletaCfg(mutador){
   mutador(actual);
   commit(doc=>{
     doc.config = doc.config || {};
-    doc.config.boleta = actual;
+    const previa = doc.config.boleta || {};
+    doc.config.boleta = Object.assign({}, actual, previa.firmasGrado ? {firmasGrado: previa.firmasGrado} : {});
   });
 }
 /* Datos propios de cada estudiante dentro de la boleta */
@@ -10841,9 +10882,9 @@ function renderBoletasContenido(){
   ${est ? renderBoletaEstudiante(est, grado) : '<div class="card"><p class="empty">No hay estudiantes en esta aula.</p></div>'}`;
 }
 function renderBoletaEstudiante(est, grado, forzarSoloLectura){
-  const cfg = boletaCfg();
+  const cfg = boletaCfg(grado);
   const dat = boletaDatos(est.id);
-  const asigs = asignaturasDeGrado(grado);
+  const asigs = asignaturasBoleta(grado);
   const aj = DB.ajustes || {};
   const edit = forzarSoloLectura ? false : puedeEditarBoleta(grado);
   const gInfo = studentInfo(est.id, grado);
@@ -10854,14 +10895,23 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
         value="${esc(valor)}" onchange="${onchange}">`
     : `<span>${esc(valor)}</span>`;
 
+  const movibles = asigs.filter(a=>!esMateriaCiencia(a));
+  const filaCiencia = cienciaPromedioFila(est.id, grado);
   const filasMaterias = asigs.map(a=>{
     const si = subjectInfo(est.id, a.id, grado);
+    const k = movibles.findIndex(x=>x.id===a.id);
+    const botones = (edit && k>=0) ? `<span style="float:right; white-space:nowrap;">
+        <button class="btn btn-sm" style="padding:0 6px;" ${k===0?'disabled':''} onclick="moverMateriaBoleta('${esc(grado)}','${a.id}',-1)" title="Subir">↑</button>
+        <button class="btn btn-sm" style="padding:0 6px;" ${k===movibles.length-1?'disabled':''} onclick="moverMateriaBoleta('${esc(grado)}','${a.id}',1)" title="Bajar">↓</button></span>` : '';
     return `<tr>
-      <td class="bol-mat">${esc(a.nombre.toUpperCase())}</td>
+      <td class="bol-mat">${esc(a.nombre.toUpperCase())}${botones}</td>
       ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(periodInfo(est.id, a.id, p, grado).valor)}</td>`).join('')}
       <td class="bol-num bol-fuerte">${n1(si.valor)}</td>
     </tr>`;
-  }).join('');
+  }).join('') + (filaCiencia ? `<tr style="font-weight:700;">
+      <td class="bol-mat">CIENCIA Y TECNOLOGÍA PROMEDIO</td>
+      ${filaCiencia.periodos.map(v=>`<td class="bol-num">${n1(v)}</td>`).join('')}
+      <td class="bol-num bol-fuerte">${n1(filaCiencia.final)}</td></tr>` : '');
 
   return `
   <div class="card boleta-hoja">
@@ -10915,14 +10965,14 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
               <span></span>
               ${edit
                 ? `<input class="bol-in bol-firma-nom" value="${esc(f.nombre)}" placeholder="Nombre y apellido"
-                     onchange="editarFirma(${i},'nombre',this.value)">
+                     onchange="editarFirma(${i},'nombre',this.value,'${esc(grado)}')">
                    <input class="bol-in bol-firma-cargo" value="${esc(f.cargo)}" placeholder="Cargo"
-                     onchange="editarFirma(${i},'cargo',this.value)">
-                   <button class="icon-btn" onclick="quitarFirma(${i})" title="Quitar firma">×</button>`
+                     onchange="editarFirma(${i},'cargo',this.value,'${esc(grado)}')">
+                   <button class="icon-btn" onclick="quitarFirma(${i},'${esc(grado)}')" title="Quitar firma">×</button>`
                 : `<p class="bol-firma-nom-txt">${esc(f.nombre)}</p><p>${esc(f.cargo)}</p>`}
             </div>`).join('')}
         </div>
-        ${edit?`<div class="btn-row"><button class="btn btn-sm" onclick="agregarFirma()">+ Agregar firma</button></div>`:''}
+        ${edit?`<div class="btn-row"><button class="btn btn-sm" onclick="agregarFirma('${esc(grado)}')">+ Agregar firma</button></div>`:''}
       </div>
 
       <div class="boleta-col-lateral">
@@ -11003,29 +11053,41 @@ function quitarEscala(i){
   guardarBoletaCfg(c=>{ c.escala.splice(i,1); });
   render();
 }
-function editarFirma(i, campo, valor){
-  guardarBoletaCfg(c=>{ if(c.firmas[i]) c.firmas[i][campo] = (valor||'').trim(); });
+/* Las firmas son de cada grado: cambiar el nombre en una boleta no toca las de otros grados */
+function guardarFirmasGrado(grado, fn){
+  const lista = boletaCfg(grado).firmas.map(x=>Object.assign({}, x));
+  fn(lista);
+  const copia = lista.map(x=>Object.assign({}, x));
+  commit(doc=>{
+    doc.config = doc.config || {};
+    doc.config.boleta = doc.config.boleta || {};
+    doc.config.boleta.firmasGrado = doc.config.boleta.firmasGrado || {};
+    doc.config.boleta.firmasGrado[grado] = copia.map(x=>Object.assign({}, x));
+  });
+}
+function editarFirma(i, campo, valor, grado){
+  guardarFirmasGrado(grado, l=>{ if(l[i]) l[i][campo] = (valor||'').trim(); });
   render();
 }
-function agregarFirma(){
-  guardarBoletaCfg(c=>{ c.firmas.push({nombre:'', cargo:'Cargo'}); });
+function agregarFirma(grado){
+  guardarFirmasGrado(grado, l=>{ l.push({nombre:'', cargo:'Cargo'}); });
   render();
 }
-function quitarFirma(i){
-  guardarBoletaCfg(c=>{ c.firmas.splice(i,1); });
+function quitarFirma(i, grado){
+  guardarFirmasGrado(grado, l=>{ l.splice(i,1); });
   render();
 }
 
 /* Genera las boletas en una ventana de impresión horizontal.
    Desde el diálogo del navegador se elige "Guardar como PDF". */
 function descargarBoletasPdf(grado, soloEstId){
-  const cfg = boletaCfg();
+  const cfg = boletaCfg(grado);
   const aj = DB.ajustes || {};
   let estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
   if(soloEstId) estudiantes = estudiantes.filter(e=>e.id===soloEstId);
   if(estudiantes.length===0){ showToast('No hay estudiantes en esta aula.'); return; }
 
-  const asigs = asignaturasDeGrado(grado);
+  const asigs = asignaturasBoleta(grado);
   const n1 = v => v===null||v===undefined ? '' : v.toFixed(0);
   const q = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -11057,6 +11119,7 @@ function descargarBoletasPdf(grado, soloEstId){
               ${[1,2,3,4].map(p=>`<td class="c">${n1(periodInfo(est.id,a.id,p,grado).valor)}</td>`).join('')}
               <td class="c b">${n1(subjectInfo(est.id,a.id,grado).valor)}</td>
             </tr>`).join('')}
+            ${(()=>{ const fc = cienciaPromedioFila(est.id, grado); return fc ? `<tr><td class="izqtxt"><b>CIENCIA Y TECNOLOG&Iacute;A PROMEDIO</b></td>${fc.periodos.map(v=>`<td class="c b">${n1(v)}</td>`).join('')}<td class="c b">${n1(fc.final)}</td></tr>` : ''; })()}
             <tr class="tot">
               <td class="izqtxt">PROMEDIO DE PER&Iacute;ODO</td>
               ${[1,2,3,4].map(p=>`<td class="c">${n1(promedioPeriodoEstudiante(est.id,grado,p))}</td>`).join('')}
