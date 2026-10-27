@@ -10783,13 +10783,32 @@ function moverMateriaBoleta(grado, id, dir){
   render();
 }
 /* Fila "CIENCIA Y TECNOLOGÍA PROMEDIO": promedio de Física, Química y Biología (solo informativa) */
-function cienciaPromedioFila(estId, grado){
+/* ===== Períodos visibles en la boleta =====
+   Se eligen cuáles períodos muestran sus notas; las filas y columnas se quedan.
+   Los promedios finales se calculan solo con los períodos visibles. */
+function periodosBoleta(){
+  const g = getPref('bolPeriodos', [1,2,3,4]);
+  const v = (Array.isArray(g) ? g : []).map(Number).filter(n=>n>=1 && n<=4);
+  return v.length ? [...new Set(v)].sort() : [1,2,3,4];
+}
+function alternarPeriodoBoleta(n){
+  const v = periodosBoleta();
+  const i = v.indexOf(n);
+  if(i>=0){ if(v.length===1){ showToast('Debe quedar al menos un período visible.'); render(); return; } v.splice(i,1); }
+  else v.push(n);
+  setPref('bolPeriodos', v.sort());
+}
+function mediaVisible(vals){ const v = vals.filter(x=>x!==null && x!==undefined && !isNaN(x)); return v.length ? v.reduce((s,x)=>s+x,0)/v.length : null; }
+function finalMateriaVisible(estId, asigId, grado, vis){ return mediaVisible(vis.map(p=>periodInfo(estId, asigId, p, grado).valor)); }
+function finalGlobalVisible(estId, grado, vis){ return mediaVisible(asignaturasDeGrado(grado).map(a=>finalMateriaVisible(estId, a.id, grado, vis))); }
+function cienciaPromedioFila(estId, grado, vis){
+  vis = vis || [1,2,3,4];
   const cs = asignaturasDeGrado(grado).filter(esMateriaCiencia);
   if(cs.length < 2) return null;
   const media = arr => { const v = arr.filter(x=>x!==null && x!==undefined); return v.length ? v.reduce((s,x)=>s+x,0)/v.length : null; };
   return {
-    periodos: [1,2,3,4].map(p=>media(cs.map(a=>periodInfo(estId, a.id, p, grado).valor))),
-    final: media(cs.map(a=>subjectInfo(estId, a.id, grado).valor))
+    periodos: [1,2,3,4].map(p=>vis.indexOf(p)>=0 ? media(cs.map(a=>periodInfo(estId, a.id, p, grado).valor)) : null),
+    final: media(cs.map(a=>finalMateriaVisible(estId, a.id, grado, vis)))
   };
 }
 function boletaCfg(grado){
@@ -10893,6 +10912,10 @@ function renderBoletasContenido(){
     </div>
     <button class="btn btn-primary" onclick="descargarBoletasPdf('${esc(grado)}')">Descargar todas en PDF</button>
     <button class="btn" onclick="descargarBoletasPdf('${esc(grado)}','${est?est.id:''}')">Esta boleta en PDF</button>
+    <div class="field"><label>Períodos con notas visibles</label>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        ${[1,2,3,4].map(n=>`<label class="check-chip" style="margin:0;"><input type="checkbox" ${periodosBoleta().indexOf(n)>=0?'checked':''} onchange="alternarPeriodoBoleta(${n})"> P${n}</label>`).join('')}
+      </div></div>
   </div>
   ${est ? renderBoletaEstudiante(est, grado) : '<div class="card"><p class="empty">No hay estudiantes en esta aula.</p></div>'}`;
 }
@@ -10903,6 +10926,8 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
   const aj = DB.ajustes || {};
   const edit = forzarSoloLectura ? false : puedeEditarBoleta(grado);
   const gInfo = studentInfo(est.id, grado);
+  const vis = periodosBoleta();
+  const finalGlobal = finalGlobalVisible(est.id, grado, vis);
 
   const n1 = v => v===null||v===undefined ? '' : v.toFixed(0);
   const campo = (valor, onchange, ancho, centro) => edit
@@ -10911,16 +10936,15 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
     : `<span>${esc(valor)}</span>`;
 
   const items = itemsBoleta(grado);
-  const filaCiencia = cienciaPromedioFila(est.id, grado);
+  const filaCiencia = cienciaPromedioFila(est.id, grado, vis);
   const botonesMover = (id, k, titulo) => edit ? `<span style="float:right; white-space:nowrap;">
         <button class="btn btn-sm" style="padding:0 6px;" ${k===0?'disabled':''} onclick="moverMateriaBoleta('${esc(grado)}','${id}',-1)" title="Subir ${titulo}">↑</button>
         <button class="btn btn-sm" style="padding:0 6px;" ${k===items.length-1?'disabled':''} onclick="moverMateriaBoleta('${esc(grado)}','${id}',1)" title="Bajar ${titulo}">↓</button></span>` : '';
   const filaAsig = (a, botones) => {
-    const si = subjectInfo(est.id, a.id, grado);
     return `<tr>
       <td class="bol-mat">${esc(a.nombre.toUpperCase())}${botones||''}</td>
-      ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(periodInfo(est.id, a.id, p, grado).valor)}</td>`).join('')}
-      <td class="bol-num bol-fuerte">${n1(si.valor)}</td>
+      ${[1,2,3,4].map(p=>`<td class="bol-num">${vis.indexOf(p)>=0 ? n1(periodInfo(est.id, a.id, p, grado).valor) : ''}</td>`).join('')}
+      <td class="bol-num bol-fuerte">${n1(finalMateriaVisible(est.id, a.id, grado, vis))}</td>
     </tr>`;
   };
   const filasMaterias = items.map((it,k)=>{
@@ -10957,8 +10981,8 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
             ${asigs.length===0?`<tr><td colspan="6" class="empty">Esta aula todavía no tiene asignaturas.</td></tr>`:filasMaterias}
             <tr class="bol-total">
               <td>PROMEDIO DE PERÍODO</td>
-              ${[1,2,3,4].map(p=>`<td class="bol-num">${n1(promedioPeriodoEstudiante(est.id, grado, p))}</td>`).join('')}
-              <td class="bol-num bol-verde">${n1(gInfo.valor)}</td>
+              ${[1,2,3,4].map(p=>`<td class="bol-num">${vis.indexOf(p)>=0 ? n1(promedioPeriodoEstudiante(est.id, grado, p)) : ''}</td>`).join('')}
+              <td class="bol-num bol-verde">${n1(finalGlobal)}</td>
             </tr>
             <tr>
               <td>INASISTENCIAS POR PERÍODO</td>
@@ -11101,6 +11125,7 @@ function quitarFirma(i, grado){
    Desde el diálogo del navegador se elige "Guardar como PDF". */
 function descargarBoletasPdf(grado, soloEstId){
   const cfg = boletaCfg(grado);
+  const vis = periodosBoleta();
   const aj = DB.ajustes || {};
   let estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
   if(soloEstId) estudiantes = estudiantes.filter(e=>e.id===soloEstId);
@@ -11113,6 +11138,7 @@ function descargarBoletasPdf(grado, soloEstId){
   const hoja = (est)=>{
     const dat = boletaDatos(est.id);
     const g = studentInfo(est.id, grado);
+    const finalGlobal = finalGlobalVisible(est.id, grado, vis);
     return `
     <div class="pagina"><div class="hoja">
       <div class="cab">
@@ -11136,17 +11162,17 @@ function descargarBoletasPdf(grado, soloEstId){
             ${itemsBoleta(grado).map(it=>{
               const fa = a=>`<tr>
               <td class="izqtxt">${q(a.nombre.toUpperCase())}</td>
-              ${[1,2,3,4].map(p=>`<td class="c">${n1(periodInfo(est.id,a.id,p,grado).valor)}</td>`).join('')}
-              <td class="c b">${n1(subjectInfo(est.id,a.id,grado).valor)}</td>
+              ${[1,2,3,4].map(p=>`<td class="c">${vis.indexOf(p)>=0 ? n1(periodInfo(est.id,a.id,p,grado).valor) : ''}</td>`).join('')}
+              <td class="c b">${n1(finalMateriaVisible(est.id,a.id,grado,vis))}</td>
             </tr>`;
               if(it.tipo==='asig') return fa(it.a);
-              const fc = cienciaPromedioFila(est.id, grado);
+              const fc = cienciaPromedioFila(est.id, grado, vis);
               return it.lista.map(fa).join('') + (fc ? `<tr><td class="izqtxt"><b>CIENCIA Y TECNOLOG&Iacute;A PROMEDIO</b></td>${fc.periodos.map(v=>`<td class="c b">${n1(v)}</td>`).join('')}<td class="c b">${n1(fc.final)}</td></tr>` : '');
             }).join('')}
             <tr class="tot">
               <td class="izqtxt">PROMEDIO DE PER&Iacute;ODO</td>
-              ${[1,2,3,4].map(p=>`<td class="c">${n1(promedioPeriodoEstudiante(est.id,grado,p))}</td>`).join('')}
-              <td class="c verde">${n1(g.valor)}</td>
+              ${[1,2,3,4].map(p=>`<td class="c">${vis.indexOf(p)>=0 ? n1(promedioPeriodoEstudiante(est.id,grado,p)) : ''}</td>`).join('')}
+              <td class="c verde">${n1(finalGlobal)}</td>
             </tr>
             <tr>
               <td class="izqtxt">INASISTENCIAS POR PER&Iacute;ODO</td>
