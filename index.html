@@ -1061,6 +1061,11 @@ function asegurarUsuariosDocentes(){
   DB.docentes.forEach(t=>{
     if(esPropietario(t)) return;   // la propietaria entra por su propio camino, no por aquí
     if(!t.usuario){ t.usuario = generarUsuarioDocente(t.nombre, t.id); cambio = true; }
+    else if(TRATAMIENTOS_NUEVOS.indexOf(String(t.usuario).split('.')[0]) >= 0 && /\s/.test(String(t.nombre||'').trim())){
+      // usuario armado por error con el título ("mr.rodrigo"): se corrige a nombre.apellido
+      const nuevoUsuario = generarUsuarioDocente(t.nombre, t.id);
+      if(nuevoUsuario && nuevoUsuario !== t.usuario){ t.usuario = nuevoUsuario; cambio = true; }
+    }
   });
   if(cambio){ try{ escribirDoc(docActual()); }catch(e){} }
 }
@@ -2242,7 +2247,9 @@ function esOrientador(u, grado){ return orientacionesDe(u).indexOf(grado) >= 0; 
 
 /* Para el saludo: omite el tratamiento (Lic., Profa., Miss…) y usa el nombre */
 const TRATAMIENTOS = ['lic','lic.','licda','licda.','prof','prof.','profa','profa.','sra','sra.','sr','sr.',
-  'srta','srta.','ing','ing.','miss','mtro','mtro.','mtra','mtra.','dr','dr.','dra','dra.'];
+  'srta','srta.','ing','ing.','miss','mtro','mtro.','mtra','mtra.','dr','dr.','dra','dra.',
+  'mr','mr.','mrs','mrs.','ms','ms.','mister','teacher','lcdo','lcdo.','lcda','lcda.','arq','arq.','msc','msc.','pastor','pastora','don','doña'];
+const TRATAMIENTOS_NUEVOS = ['mr','mrs','ms','mister','teacher','lcdo','lcda','arq','msc','pastor','pastora','don','doña'];
 function nombrePila(completo){
   const partes = String(completo||'').trim().split(/\s+/).filter(Boolean);
   if(partes.length > 1 && TRATAMIENTOS.indexOf(partes[0].toLowerCase()) >= 0) return partes[1];
