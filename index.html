@@ -10042,6 +10042,18 @@ function carMut(estId, p, fn){
   });
 }
 function carPeriodoSel(){ return Math.min(4, Math.max(1, Number(getPref('carPer', 1)) || 1)); }
+/* Períodos con notas visibles en las gráficas y el análisis (por defecto, solo el período elegido) */
+function carPeriodosVis(){
+  const g = getPref('carPerVis', null);
+  const v = (Array.isArray(g) ? g : []).map(Number).filter(n=>n>=1 && n<=4);
+  return v.length ? [...new Set(v)].sort() : [carPeriodoSel()];
+}
+function carCambiarPeriodo(n){ PREFS.carPerVis = [n]; setPref('carPer', n); }
+function carAlternarPeriodoVis(n){
+  const v = carPeriodosVis(); const i = v.indexOf(n);
+  if(i>=0){ if(v.length===1){ showToast('Debe quedar al menos un período visible.'); render(); return; } v.splice(i,1); } else v.push(n);
+  setPref('carPerVis', v.sort());
+}
 function carGradoSel(){
   const grados = gradosBoleta(currentUser);
   const g = getPref('carGradoSel','');
@@ -10332,8 +10344,12 @@ function renderCaracterizacion(){
       <select class="grado-select" onchange="setPref('carEst',''); setPref('carGradoSel', this.value)">
         ${grados.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}</select></div>
     <div class="field"><label>Período</label>
-      <select onchange="setPref('carPer', Number(this.value))">
+      <select onchange="carCambiarPeriodo(Number(this.value))">
         ${[1,2,3,4].map(n=>`<option value="${n}" ${p===n?'selected':''}>Período ${ROMANOS[n-1]}</option>`).join('')}</select></div>
+    <div class="field"><label>Períodos con notas en gráficas y análisis</label>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; min-height:34px;">
+        ${[1,2,3,4].map(n=>`<label class="check-chip" style="margin:0;"><input type="checkbox" ${carPeriodosVis().indexOf(n)>=0?'checked':''} onchange="carAlternarPeriodoVis(${n})"> P${n}</label>`).join('')}
+      </div></div>
     <div class="field"><label>Estudiante (ficha)</label>
       <select onchange="setPref('carEst', this.value)">
         ${ests.map((e,i)=>`<option value="${e.id}" ${est&&est.id===e.id?'selected':''}>${i+1}. ${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</option>`).join('')}</select></div>
@@ -10505,13 +10521,14 @@ function carSugerirObsGrupo(grado, p){
 }
 /* Análisis estadístico por estudiante (página de la gráfica): se arma con sus notas de los períodos */
 function carNivelNota(v){ return v>=90 ? 'excelente' : (v>=80 ? 'muy bueno' : (v>=70 ? 'bueno' : 'por debajo del mínimo para aprobar')); }
-function carSugerirAnalisis(estId, grado){
+function carSugerirAnalisis(estId, grado, vis){
+  vis = vis || carPeriodosVis();
   const est = DB.estudiantes.find(e=>e.id===estId); if(!est) return '';
   const asigs = asignaturasDeGrado(grado);
   const per = [1,2,3,4].map(q=>{
     const pr = promedioPeriodoEstudiante(estId, grado, q);
     return {q, prom: pr===null ? null : Math.round(pr), notas: asigs.map(a=>({n:a.nombre, v:carNota(estId, a.id, q, grado)}))};
-  }).filter(x=>x.prom!==null);
+  }).filter(x=>x.prom!==null && vis.indexOf(x.q)>=0);
   if(!per.length) return '';
   const n = carPrimerNombre(est);
   const sem = estId+'a';
@@ -10693,12 +10710,13 @@ function caractHtml(grado, p, vista){
     const d = carFicha(e.id, p);
     cuerpo += `<div class="pg"><p class="ft">Ficha individual</p><p><b>Estudiante:</b> ${q(nombreLargo(e))}</p>${tablaFicha(CAR_ESQUEMA.slice(0,CAR_PUNTO_CORTE-1), d, e)}</div>`;
     cuerpo += `<div class="pg"><p class="ft">Ficha individual — ${q(nombreLargo(e))}</p>${tablaFicha(CAR_ESQUEMA.slice(CAR_PUNTO_CORTE-1), d, e)}</div>`;
-    const series = asigs.map((a,j)=>({nombre:a.nombre, color:palette(j), vals:[1,2,3,4].map(per=>carNota(e.id,a.id,per,grado))}));
+    const visP = carPeriodosVis();
+    const series = asigs.map((a,j)=>({nombre:a.nombre, color:palette(j), vals:[1,2,3,4].map(per=>visP.indexOf(per)>=0 ? carNota(e.id,a.id,per,grado) : null)}));
     cuerpo += `<div class="pg"><h3>Análisis estadístico por estudiante:</h3><p><b>Nombre:</b> ${q(nombreLargo(e))}</p>
       ${carSvgBarras(nombreLargo(e), ['PERÍODO I','PERÍODO II','PERÍODO III','PERÍODO IV'], series, {etiquetas:true, h:380})}
       <p><b>Observaciones:</b> ${q(carValorTexto(e.id,p,'observaciones',grado))}</p></div>`;
   });
-  const per = [1,2,3,4].map((n,j)=>({nombre:'PERÍODO '+ROMANOS[j], color:['#1f5f8b','#e8793a','#2e7d32','#2aa7e0'][j], vals:ests.map(e=>{ const v=promedioPeriodoEstudiante(e.id,grado,n); return v===null?null:Math.round(v); })}));
+  const per = [1,2,3,4].map((n,j)=>({nombre:'PERÍODO '+ROMANOS[j], color:['#1f5f8b','#e8793a','#2e7d32','#2aa7e0'][j], vals:ests.map(e=>{ if(carPeriodosVis().indexOf(n)<0) return null; const v=promedioPeriodoEstudiante(e.id,grado,n); return v===null?null:Math.round(v); })}));
   cuerpo += `<div class="pg"><h3>2. Gráfica global por grado — ${q(grado)}</h3>${carSvgBarras('GRÁFICA COMPARATIVA — MEDIA POR PERÍODO', ests.map(nombreCorto), per, {rotar:true, h:430})}</div>`;
   const titulo = 'Caracterización ' + grado + ' - Período ' + ROMANOS[p-1];
   const barra = vista ? '<div class="barra"><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>' : '';
