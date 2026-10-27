@@ -10092,6 +10092,7 @@ function carValorTexto(estId, p, key, grado){
   }
   if(key==='reconocimiento') return carSugerirReconocimiento(estId, p, grado);
   if(key==='recomendacion') return carSugerirRecomendacion(estId, p, grado);
+  if(key==='observaciones') return carSugerirAnalisis(estId, grado);
   return '';
 }
 /* --- Edición --- */
@@ -10128,7 +10129,7 @@ function carCheck(el, estId, p, key, i){
 }
 function carTexto(estId, p, key, valor){
   const v = String(valor);
-  const conservaVacio = ['fortaleza','reforzar','reconocimiento','recomendacion'].indexOf(key) >= 0;
+  const conservaVacio = ['fortaleza','reforzar','reconocimiento','recomendacion','observaciones'].indexOf(key) >= 0;
   carMut(estId, p, d=>{ d.t = d.t || {}; if(v.trim()==='' && !conservaVacio) delete d.t[key]; else d.t[key] = v; });
   carRefrescarSugerencias(estId, p);
 }
@@ -10313,7 +10314,9 @@ function renderCaracterizacion(){
     </tr>`).join('')).join('')}
   </table></div>
   <div class="field" style="margin-top:12px;"><label>Observaciones del análisis estadístico (página de la gráfica de este estudiante)</label>
-    <textarea rows="3" ${dis} onchange="carTexto('${est.id}',${p},'observaciones',this.value)">${esc((dEst.t||{}).observaciones||'')}</textarea></div>
+    <textarea id="car_t_observaciones" rows="5" ${dis} onchange="carTexto('${est.id}',${p},'observaciones',this.value)">${esc(carValorTexto(est.id,p,'observaciones',grado))}</textarea>
+    <span class="nota-chica">${(dEst.t && dEst.t.observaciones!==undefined)?'Editado por ti.':'Análisis automático con sus notas de todos los períodos; puedes editarlo.'}
+    ${((dEst.t && dEst.t.observaciones!==undefined) && edit)?`<button class="btn btn-sm" onclick="carRestablecerTexto('${est.id}',${p},'observaciones')">Volver al análisis automático</button>`:''}</span></div>
   ${edit ? `<button class="btn" onclick="carAbrirCopiar('${est.id}')">Copiar esta ficha a otros estudiantes…</button>` : ''}` : '<div class="card"><p class="empty">No hay estudiantes en esta aula.</p></div>';
 
   return `
@@ -10493,6 +10496,90 @@ function carSugerirObsGrupo(grado, p){
     'Se sugiere acompañar de cerca a los estudiantes con dificultades'+(bajas.length?', fortalecer '+carUnir(bajas):'')+' y reconocer el esfuerzo de quienes mantienen buenas notas.'], semilla+'g9'));
   return out.join(' ');
 }
+/* Análisis estadístico por estudiante (página de la gráfica): se arma con sus notas de los períodos */
+function carNivelNota(v){ return v>=90 ? 'excelente' : (v>=80 ? 'muy bueno' : (v>=70 ? 'bueno' : 'por debajo del mínimo para aprobar')); }
+function carSugerirAnalisis(estId, grado){
+  const est = DB.estudiantes.find(e=>e.id===estId); if(!est) return '';
+  const asigs = asignaturasDeGrado(grado);
+  const per = [1,2,3,4].map(q=>{
+    const pr = promedioPeriodoEstudiante(estId, grado, q);
+    return {q, prom: pr===null ? null : Math.round(pr), notas: asigs.map(a=>({n:a.nombre, v:carNota(estId, a.id, q, grado)}))};
+  }).filter(x=>x.prom!==null);
+  if(!per.length) return '';
+  const n = carPrimerNombre(est);
+  const sem = estId+'a';
+  const ult = per[per.length-1], pri = per[0];
+  const out = [];
+  // 1. Panorama general
+  if(per.length===1){
+    out.push(carElegir([
+      'En el período '+ROMANOS[ult.q-1]+', '+n+' obtuvo un promedio general de '+ult.prom+', un nivel '+carNivelNota(ult.prom)+'.',
+      n+' cerró el período '+ROMANOS[ult.q-1]+' con un promedio de '+ult.prom+', lo que se considera '+carNivelNota(ult.prom)+'.',
+      'El promedio general de '+n+' en el período '+ROMANOS[ult.q-1]+' fue de '+ult.prom+' ('+carNivelNota(ult.prom)+').'], sem+'1'));
+  }else{
+    const dif = ult.prom - pri.prom;
+    const serie = per.map(x=>x.prom).join(', ');
+    if(dif>=5) out.push(carElegir([
+      'El promedio de '+n+' ha mejorado de '+pri.prom+' en el período '+ROMANOS[pri.q-1]+' a '+ult.prom+' en el '+ROMANOS[ult.q-1]+' ('+serie+').',
+      'Se observa una tendencia al alza en '+n+': sus promedios por período son '+serie+'.',
+      n+' muestra progreso: pasó de '+pri.prom+' a '+ult.prom+' entre los períodos '+ROMANOS[pri.q-1]+' y '+ROMANOS[ult.q-1]+'.'], sem+'1'));
+    else if(dif<=-5) out.push(carElegir([
+      'El promedio de '+n+' ha bajado de '+pri.prom+' en el período '+ROMANOS[pri.q-1]+' a '+ult.prom+' en el '+ROMANOS[ult.q-1]+' ('+serie+').',
+      'Se observa una disminución en el rendimiento de '+n+': sus promedios por período son '+serie+'.',
+      n+' pasó de '+pri.prom+' a '+ult.prom+' entre los períodos '+ROMANOS[pri.q-1]+' y '+ROMANOS[ult.q-1]+', por lo que conviene revisar qué está afectando su rendimiento.'], sem+'1'));
+    else out.push(carElegir([
+      'El rendimiento de '+n+' se ha mantenido estable, con promedios de '+serie+'.',
+      n+' conserva un rendimiento constante entre períodos ('+serie+').',
+      'Los promedios de '+n+' por período ('+serie+') muestran regularidad.'], sem+'1'));
+  }
+  // 2. Materias del último período
+  const con = ult.notas.filter(x=>x.v!==null).sort((a,b)=>b.v-a.v);
+  if(con.length>=2){
+    const top = con.filter(x=>x.v>=70 && x.v>=con[0].v-10).slice(0,2);
+    const bajas = con.filter(x=>x.v<70);
+    const peor = con[con.length-1];
+    if(top.length && top[0].v - peor.v >= 10){
+      out.push(carElegir([
+        'Sus mejores resultados están en '+carUnir(top.map(x=>x.n+' ('+x.v+')'))+'.',
+        'Destaca en '+carUnir(top.map(x=>x.n+' ('+x.v+')'))+'.',
+        'Su mayor fortaleza académica está en '+carUnir(top.map(x=>x.n+' ('+x.v+')'))+'.'], sem+'2'));
+    }else if(con[0].v - peor.v < 10){
+      out.push(carElegir(['Sus notas son parejas entre las materias.','Su rendimiento es homogéneo en todas las asignaturas.'], sem+'2'));
+    }
+    if(bajas.length) out.push(carElegir([
+      'Necesita apoyo en '+carUnir(bajas.map(x=>x.n+' ('+x.v+')'))+', materias por debajo de 70.',
+      'Las materias que requieren refuerzo son '+carUnir(bajas.map(x=>x.n+' ('+x.v+')'))+'.',
+      'Está por debajo de 70 en '+carUnir(bajas.map(x=>x.n+' ('+x.v+')'))+'.'], sem+'3'));
+    else if(top.length && top[0].v - peor.v >= 10) out.push('Su nota más baja es '+peor.n+' ('+peor.v+'), aunque aprueba.');
+  }
+  // 3. Cambios por materia respecto al período anterior
+  if(per.length>=2){
+    const ant = per[per.length-2];
+    const sube = [], baja = [];
+    ult.notas.forEach((x,i)=>{
+      const a = ant.notas[i];
+      if(x.v===null || !a || a.v===null) return;
+      const d = x.v - a.v;
+      if(d>=8) sube.push({t:x.n+' (+'+d+')', d});
+      if(d<=-8) baja.push({t:x.n+' ('+d+')', d});
+    });
+    sube.sort((a,b)=>b.d-a.d); baja.sort((a,b)=>a.d-b.d);
+    if(sube.length) out.push('Respecto al período anterior mejoró en '+carUnir(sube.slice(0,2).map(x=>x.t))+'.');
+    if(baja.length) out.push('Respecto al período anterior bajó en '+carUnir(baja.slice(0,2).map(x=>x.t))+'.');
+  }
+  // 4. Comparación con el grupo
+  const prom = DB.estudiantes.filter(e=>e.grado===grado).map(e=>promedioPeriodoEstudiante(e.id, grado, ult.q)).filter(x=>x!==null);
+  if(prom.length>=3){
+    const m = Math.round(prom.reduce((s,x)=>s+x,0)/prom.length);
+    const dg = ult.prom - m;
+    out.push(dg>=5 ? 'Su promedio está por encima de la media del grupo ('+m+').' : (dg<=-5 ? 'Su promedio está por debajo de la media del grupo ('+m+').' : 'Su promedio está en torno a la media del grupo ('+m+').'));
+  }
+  // 5. Cierre
+  out.push(ult.prom>=90 ? carElegir(['Se recomienda mantener este ritmo y ofrecerle retos adicionales.','Es importante seguir motivándolo(a) para sostener este nivel.'], sem+'9')
+    : ult.prom>=70 ? carElegir(['Se sugiere seguir fortaleciendo sus hábitos de estudio para subir su promedio.','Con constancia y repaso en casa puede alcanzar un nivel aún más alto.'], sem+'9')
+    : carElegir(['Se recomienda un plan de refuerzo con acompañamiento de la familia y seguimiento cercano de la docente.','Es necesario reforzar las materias con nota baja y dar seguimiento frecuente para recuperar el nivel.'], sem+'9'));
+  return out.join(' ');
+}
 function carObsValor(grado, p){
   const o = (carDatos().obs||{})[grado+'|'+p];
   return o!==undefined ? o : carSugerirObsGrupo(grado, p);
@@ -10501,7 +10588,7 @@ function carObsValor(grado, p){
 function carRefrescarSugerencias(estId, p){
   const grado = carGradoSel();
   const d = carFicha(estId, p);
-  [['reconocimiento', carSugerirReconocimiento], ['recomendacion', carSugerirRecomendacion]].forEach(([k, fn])=>{
+  [['reconocimiento', carSugerirReconocimiento], ['recomendacion', carSugerirRecomendacion], ['observaciones', (e,pp,g)=>carSugerirAnalisis(e,g)]].forEach(([k, fn])=>{
     const el = document.getElementById('car_t_'+k);
     if(el && !(d.t && d.t[k]!==undefined)) el.value = fn(estId, p, grado);
   });
@@ -10602,7 +10689,7 @@ function caractHtml(grado, p, vista){
     const series = asigs.map((a,j)=>({nombre:a.nombre, color:palette(j), vals:[1,2,3,4].map(per=>carNota(e.id,a.id,per,grado))}));
     cuerpo += `<div class="pg"><h3>Análisis estadístico por estudiante:</h3><p><b>Nombre:</b> ${q(nombreLargo(e))}</p>
       ${carSvgBarras(nombreLargo(e), ['PERÍODO I','PERÍODO II','PERÍODO III','PERÍODO IV'], series, {etiquetas:true, h:380})}
-      <p><b>Observaciones:</b> ${q((d.t||{}).observaciones||'')}</p></div>`;
+      <p><b>Observaciones:</b> ${q(carValorTexto(e.id,p,'observaciones',grado))}</p></div>`;
   });
   const per = [1,2,3,4].map((n,j)=>({nombre:'PERÍODO '+ROMANOS[j], color:['#1f5f8b','#e8793a','#2e7d32','#2aa7e0'][j], vals:ests.map(e=>{ const v=promedioPeriodoEstudiante(e.id,grado,n); return v===null?null:Math.round(v); })}));
   cuerpo += `<div class="pg"><h3>2. Gráfica global por grado — ${q(grado)}</h3>${carSvgBarras('GRÁFICA COMPARATIVA — MEDIA POR PERÍODO', ests.map(nombreCorto), per, {rotar:true, h:430})}</div>`;
