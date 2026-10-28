@@ -2381,10 +2381,20 @@ function verGradoCompleto(grado, u){
   u = u || currentUser;
   return !!u && (tieneAlcanceTotal(u) || esOrientador(u, grado));
 }
-function asignaturasDeGrado(grado){
+/* Una materia "apreciativa" (por ejemplo Speaking) es complemento de otra (Inglés):
+   tiene una sola nota por período, sin hoja de tareas, y esa nota se suma a la materia
+   principal con su porcentaje. No aparece como fila propia en boletas ni en promedios;
+   por eso asignaturasDeGrado() la deja fuera, salvo que se pida incluirla. */
+function esComplemento(a){ return !!(a && a.complementoDe); }
+function desdePeriodoComplemento(a){ const n = Number(a && a.desdePeriodo); return (n>=1 && n<=4) ? n : 2; }
+function pesoComplemento(a){ const n = Number(a && a.pesoComplemento); return (n>0 && n<100) ? n/100 : 0.10; }
+function complementosDe(asigId, grado){
+  return DB.asignaturas.filter(x=>x.complementoDe===asigId && (!grado || asignaturasDeGrado(grado, true).some(y=>y.id===x.id)));
+}
+function asignaturasDeGrado(grado, incluirComplementos){
   const ids = new Set((DB.curriculo && DB.curriculo[grado]) || []);
   DB.docentes.forEach(d=>d.asignaciones.forEach(a=>{ if(a.grado===grado) ids.add(a.asignaturaId); }));
-  return DB.asignaturas.filter(s=>ids.has(s.id));
+  return DB.asignaturas.filter(s=>ids.has(s.id) && (incluirComplementos || !esComplemento(s)));
 }
 function docenteDeAsignatura(grado, asignaturaId){
   return DB.docentes.find(d=>d.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asignaturaId));
@@ -2830,6 +2840,28 @@ function notaRubro(estId, asigId, periodo, rubro){
    Devuelve {valor, completo, avance}: el promedio se muestra desde la primera nota,
    repartiendo proporcionalmente entre los rubros ya calificados. */
 function periodInfo(estId, asigId, periodo, grado){
+  const asig = DB.asignaturas.find(a=>a.id===asigId);
+  if(esComplemento(asig)){
+    const v = getComp(estId, asigId, periodo, 'apreciativa');
+    const hay = v!==undefined && v!==null && !isNaN(v);
+    return {valor: hay ? v : null, completo: hay, avance: hay ? 1 : 0};
+  }
+  const base = periodInfoBase(estId, asigId, periodo, grado);
+  const comps = complementosDe(asigId, grado).filter(c=>periodo >= desdePeriodoComplemento(c));
+  if(!comps.length || base.valor===null) return base;
+  // La materia principal siempre vale (100 - peso)%; mientras no se ponga la nota del
+  // complemento, esa parte cuenta como 0 y la nota se calcula solo con el 90 %.
+  let wTotal = 0, suma = 0, faltan = false;
+  comps.forEach(c=>{
+    const w = pesoComplemento(c);
+    wTotal += w;
+    const v = getComp(estId, c.id, periodo, 'apreciativa');
+    if(v===undefined || v===null || isNaN(v)){ faltan = true; return; }
+    suma += v * w;
+  });
+  return {valor: base.valor*(1-wTotal) + suma, completo: base.completo && !faltan, avance: base.avance};
+}
+function periodInfoBase(estId, asigId, periodo, grado){
   const acts = getActividades(grado, asigId, periodo);
   let suma = 0, pesoUsado = 0, pesoTotal = 0, completo = true;
 
@@ -8217,11 +8249,12 @@ function renderAsignaturasBody(){
   <div class="card">
     <div class="table-wrap">
     <table>
-      <thead><tr><th>Asignatura</th><th>Grados donde se imparte</th><th></th></tr></thead>
+      <thead><tr><th>Asignatura</th><th>Grados donde se imparte</th><th>Tipo de evaluación</th><th></th></tr></thead>
       <tbody>
-        ${DB.asignaturas.length===0?`<tr><td colspan="3" class="empty">No hay asignaturas registradas.</td></tr>`:''}
+        ${DB.asignaturas.length===0?`<tr><td colspan="4" class="empty">No hay asignaturas registradas.</td></tr>`:''}
         ${DB.asignaturas.map(s=>{
-          const grados = DB.config.grados.filter(g=>asignaturasDeGrado(g).some(x=>x.id===s.id));
+          const grados = DB.config.grados.filter(g=>asignaturasDeGrado(g, true).some(x=>x.id===s.id));
+          const posiblesPrincipales = DB.asignaturas.filter(o=>o.id!==s.id && !esComplemento(o));
           return `<tr>
             <td><input type="text" value="${esc(s.nombre)}" style="max-width:280px;"
               onchange="renombrarAsignatura('${s.id}', this.value)"></td>
@@ -8231,6 +8264,14 @@ function renderAsignaturasBody(){
                   title="${activo?'Quitar de':'Agregar a'} ${esc(g)}"
                   onclick="toggleGradoAsignatura('${s.id}','${esc(g)}')">${activo?'✓ ':''}${esc(g)}</button>`;
               }).join('')}</div></td>
+            <td>
+              <select onchange="setComplementoAsignatura('${s.id}', this.value)" style="max-width:230px;">
+                <option value="">Normal (con hoja de tareas)</option>
+                ${posiblesPrincipales.map(o=>`<option value="${o.id}" ${s.complementoDe===o.id?'selected':''}>Apreciativa: complemento de ${esc(o.nombre)}</option>`).join('')}
+              </select>
+              ${esComplemento(s)?`<div style="margin-top:4px; font-size:12.5px;">Vale <input type="number" min="1" max="50" value="${Math.round(pesoComplemento(s)*100)}" style="width:62px;" onchange="setPesoComplemento('${s.id}', this.value)"> % de la materia principal, desde el
+                <select onchange="setDesdePeriodoComplemento('${s.id}', this.value)" style="width:auto;">${[1,2,3,4].map(n=>`<option value="${n}" ${desdePeriodoComplemento(s)===n?'selected':''}>período ${n}</option>`).join('')}</select></div>`:''}
+            </td>
             <td><button class="icon-btn" onclick="deleteSubject('${s.id}')">Eliminar</button></td>
           </tr>`;
         }).join('')}
@@ -8261,6 +8302,27 @@ async function addSubject(){
   showToast('Asignatura agregada.');
   render();
 }
+function setComplementoAsignatura(id, principalId){
+  commit(doc=>{
+    const a = doc.asignaturas.find(x=>x.id===id);
+    if(!a) return;
+    if(principalId){ a.complementoDe = principalId; if(!a.pesoComplemento) a.pesoComplemento = 10; if(!a.desdePeriodo) a.desdePeriodo = 2; }
+    else{ delete a.complementoDe; delete a.pesoComplemento; delete a.desdePeriodo; }
+  });
+  showToast(principalId ? 'Listo: esta materia ahora es apreciativa y suma su porcentaje a la materia principal.' : 'La materia volvió a ser normal.');
+  render();
+}
+function setDesdePeriodoComplemento(id, valor){
+  const n = Number(valor);
+  commit(doc=>{ const a = doc.asignaturas.find(x=>x.id===id); if(a) a.desdePeriodo = n; });
+  render();
+}
+function setPesoComplemento(id, valor){
+  const n = Math.round(Number(valor));
+  if(!(n>=1 && n<=50)){ showToast('El porcentaje va de 1 a 50.'); render(); return; }
+  commit(doc=>{ const a = doc.asignaturas.find(x=>x.id===id); if(a) a.pesoComplemento = n; });
+  render();
+}
 function renombrarAsignatura(id, nombre){
   const limpio = (nombre||'').trim();
   const actual = DB.asignaturas.find(a=>a.id===id);
@@ -8281,7 +8343,7 @@ function renombrarAsignatura(id, nombre){
 }
 function toggleGradoAsignatura(asigId, grado){
   const docenteAsignado = DB.docentes.some(d=>d.asignaciones.some(a=>a.grado===grado && a.asignaturaId===asigId));
-  const estaba = asignaturasDeGrado(grado).some(x=>x.id===asigId);
+  const estaba = asignaturasDeGrado(grado, true).some(x=>x.id===asigId);
   if(estaba && docenteAsignado){
     showToast('Primero quita la asignación del docente en la pantalla Docentes.');
     return;
@@ -8299,6 +8361,7 @@ async function deleteSubject(id){
   commit(doc=>{
     const i = doc.asignaturas.findIndex(x=>x.id===id);
     if(i>=0) doc.asignaturas.splice(i,1);
+    doc.asignaturas.forEach(x=>{ if(x.complementoDe===id){ delete x.complementoDe; delete x.pesoComplemento; } });
     doc.docentes.forEach(d=> d.asignaciones = (d.asignaciones||[]).filter(a=>a.asignaturaId!==id));
     Object.keys(doc.calificaciones).forEach(k=>{ if(k.split('|')[1]===id) delete doc.calificaciones[k]; });
     Object.keys(doc.actividades).forEach(k=>{ if(k.split('|')[1]===id) delete doc.actividades[k]; });
@@ -12259,6 +12322,60 @@ function renderDuplicarNotasModal(){
     </div>
   </div>`;
 }
+/* Calificaciones de una materia apreciativa (Speaking): una sola nota por período */
+function renderCalifApreciativa(ctx){
+  const {grado, asignatura, periodo, gradosVisibles, asignaturasPosibles, puedeEditar, estudiantes} = ctx;
+  const asig = DB.asignaturas.find(a=>a.id===asignatura);
+  const principal = DB.asignaturas.find(a=>a.id===asig.complementoDe);
+  const peso = Math.round(pesoComplemento(asig)*100);
+  const desde = desdePeriodoComplemento(asig);
+  const cuenta = periodo >= desde;
+  window._notasCols = ['apreciativa'];
+  window._notasEstIds = estudiantes.map(e=>e.id);
+  window._notasCtx = {grado, asigId: asignatura, periodo};
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Evaluación</p>
+    <h1 class="page-title">Calificaciones</h1>
+    <p class="page-desc">${esc(asig.nombre)} es una materia <b>apreciativa</b>: lleva una sola nota por período, sin hoja de tareas. Esa nota vale el <b>${peso}%</b> de ${esc(principal?principal.nombre:'su materia principal')} (que queda en ${100-peso}%) <b>a partir del período ${desde}</b>, y no aparece como materia aparte en la boleta.</p>
+  </div>
+  ${puedeEditar?renderGuardarManualBanner():''}
+  <div class="filters">
+    <div class="field"><label>Aula</label>
+      <select class="grado-select" onchange="setPref('califAsig',''); setPref('califGrado', this.value)">
+        ${gradosVisibles.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}
+      </select></div>
+    <div class="field"><label>Asignatura</label>
+      <select onchange="setPref('califAsig', this.value)">
+        ${asignaturasPosibles.map(s=>`<option value="${s.id}" ${asignatura===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}
+      </select></div>
+  </div>
+  <div class="period-tabs">
+    ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="setPref('califPeriodo', ${p})">Período ${p}</div>`).join('')}
+  </div>
+  ${cuenta ? '' : `<div class="note">En el período ${periodo} esta nota <b>no cuenta</b> para ${esc(principal?principal.nombre:'la materia principal')}: se aplica desde el período ${desde}.</div>`}
+  <div class="ledger">
+    <div class="table-wrap">
+    <table class="ledger-table">
+      <thead><tr><th style="width:44px;">N°</th><th>Estudiante</th><th style="width:170px;">Nota apreciativa (${peso}% de ${esc(principal?principal.nombre:'la materia principal')})</th></tr></thead>
+      <tbody>
+        ${estudiantes.length===0?`<tr><td colspan="3" class="empty">No hay estudiantes en esta aula.</td></tr>`:''}
+        ${estudiantes.map((e,i)=>{
+          const val = getComp(e.id, asignatura, periodo, 'apreciativa');
+          const input = puedeEditar
+            ? `<input class="score-input ${(val!==undefined && val<60)?'deficiente':''}" type="text" inputmode="decimal" autocomplete="off"
+                data-est="${esc(e.id)}" data-comp="apreciativa" data-asig="${esc(asignatura)}" data-periodo="${periodo}"
+                value="${val!==undefined?val:''}" placeholder="—"
+                onchange="updateComp('${e.id}','${asignatura}',${periodo},'apreciativa',this.value)">`
+            : `<span class="mono">${val!==undefined?val:'—'}</span>`;
+          return `<tr><td class="mono">${i+1}</td><td>${esc(apellidosDe(e))}, ${esc(nombresDe(e))}</td><td><div class="celda-nota">${input}</div></td></tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <p class="nota-chica">Mientras no se ponga la nota de ${esc(asig.nombre)}, la nota de ${esc(principal?principal.nombre:'la materia principal')} se calcula siempre con el ${100-peso}%; al ingresarla, se suma el ${peso}%.</p>`;
+}
 function renderCalificaciones(){
   const gradosVisibles = misGrados(currentUser);
   if(gradosVisibles.length===0){
@@ -12266,14 +12383,17 @@ function renderCalificaciones(){
   }
   const grado = getPref('califGrado', gradosVisibles[0]);
   const asignaturasPosibles = isAdmin(currentUser) || esOrientador(currentUser, grado)
-    ? asignaturasDeGrado(grado)
-    : asignaturasDeGrado(grado).filter(s=>currentUser.asignaciones.some(a=>a.grado===grado && a.asignaturaId===s.id));
+    ? asignaturasDeGrado(grado, true)
+    : asignaturasDeGrado(grado, true).filter(s=>currentUser.asignaciones.some(a=>a.grado===grado && a.asignaturaId===s.id));
   const asignatura = getPref('califAsig','') && asignaturasPosibles.some(s=>s.id===getPref('califAsig','')) ? getPref('califAsig','') : (asignaturasPosibles[0] ? asignaturasPosibles[0].id : '');
   const periodo = Number(getPref('califPeriodo',1)) || 1;
   const puedeEditar = asignatura && canEditGrades(currentUser, grado, asignatura);
   const acts = asignatura ? getActividades(grado, asignatura, periodo) : [];
 
   const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
+  if(asignatura && esComplemento(DB.asignaturas.find(a=>a.id===asignatura))){
+    return renderCalifApreciativa({grado, asignatura, periodo, gradosVisibles, asignaturasPosibles, puedeEditar, estudiantes});
+  }
   // Orden de columnas y de filas de ESTA tabla, para que las flechas del
   // teclado sepan a qué casilla saltar aunque la pantalla se vuelva a
   // dibujar entre una tecla y otra (ver moverFocoNota). Se guarda también
