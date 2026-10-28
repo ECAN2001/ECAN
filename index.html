@@ -11828,11 +11828,6 @@ function renderHojas(){
             ${edit?`<input class="hj-in hj-centro hj-etiqueta" value="${esc(hoja.examen.texto||'')}" onchange="editarExamen('texto',this.value)">`:esc(hoja.examen.texto||'')}
           </td>
         </tr>
-        ${filasComplementoHoja(asigId, grado, periodo).map(x=>`<tr class="hj-examenes">
-          <td>${esc(x.peso)}%</td>
-          <td colspan="${edit?8:7}" class="hj-centro">${esc(x.c.nombre.toUpperCase())} — ${x.peso}% de la nota del período (nota apreciativa; ${esc(asigNombreHoja(asigId))} vale ${100-x.peso}%)
-            <button class="btn btn-sm" style="margin-left:10px;" onclick="setPref('califGrado','${esc(grado)}');setPref('califAsig','${x.c.id}');setPref('califPeriodo',${periodo});goTo('calificaciones')">Poner nota</button>
-          </td></tr>`).join('')}
       </tbody>
     </table>
     </div>
@@ -12144,7 +12139,6 @@ function imprimirHoja(grado, asigId, periodo, alcance){
         ${filas}
         <tr><td class="c neg">${q(h.examen.fecha||'')}</td>
             <td colspan="7" class="c examen">${q(h.examen.texto||'')}</td></tr>
-        ${filasComplementoHoja(asig.id, grado, periodo).map(x=>`<tr><td class="c neg">${x.peso}%</td><td colspan="7" class="c examen">${q(x.c.nombre.toUpperCase())} — ${x.peso}% (nota apreciativa)</td></tr>`).join('')}
       </table>
     </div></div>`;
   };
@@ -12507,11 +12501,12 @@ function renderCalificaciones(){
           if(r.conRecuperacion) th += `<th style="width:80px;" title="Recuperación de ${nom}">Recup.<br><span style="font-weight:400;text-transform:none;">${corta?esc(corta):nom}</span></th>`;
           return th;
         }).join('')}
+        ${filasComplementoHoja(asignatura, grado, periodo).map(x=>`<th style="width:100px;" title="Nota apreciativa">${esc(x.c.nombre)} (${x.peso}%)</th>`).join('')}
         <th style="width:100px;">Nota período ${periodo}</th>
         <th style="width:110px;">Promedio final</th>
       </tr></thead>
       <tbody>
-        ${estudiantes.length===0?`<tr><td colspan="${acts.length+rubrosActivos().length+rubrosActivos().filter(r=>r.conRecuperacion).length+4}" class="empty">No hay estudiantes en esta aula.</td></tr>`:''}
+        ${estudiantes.length===0?`<tr><td colspan="${acts.length+rubrosActivos().length+rubrosActivos().filter(r=>r.conRecuperacion).length+4+filasComplementoHoja(asignatura, grado, periodo).length}" class="empty">No hay estudiantes en esta aula.</td></tr>`:''}
         ${estudiantes.map((e,idxEst)=>{
           const pInfo = periodInfo(e.id, asignatura, periodo, grado);
           const pScore = pInfo.valor;
@@ -12569,6 +12564,13 @@ function renderCalificaciones(){
                   ${gana?'<span class="pill pill-primary" style="margin-top:4px;display:inline-block;">Cuenta esta</span>':''}</td>`;
               }
               return td;
+            }).join('')}
+            ${filasComplementoHoja(asignatura, grado, periodo).map(x=>{
+              const v = getComp(e.id, x.c.id, periodo, 'apreciativa');
+              const inp = puedeEditar
+                ? `<input class="score-input ${(v!==undefined && v<60)?'deficiente':''}" type="text" inputmode="decimal" autocomplete="off" value="${v!==undefined?v:''}" placeholder="—" onchange="updateComp('${e.id}','${x.c.id}',${periodo},'apreciativa',this.value)">`
+                : `<span class="mono">${v!==undefined?v:'—'}</span>`;
+              return `<td><div class="celda-nota">${inp}</div></td>`;
             }).join('')}
             <td class="avg-cell ${pScore===null?'avg-pending':(pScore>=60?'avg-good':'avg-bad')}"
                 title="${pInfo.completo?'Nota definitiva del período':'Promedio con lo calificado hasta ahora ('+Math.round(pInfo.avance*100)+'% del período)'}">
