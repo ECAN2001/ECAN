@@ -387,7 +387,7 @@
 
 <script>
 /* ============================= ESTADO ============================= */
-let DB = { cartasRecup:{}, caract:{}, estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{}, soporte:[], mensajes:[], reuniones:[] };
+let DB = { cartasRecup:{}, caract:{}, conducta:{}, estudiantes:[], asignaturas:[], docentes:[], calificaciones:{}, config:{ grados:[], periodos:4 }, actividades:{}, soporte:[], mensajes:[], reuniones:[] };
 let baseCompletaCargada = false;         // true una vez que se descargó la base completa (solo docentes/admin)
 let sesionEstudianteCred = null;         // {usuario, claveHash} en memoria, para reautenticar sin pedir de nuevo
 /* Vista previa de "cómo lo vería un estudiante": no es una sesión real, no
@@ -910,7 +910,7 @@ function docActual(){
     observaciones: DB.observaciones, ajustes: DB.ajustes, rubros: DB.rubros,
     boletaDatos: DB.boletaDatos, hojas: DB.hojas, bitacora: DB.bitacora, reportes: DB.reportes, averias: DB.averias,
     soporte: DB.soporte, mensajes: DB.mensajes, reportesEliminados: DB.reportesEliminados, reuniones: DB.reuniones,
-    reunionesEliminadas: DB.reunionesEliminadas, cartasRecup: DB.cartasRecup, caract: DB.caract
+    reunionesEliminadas: DB.reunionesEliminadas, cartasRecup: DB.cartasRecup, caract: DB.caract, conducta: DB.conducta
   };
 }
 function adoptarDoc(doc){
@@ -937,6 +937,7 @@ function adoptarDoc(doc){
   DB.reunionesEliminadas = doc.reunionesEliminadas || [];
   DB.cartasRecup = doc.cartasRecup || {};
   DB.caract = doc.caract || {};
+  DB.conducta = doc.conducta || {};
   DB.ajustes = doc.ajustes || {nombreColegio:'Centro Escolar', lema:'Cuaderno digital', logo:''};
   if(DB.ajustes.fraseSaludo === undefined) DB.ajustes.fraseSaludo = 'recuerda que lo haces increíble';
   if(DB.ajustes.mensajeBienvenida === undefined) DB.ajustes.mensajeBienvenida = '';
@@ -1022,6 +1023,7 @@ async function loadAll(){
   if(!DB.boletaDatos) DB.boletaDatos = {};
   if(!DB.cartasRecup) DB.cartasRecup = {};
   if(!DB.caract) DB.caract = {};
+  if(!DB.conducta) DB.conducta = {};
   if(!DB.hojas) DB.hojas = {};
   if(!DB.bitacora) DB.bitacora = [];
   if(!DB.reportes) DB.reportes = [];
@@ -2045,6 +2047,10 @@ function combinarDocs(local, nube, preferirNube){
       obs: Object.assign({}, (local.caract||{}).obs||{}, (nube.caract||{}).obs||{}),
       config: Object.assign({}, (local.caract||{}).config||{}, (nube.caract||{}).config||{})
     },
+    conducta: {
+      notas: Object.assign({}, (local.conducta||{}).notas||{}, (nube.conducta||{}).notas||{}),
+      obs: Object.assign({}, (local.conducta||{}).obs||{}, (nube.conducta||{}).obs||{})
+    },
     bitacora: (nube.bitacora||[]).concat((local.bitacora||[]).filter(l=>!(nube.bitacora||[]).some(x=>x.ts===l.ts && x.userId===l.userId))).slice(-800),
     reportes: (nube.reportes||[]).concat((local.reportes||[]).filter(r=>!(nube.reportes||[]).some(x=>x.id===r.id))),
     averias: (nube.averias||[]).concat((local.averias||[]).filter(r=>!(nube.averias||[]).some(x=>x.id===r.id))),
@@ -2270,9 +2276,9 @@ const PANELES = [
   {id:'calificaciones', label:'Calificaciones'},
   {id:'matriz',         label:'Notas por aula'},
   {id:'tareas',         label:'Registro y alertas de tareas'},
-  {id:'boletas',        label:'Boletas de notas'},
+  {id:'boletas',        label:'Boletas y Caracterización'},
   {id:'hojas',          label:'Hojas de tareas'},
-  {id:'reportes',       label:'Reportes disciplinarios',
+  {id:'reportes',       label:'Conducta (reportes y notas)',
    niveles:[{v:'no',t:'Sin acceso'},{v:'editar',t:'Editar y ver con límite'},{v:'editartodo',t:'Editar y ver todos'}]}
 ];
 /* Compatibilidad: usuarios configurados con los niveles antiguos de solo-consulta
@@ -3326,12 +3332,12 @@ function doLogout(){ currentUser = null; sesionEstudiante = false; sesionEstudia
 const NAV_ITEMS = [
   {id:'panel', label:'Panel principal'},
   {id:'estudiantes', label:'Estudiantes'},
-  {id:'reportes', label:'Reportes disciplinarios'},
+  {id:'reportes', label:'Conducta'},
   {id:'hojas', label:'Hojas de tareas'},
   {id:'calificaciones', label:'Calificaciones'},
   {id:'tareas', label:'Registro y alertas de tareas'},
   {id:'matriz', label:'Notas por aula'},
-  {id:'boletas', label:'Boletas'},
+  {id:'boletas', label:'Boletas y Caracterización'},
   {id:'docentes', label:'Docentes y asignaturas'},
   {id:'seguimiento', label:'Seguimiento de docentes'},
   {id:'averias', label:'Averías y solicitudes'},
@@ -3346,6 +3352,7 @@ function navAllowed(id){
   if(id==='personalizar') return canManageAcademicData(currentUser) || puedePersonalizarMensajes(currentUser);
   if(id==='docentes') return canManageAcademicData(currentUser);
   if(id==='seguimiento') return canManageAcademicData(currentUser);
+  if(id==='boletas' && gradosBoleta(currentUser).length===0) return false;   // solo Dirección y orientadores
   if(PANELES.some(p=>p.id===id)) return puedeVerPanel(currentUser, id);
   return true;
 }
@@ -4020,7 +4027,134 @@ function rotuloPeriodo(tipo, valor){
   if(tipo==='mes') return rotuloMes(valor);
   return rotuloSemana(valor);
 }
+
+/* ============================= CONDUCTA: NOTAS POR DOCENTE =============================
+   DB.conducta = { notas:{'estId|periodo|docenteId': nota}, obs:{'estId|periodo': texto} }
+   Cada docente que da clases en el grado pone su nota de conducta; el promedio sale solo
+   y pasa a la boleta y a la caracterización. */
 function renderReportes(){
+  if(!puedeVerPanel(currentUser, 'reportes')) return renderNoAccess();
+  const tab = getPref('condTab','reportes') === 'notas' ? 'notas' : 'reportes';
+  const barra = `<div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">
+    <button class="btn ${tab==='reportes'?'btn-primary':''}" onclick="setPref('condTab','reportes')">Reportes disciplinarios</button>
+    <button class="btn ${tab==='notas'?'btn-primary':''}" onclick="setPref('condTab','notas')">Notas de conducta</button>
+  </div>`;
+  return barra + (tab==='notas' ? renderNotasConducta() : renderReportesDisc());
+}
+function condDatos(){ if(!DB.conducta) DB.conducta = {}; return DB.conducta; }
+function condNota(estId, p, docId){ const v = (condDatos().notas||{})[estId+'|'+p+'|'+docId]; return (v===undefined||v===null||v==='') ? null : Number(v); }
+function condObs(estId, p){ return String(((condDatos().obs||{})[estId+'|'+p]) || '').trim(); }
+function docentesDeGradoConducta(grado){
+  return DB.docentes.filter(d=>!esPropietario(d) && (d.asignaciones||[]).some(a=>a.grado===grado))
+    .slice().sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),'es'));
+}
+/* Promedio de conducta de un estudiante en un período (null si nadie ha puesto nota) */
+function condPromedio(estId, p){
+  const e = DB.estudiantes.find(x=>x.id===estId);
+  if(!e) return null;
+  const ids = docentesDeGradoConducta(e.grado).map(d=>d.id);
+  const vals = ids.map(id=>condNota(estId, p, id)).filter(v=>v!==null && !isNaN(v));
+  return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+}
+function notaConductaBoleta(estId, p, vis, dat, soloTexto){
+  if(vis.indexOf(p) < 0) return '';
+  const auto = condPromedio(estId, p);
+  const manual = (dat && dat.notaConducta && dat.notaConducta[p]) || '';
+  const txt = auto!==null ? String(Math.round(auto)) : String(manual||'');
+  return soloTexto ? txt : esc(txt);
+}
+function setCondNota(estId, p, docId, valor){
+  let v = String(valor).trim().replace(',', '.');
+  if(v!=='' && (!/^\d{1,3}(\.\d+)?$/.test(v) || Number(v)>100)){ showToast('La nota de conducta va de 0 a 100.'); render(); return; }
+  commit(doc=>{
+    doc.conducta = doc.conducta || {}; doc.conducta.notas = doc.conducta.notas || {};
+    const k = estId+'|'+p+'|'+docId;
+    if(v==='') delete doc.conducta.notas[k]; else doc.conducta.notas[k] = Number(v);
+  });
+  render();
+}
+function setCondObs(estId, p, texto){
+  commit(doc=>{
+    doc.conducta = doc.conducta || {}; doc.conducta.obs = doc.conducta.obs || {};
+    const k = estId+'|'+p;
+    if(String(texto).trim()==='') delete doc.conducta.obs[k]; else doc.conducta.obs[k] = texto;
+  });
+}
+/* Desde la boleta: lleva a las observaciones de conducta del estudiante */
+function irObservacionConducta(estId, grado, p){
+  PREFS.condTab = 'notas'; PREFS.condGrado = grado; PREFS.condPer = p; PREFS.condEstResaltar = estId;
+  goTo('reportes');
+  setTimeout(()=>{ const el = document.getElementById('cond_obs_'+estId); if(el){ el.scrollIntoView({block:'center'}); el.focus(); } }, 150);
+}
+function renderNotasConducta(){
+  const grados = isAdmin(currentUser) || tieneAlcanceTotal(currentUser) ? DB.config.grados.slice() : misGrados(currentUser);
+  if(grados.length===0) return `<div class="page-head"><p class="page-eyebrow">Conducta</p><h1 class="page-title">Notas de conducta</h1><p class="page-desc">No tienes aulas asignadas todavía.</p></div>`;
+  const g0 = getPref('condGrado','');
+  const grado = (g0 && grados.includes(g0)) ? g0 : grados[0];
+  const periodo = Math.min(4, Math.max(1, Number(getPref('condPer',1))||1));
+  const docs = docentesDeGradoConducta(grado);
+  const estudiantes = ordenarEstudiantes(DB.estudiantes.filter(e=>e.grado===grado), getPref('ordenEst','apellidos'));
+  const esAdm = isAdmin(currentUser) || esOrientador(currentUser, grado);
+  const base = !currentUser.soloLectura && puedeEditarPanel(currentUser,'reportes');
+  const da = d => base && (esAdm || d.id===currentUser.id);
+  const daObs = base && (esAdm || docs.some(d=>d.id===currentUser.id));
+  const resaltar = getPref('condEstResaltar','');
+  const th = 'style="padding:6px 8px; background:#2E5C9A; color:#fff; font-size:12.5px; text-align:center; border:1px solid #fff;"';
+  const td = 'style="padding:3px 4px; text-align:center; border:1px solid var(--line-strong); font-size:13px;"';
+  const sinReporte = (e) => { const r = carReportes(e.id, periodo); return (r.F1+r.F2+r.F3+r.CV)===0; };
+  return `
+  <div class="page-head">
+    <p class="page-eyebrow">Conducta</p>
+    <h1 class="page-title">Notas de conducta</h1>
+    <p class="page-desc">Cada docente que da clases en el grado pone su nota de conducta. El promedio sale solo y pasa a la boleta y a la caracterización.</p>
+  </div>
+  <div class="note" style="background:#fff3cd; color:#a40000; font-weight:700; border:1px solid #e0c36a;">SI COLOCA NOTAS MENORES A 70, DEBERÁ HABER REPORTE DISCIPLINARIO</div>
+  <div class="filters">
+    <div class="field"><label>Aula</label>
+      <select class="grado-select" onchange="setPref('condGrado', this.value)">
+        ${grados.map(g=>`<option value="${esc(g)}" ${grado===g?'selected':''}>${esc(g)}</option>`).join('')}
+      </select></div>
+  </div>
+  <div class="period-tabs">
+    ${[1,2,3,4].map(p=>`<div class="period-tab ${periodo==p?'active':''}" onclick="setPref('condPer', ${p})">Período ${p}</div>`).join('')}
+  </div>
+  ${docs.length===0 ? `<div class="card"><p class="empty">Ningún docente tiene asignado este grado todavía.</p></div>` : `
+  <div class="ledger"><div class="table-wrap">
+  <table class="ledger-table" style="min-width:${360+docs.length*90}px;">
+    <thead><tr>
+      <th ${th}>N°</th><th ${th}>Estudiante</th>
+      ${docs.map(d=>`<th ${th}>${esc(d.nombre)}</th>`).join('')}
+      <th ${th}>Promedio</th><th ${th}>Reportes</th><th ${th}>Observaciones</th>
+    </tr></thead>
+    <tbody>
+      ${estudiantes.length===0?`<tr><td colspan="${docs.length+5}" class="empty">No hay estudiantes en esta aula.</td></tr>`:''}
+      ${estudiantes.map((e,i)=>{
+        const prom = condPromedio(e.id, periodo);
+        const hayBaja = docs.some(d=>{ const v=condNota(e.id,periodo,d.id); return v!==null && v<70; });
+        const alerta = hayBaja && sinReporte(e);
+        return `<tr ${resaltar===e.id?'style="outline:2px solid #2E5C9A;"':''}>
+          <td class="mono">${i+1}</td>
+          <td style="white-space:nowrap;">${esc(apellidosDe(e))}, ${esc(nombresDe(e))}${alerta?` <span title="Tiene nota menor a 70 y no hay reporte disciplinario en este período" style="color:#c00; font-weight:700;">⚠ falta reporte</span>`:''}</td>
+          ${docs.map(d=>{
+            const v = condNota(e.id, periodo, d.id);
+            const bajo = v!==null && v<70;
+            return `<td ${td}>${da(d)
+              ? `<input type="text" inputmode="decimal" autocomplete="off" class="score-input ${bajo?'deficiente':''}" value="${v===null?'':v}" placeholder="—" onchange="setCondNota('${e.id}',${periodo},'${d.id}',this.value)">`
+              : `<span class="mono" style="${bajo?'color:#c00;font-weight:700;':''}">${v===null?'—':v}</span>`}</td>`;
+          }).join('')}
+          <td class="avg-cell ${prom===null?'avg-pending':(prom>=70?'avg-good':'avg-bad')}">${prom===null?'—':prom.toFixed(1)}</td>
+          <td ${td}>${esc(carReportesTexto(carReportes(e.id, periodo)))}</td>
+          <td style="padding:3px 4px; border:1px solid var(--line-strong); min-width:240px;">${daObs
+            ? `<textarea id="cond_obs_${e.id}" rows="1" style="width:100%; min-height:30px; font-size:13px;" placeholder="Observaciones…" onchange="setCondObs('${e.id}',${periodo},this.value)">${esc(condObs(e.id, periodo))}</textarea>`
+            : `<span style="font-size:13px; white-space:pre-wrap;">${esc(condObs(e.id, periodo))||'—'}</span>`}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div></div>
+  <p class="nota-chica">${esAdm ? 'Como orientador(a) o administración puedes escribir en todas las columnas.' : 'Solo puedes escribir en tu propia columna.'} Aquí solo aparecen los docentes que dan clases en ${esc(grado)}.</p>`}`;
+}
+
+function renderReportesDisc(){
   if(!puedeVerPanel(currentUser, 'reportes')) return renderNoAccess();
   let vista = getPref('repVista','nuevo');
   if(vista==='resumen' && !veTodosReportes(currentUser)) vista = 'historial'; // por si quedó guardado de antes
@@ -4433,7 +4567,7 @@ function renderReportes(){
 
   return `
   <div class="page-head">
-    <p class="page-eyebrow">Convivencia escolar</p>
+    <p class="page-eyebrow">Conducta</p>
     <h1 class="page-title">Reportes disciplinarios</h1>
     <p class="page-desc">Registro de faltas por estudiante. Los docentes pueden reportar a cualquier estudiante del centro escolar.</p>
     ${(!currentUser.soloLectura && puedeEditarPanel(currentUser, 'reportes')) ? `<button class="btn btn-primary" style="margin-top:8px;" onclick="abrirSubirReporte()" title="Sube el PDF o la foto de un reporte CV, F1, F2 o F3 que se descargó sin conexión">⬆ Subir reporte (CV, F1, F2 o F3) desde PDF o foto</button>` : ''}
@@ -7825,7 +7959,7 @@ const PANELES_ESTUDIANTE = [
   {id:'hojas',          label:'Hojas de tareas (solo su grado)'},
   {id:'calificaciones', label:'Calificaciones (solo las suyas)'},
   {id:'alertas',        label:'Alertas de tareas'},
-  {id:'boletas',        label:'Boletas de notas'},
+  {id:'boletas',        label:'Boletas y Caracterización'},
   {id:'mensajes',       label:'Mensajes con docentes y administración'}
 ];
 function accesosPorDefecto(){
@@ -10094,7 +10228,22 @@ const CAR_ESQUEMA = [
 const CAR_PUNTO_CORTE = 7;   // la ficha impresa se parte después de "Debilidades" (área n.º 6)
 const CAR_COLORES = ['#1f5f8b','#e8793a','#2e7d32','#2aa7e0','#7cb342','#8e44ad','#c0392b','#16a085','#f1c40f','#34495e','#d35400','#95a5a6'];
 function carDatos(){ if(!DB.caract) DB.caract = {}; return DB.caract; }
-function carFicha(estId, p){ return ((carDatos().datos||{})[estId+'|'+p]) || {}; }
+function carFichaRaw(estId, p){ return ((carDatos().datos||{})[estId+'|'+p]) || {}; }
+/* Ficha con conducta e inasistencias automáticas: si el orientador no escribió nada,
+   la conducta sale de Conducta → Notas de conducta y las inasistencias de la boleta. */
+function carFicha(estId, p){
+  const d = carFichaRaw(estId, p);
+  const out = Object.assign({}, d);
+  if(out.conducta===undefined || out.conducta===''){
+    const c = condPromedio(estId, p);
+    if(c!==null) out.conducta = String(Math.round(c));
+  }
+  if(out.inas===undefined || out.inas===''){
+    const b = ((boletaDatos(estId).inasistencias)||{})[p];
+    if(b!==undefined && String(b).trim()!=='') out.inas = String(b).trim();
+  }
+  return out;
+}
 function carMut(estId, p, fn){
   commit(doc=>{
     const c = doc.caract = doc.caract || {};
@@ -10268,7 +10417,7 @@ function carAplicarCopia(){
   const p = carPeriodoSel();
   if(m.destinos.length===0){ showToast('Elige al menos un estudiante.'); return; }
   if(m.areas.length===0){ showToast('Elige al menos un apartado para copiar.'); return; }
-  const origen = JSON.parse(JSON.stringify(carFicha(m.src, p)));
+  const origen = JSON.parse(JSON.stringify(carFichaRaw(m.src, p)));
   const claves = {v:[], c:[], t:[]};
   m.areas.forEach(i=>{ const k = carClavesArea(CAR_ESQUEMA[i]); claves.v.push(...k.v); claves.c.push(...k.c); claves.t.push(...k.t); });
   const destinos = m.destinos.slice();
@@ -11108,8 +11257,7 @@ function renderBoletaEstudiante(est, grado, forzarSoloLectura){
           <tbody>
             ${['I-P','II-P','III-P','IV-P'].map((et,i)=>`
               <tr><td>${et}</td>
-                <td class="bol-num col-valor">${campo(dat.notaConducta[i+1]||'',
-                  "setBoletaDato('"+est.id+"','notaConducta','"+(i+1)+"',this.value)", '100%', true)}</td></tr>`).join('')}
+                <td class="bol-num col-valor">${notaConductaBoleta(est.id, i+1, vis, dat)}${!forzarSoloLectura && vis.indexOf(i+1)>=0 && condObs(est.id, i+1) ? `<a class="no-print bol-obs-link" href="javascript:void(0)" title="Ver las observaciones de conducta de ${esc(nombresDe(est))}" onclick="irObservacionConducta('${est.id}','${esc(grado)}',${i+1})" style="margin-left:6px; text-decoration:none; font-size:14px;">📝</a>` : ''}</td></tr>`).join('')}
           </tbody>
         </table>
 
@@ -11277,7 +11425,7 @@ function descargarBoletasPdf(grado, soloEstId){
           </table></div>
           <div class="bloque" style="flex:5">
           <table><tr><th colspan="2">NOTA DE CONDUCTA</th></tr>
-            ${['I-P','II-P','III-P','IV-P'].map((et,i)=>`<tr><td>${et}</td><td class="c w">${q(dat.notaConducta[i+1]||'')}</td></tr>`).join('')}
+            ${['I-P','II-P','III-P','IV-P'].map((et,i)=>`<tr><td>${et}</td><td class="c w">${q(notaConductaBoleta(est.id, i+1, periodosBoleta(), dat, true))}</td></tr>`).join('')}
           </table></div>
           <div class="bloque" style="flex:${cfg.escala.length + 1}">
           <table><tr><th colspan="2">ESCALA DE EVALUACI&Oacute;N</th></tr>
